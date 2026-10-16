@@ -19,8 +19,11 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
+	"github.com/ncecere/open-mcp-gateway/internal/oauth"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
+	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
+	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-gateway/internal/teams"
 )
@@ -37,6 +40,10 @@ type Deps struct {
 	APIKeys  *apikeys.Service
 	Identity *identity.Service
 	Calls    *calls.Service
+	// OAuth is the authorization server for MCP clients (internal/oauth).
+	OAuth *oauth.Service
+	// ServiceAccounts manages team service accounts and their keys.
+	ServiceAccounts *serviceaccounts.Service
 	// MCP serves /mcp/{slug} (internal/mcpgw).
 	MCP http.Handler
 
@@ -51,6 +58,8 @@ type Deps struct {
 type api struct {
 	Deps
 	q *dbgen.Queries
+	// limiter counts the OAuth endpoints' requests per address.
+	limiter *ratelimit.Limiter
 }
 
 // route is one entry in the served surface.
@@ -71,13 +80,14 @@ func opsRoutes(d Deps) []route {
 
 // apiRoutes is the full served surface, grouped by area.
 func apiRoutes(d Deps) []route {
-	a := &api{Deps: d}
+	a := &api{Deps: d, limiter: ratelimit.New()}
 	if d.Pool != nil {
 		a.q = dbgen.New(d.Pool)
 	}
 	routes := opsRoutes(d)
 	for _, group := range [][]route{a.authRoutes(), a.teamRoutes(), a.platformAdminRoutes(), a.mcpServerRoutes(), a.mcpAdminRoutes(),
-		a.gatewayRoutes(), a.gatewayAdminRoutes(), a.meGatewayRoutes(), a.mcpRoutes()} {
+		a.gatewayRoutes(), a.gatewayAdminRoutes(), a.meGatewayRoutes(), a.mcpRoutes(), a.oauthRoutes(), a.oauthRESTRoutes(),
+		a.serviceAccountRoutes()} {
 		routes = append(routes, group...)
 	}
 	return routes

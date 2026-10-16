@@ -10,6 +10,25 @@ type AuditEntry = Schemas["AuditEntry"];
 
 export type { AuditScope };
 
+/** A string field the entry recorded, in its after, before or metadata (a key's serviceAccountId, a grant's userId). */
+function recorded(e: AuditEntry, key: string): string | undefined {
+  for (const side of [e.after, e.before, e.metadata]) {
+    const v = side && typeof side === "object" && !Array.isArray(side) ? (side as Record<string, unknown>)[key] : undefined;
+    if (typeof v === "string" && v) return v;
+  }
+  return undefined;
+}
+
+/** The service account a key belongs to. */
+const keyAccount = (e: AuditEntry) => recorded(e, "serviceAccountId");
+
+/** A service account's record, or the one a key belongs to (its Keys tab); staff read any team's. */
+function serviceAccountLink(team: string, e: AuditEntry): ReactElement | null {
+  if (e.targetType === "service_account") return <Link to="/teams/$team/service-accounts/$serviceAccountId" params={{ team, serviceAccountId: e.targetId }} />;
+  const account = keyAccount(e);
+  return account ? <Link to="/teams/$team/service-accounts/$serviceAccountId" params={{ team, serviceAccountId: account }} search={{ tab: "keys" }} /> : null;
+}
+
 function teamLink(team: string, e: AuditEntry): ReactElement | null {
   switch (e.targetType) {
     case "team":
@@ -19,6 +38,9 @@ function teamLink(team: string, e: AuditEntry): ReactElement | null {
       return <Link to="/teams/$team/settings" params={{ team }} />;
     case "gateway":
       return <Link to="/teams/$team/gateways/$gatewayId" params={{ team, gatewayId: e.targetId }} />;
+    case "service_account":
+    case "service_account_key":
+      return serviceAccountLink(team, e);
     default:
       return null;
   }
@@ -38,6 +60,14 @@ function platformLink(e: AuditEntry): ReactElement | null {
       return <Link to="/admin/users/$userId" params={{ userId: id }} />;
     case "gateway":
       return <Link to="/admin/gateways/$gatewayId" params={{ gatewayId: id }} />;
+    case "service_account":
+    case "service_account_key":
+      return e.teamSlug ? serviceAccountLink(e.teamSlug, e) : null;
+    case "oauth_grant": {
+      // A connected app is listed on its person's admin page.
+      const userId = recorded(e, "userId");
+      return userId ? <Link to="/admin/users/$userId" params={{ userId }} /> : null;
+    }
     default:
       return null;
   }

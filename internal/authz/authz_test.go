@@ -85,3 +85,16 @@ func TestActorAudit(t *testing.T) {
 		t.Errorf("entry = %+v", e)
 	}
 }
+
+func TestServiceAccountRules(t *testing.T) {
+	for role, want := range map[string]bool{RoleOwner: true, RoleAdmin: true, RoleEditor: false, RoleMember: false, "": false} {
+		if (CheckServiceAccountEdit(role) == nil) != want {
+			t.Errorf("CheckServiceAccountEdit(%q) != %v", role, want)
+		}
+	}
+	for role, want := range map[string]bool{RoleMember: true, RoleEditor: true, RoleAdmin: false, RoleOwner: false, "": false} {
+		if ValidServiceAccountRole(role) != want {
+			t.Errorf("ValidServiceAccountRole(%q) != %v", role, want)
+		}
+	}
+}

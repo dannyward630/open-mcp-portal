@@ -1247,6 +1247,220 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/oauth/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The consent page's view of an authorization request: the client, the gateway and where the browser goes back to
+         * @description Takes the authorization request's parameters as they are and checks them again (signed-in session required). 400 with the reason for a request that isn't valid (the page shows it and never redirects). 404 when the resource names no gateway the caller can use.
+         */
+        get: operations["getOAuthConsent"];
+        put?: never;
+        /**
+         * Allow or deny an authorization request; returns where to send the browser
+         * @description Allow records the caller's consent for the client and gateway (audited as oauth.consent) and issues a single-use authorization code valid for 60 seconds. Deny sends the client access_denied.
+         */
+        post: operations["decideOAuthConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/oauth-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's connected apps: MCP clients they allowed, per gateway */
+        get: operations["listMyOAuthGrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/oauth-grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grantId: components["parameters"]["OAuthGrantIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect one of the caller's apps; its tokens stop at once (audited as oauth.revoke) */
+        delete: operations["revokeMyOAuthGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/oauth-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+            };
+            cookie?: never;
+        };
+        /** A person's connected apps (platform admins and auditors) */
+        get: operations["adminListUserOAuthGrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/oauth-grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+                grantId: components["parameters"]["OAuthGrantIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect a person's app (platform admins) */
+        delete: operations["adminRevokeUserOAuthGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/oauth-clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Clients that skip the consent screen (platform admins and auditors) */
+        get: operations["adminGetTrustedClients"];
+        /**
+         * Replace the trusted-client list (platform admins)
+         * @description 422 invalid_client_id (details.index) when an entry isn't an https URL with a path (Client ID Metadata Document). At most 50 entries. Audited as settings.oauth_clients_update.
+         */
+        put: operations["adminUpdateTrustedClients"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/service-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /** The team's service accounts (members and above; platform staff read any team) */
+        get: operations["listServiceAccounts"];
+        put?: never;
+        /**
+         * Create a service account (team owners and admins)
+         * @description 409 name_taken (names are unique within the team); 409 team_archived. At most 100 per team.
+         */
+        post: operations["createServiceAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/service-accounts/{serviceAccountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        /** One of the team's service accounts */
+        get: operations["getServiceAccount"];
+        put?: never;
+        post?: never;
+        /** Delete a service account and revoke its keys (team owners and admins); its call records are kept */
+        delete: operations["deleteServiceAccount"];
+        options?: never;
+        head?: never;
+        /** Change a service account (team owners and admins); turning it off stops its keys at the next request */
+        patch: operations["updateServiceAccount"];
+        trace?: never;
+    };
+    "/v1/teams/{team}/service-accounts/{serviceAccountId}/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        /** A service account's keys, including revoked and expired ones from the last 30 days (team owners and admins; platform staff) */
+        get: operations["listServiceAccountKeys"];
+        put?: never;
+        /**
+         * Create a key (team owners and admins, browser session only); the secret is shown once
+         * @description 409 too_many_keys (at most 2 active keys, for rotation). 422 gateway_not_usable (details.gatewayIds) when a scoped gateway isn't one the service account can use. 409 disabled for a turned-off account.
+         */
+        post: operations["createServiceAccountKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/service-accounts/{serviceAccountId}/keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a key (team owners and admins); takes effect on the next request */
+        delete: operations["revokeServiceAccountKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2135,19 +2349,162 @@ export interface components {
         };
         CallPrincipal: {
             /**
-             * @description Phase 4 adds oauth and service_account
+             * @description api_key: a personal key; oauth: a connected MCP client acting for a person; service_account: a team service account key
              * @enum {string}
              */
-            kind: "api_key";
-            /** Format: uuid */
-            userId: string;
+            kind: "api_key" | "oauth" | "service_account";
+            /**
+             * Format: uuid
+             * @description The person (api_key and oauth)
+             */
+            userId?: string;
+            /** @description The person's name, or the service account's name */
             displayName: string;
-            email: string;
+            /** @description The person (api_key and oauth) */
+            email?: string;
+            /** @description The key used (api_key and service_account) */
             apiKeyName?: string;
+            /** @description The connected client (oauth) */
+            oauthClientName?: string;
+            /** Format: uuid */
+            serviceAccountId?: string;
+            serviceAccountTeamSlug?: string;
         };
         McpCallPage: {
             items: components["schemas"]["McpCall"][];
             nextCursor?: string | null;
+        };
+        OAuthClientInfo: {
+            /** @description The client_id: an https URL (a Client ID Metadata Document) or a registered client's id */
+            id: string;
+            /**
+             * @description metadata: its host vouches for it; registered: it registered itself, so its name is unverified
+             * @enum {string}
+             */
+            kind: "metadata" | "registered";
+            name: string;
+            /** @description The host that vouches for the client, or a registered client's own home page host (may be empty) */
+            host: string;
+            uri: string | null;
+            logoUrl: string | null;
+            /** @description On the trusted-client list (skips the consent screen) */
+            trusted: boolean;
+        };
+        OAuthConsent: {
+            client: components["schemas"]["OAuthClientInfo"];
+            gateway: components["schemas"]["MyGateway"];
+            redirectUri: string;
+            /** @description Where the browser goes back to, such as 127.0.0.1:53211 */
+            redirectHost: string;
+            /** @description The caller already allowed this client for this gateway */
+            remembered: boolean;
+        };
+        OAuthConsentDecision: {
+            /** @description The authorization request's query string, as the consent page received it */
+            query: string;
+            /** @enum {string} */
+            decision: "allow" | "deny";
+        };
+        OAuthGrant: {
+            /** Format: uuid */
+            id: string;
+            client: components["schemas"]["OAuthClientInfo"];
+            gateway: components["schemas"]["CallRef"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+        };
+        TrustedClient: {
+            /** @example https://claude.ai/oauth/claude-code-client-metadata */
+            clientId: string;
+            /** @example Claude Code */
+            label?: string;
+        };
+        TrustedClients: {
+            clients: components["schemas"]["TrustedClient"][];
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TrustedClientsUpdate: {
+            clients: components["schemas"]["TrustedClient"][];
+        };
+        /**
+         * @description The team role used for capabilities' minimum roles (decision 22)
+         * @enum {string}
+         */
+        ServiceAccountRole: "member" | "editor";
+        ServiceAccount: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            teamId: string;
+            teamSlug: string;
+            /** @example ci-release-bot */
+            name: string;
+            description: string;
+            role: components["schemas"]["ServiceAccountRole"];
+            enabled: boolean;
+            /** Format: int64 */
+            activeKeyCount: number;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+            createdByName?: string | null;
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ServiceAccountCreate: {
+            /** @description Lower-case letters, digits and dashes; unique within the team */
+            name: string;
+            description?: string;
+            /** @default member */
+            role: components["schemas"]["ServiceAccountRole"];
+            /** @default true */
+            enabled: boolean;
+        };
+        ServiceAccountUpdate: {
+            name?: string;
+            description?: string;
+            role?: components["schemas"]["ServiceAccountRole"];
+            enabled?: boolean;
+        };
+        ServiceAccountKey: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description The first characters of the key (omcp_sa_xxxxxxxx) */
+            prefix: string;
+            /** @enum {string} */
+            status: "active" | "expired" | "revoked";
+            /** Format: date-time */
+            createdAt: string;
+            createdByName?: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+            /** Format: date-time */
+            revokedAt?: string | null;
+            /** @description The gateways the key is limited to (empty = every gateway the account can use) */
+            gateways: components["schemas"]["ApiKeyGateway"][];
+        };
+        ServiceAccountKeyCreate: {
+            name: string;
+            /**
+             * Format: int32
+             * @default 90
+             */
+            expiresInDays: number;
+            gatewayIds?: string[];
+        };
+        ServiceAccountKeyCreated: {
+            key: components["schemas"]["ServiceAccountKey"];
+            /** @description The full key, shown only now */
+            secret: string;
         };
     };
     responses: {
@@ -2255,6 +2612,10 @@ export interface components {
         CallOutcomeParam: components["schemas"]["McpCallOutcome"];
         /** @description Only calls made by this person (any credential) */
         CallUserParam: string;
+        OAuthGrantIdParam: string;
+        ServiceAccountIdParam: string;
+        /** @description Only calls made by this service account */
+        CallServiceAccountParam: string;
     };
     requestBodies: never;
     headers: {
@@ -4086,6 +4447,8 @@ export interface operations {
                 outcome?: components["parameters"]["CallOutcomeParam"];
                 /** @description Only calls made by this person (any credential) */
                 user?: components["parameters"]["CallUserParam"];
+                /** @description Only calls made by this service account */
+                serviceAccount?: components["parameters"]["CallServiceAccountParam"];
                 /** @description Entries at or after this time */
                 from?: components["parameters"]["AuditFromParam"];
                 /** @description Entries before this time (exclusive) */
@@ -4425,6 +4788,8 @@ export interface operations {
                 outcome?: components["parameters"]["CallOutcomeParam"];
                 /** @description Only calls made by this person (any credential) */
                 user?: components["parameters"]["CallUserParam"];
+                /** @description Only calls made by this service account */
+                serviceAccount?: components["parameters"]["CallServiceAccountParam"];
                 /** @description Team slug or ID (calls through its gateways or to its servers) */
                 team?: string;
                 /** @description Entries at or after this time */
@@ -4561,6 +4926,441 @@ export interface operations {
         responses: {
             200: components["responses"]["OkReply"];
             401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    getOAuthConsent: {
+        parameters: {
+            query: {
+                client_id: string;
+                redirect_uri: string;
+                response_type: string;
+                code_challenge: string;
+                code_challenge_method: string;
+                resource: string;
+                state?: string;
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request is valid */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OAuthConsent"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    decideOAuthConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthConsentDecision"];
+            };
+        };
+        responses: {
+            /** @description Where to send the browser */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            redirectUrl: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            401: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    listMyOAuthGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active grants, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OAuthGrant"][];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    revokeMyOAuthGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grantId: components["parameters"]["OAuthGrantIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListUserOAuthGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active grants, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OAuthGrant"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminRevokeUserOAuthGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+                grantId: components["parameters"]["OAuthGrantIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetTrustedClients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trusted clients */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TrustedClients"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateTrustedClients: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrustedClientsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TrustedClients"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    listServiceAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Service accounts ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ServiceAccount"][];
+                    };
+                };
+            };
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    createServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ServiceAccount"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    getServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Service account */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ServiceAccount"];
+                    };
+                };
+            };
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    deleteServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    updateServiceAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ServiceAccount"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    listServiceAccountKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Keys, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ServiceAccountKey"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    createServiceAccountKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ServiceAccountKeyCreated"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+        };
+    };
+    revokeServiceAccountKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
         };
     };

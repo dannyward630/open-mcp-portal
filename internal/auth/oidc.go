@@ -239,10 +239,14 @@ func boundedClaims(claims map[string]any) json.RawMessage {
 	return b
 }
 
+// maxNext bounds a post-login path: long enough for an OAuth authorization
+// request (internal/oauth bounds its query to 8000 characters).
+const maxNext = 8300
+
 // safeNext only allows same-origin relative paths as post-login redirects.
 func safeNext(next string) string {
 	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") ||
-		strings.HasPrefix(next, "/\\") || strings.ContainsAny(next, "\r\n") || len(next) > 2048 {
+		strings.HasPrefix(next, "/\\") || strings.ContainsAny(next, "\r\n") || len(next) > maxNext {
 		return "/"
 	}
 	return next

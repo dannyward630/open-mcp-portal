@@ -56,7 +56,14 @@ CROSS JOIN LATERAL (
                                    LEFT JOIN teams t ON t.id = gg.team_id LEFT JOIN users u ON u.id = gg.user_id
                                    WHERE gg.id = ids.target_uuid)
         WHEN 'api_key' THEN (SELECT k.name FROM api_keys k WHERE k.id = ids.target_uuid)
-        WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' WHEN 'network' THEN 'Internal networks' END)
+        WHEN 'oauth_client' THEN (SELECT oc.client_name FROM oauth_clients oc WHERE oc.id = ids.target_uuid)
+        WHEN 'oauth_grant' THEN (SELECT og.client_name || ' · ' || g.name FROM oauth_grants og JOIN gateways g ON g.id = og.gateway_id
+                                 WHERE og.id = ids.target_uuid)
+        WHEN 'service_account' THEN (SELECT sa.name FROM service_accounts sa WHERE sa.id = ids.target_uuid)
+        WHEN 'service_account_key' THEN (SELECT sa.name || ' · ' || k.name FROM service_account_keys k
+                                         JOIN service_accounts sa ON sa.id = k.service_account_id WHERE k.id = ids.target_uuid)
+        WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' WHEN 'network' THEN 'Internal networks'
+                                       WHEN 'oauth_clients' THEN 'Trusted clients' END)
     END)::text AS label
 ) live
 WHERE (sqlc.narg(team_id)::uuid IS NULL OR a.team_id = sqlc.narg(team_id)::uuid)

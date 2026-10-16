@@ -16,10 +16,11 @@ import s from "../shared.module.css";
 import { TeamContext, teamCtx, useTeam } from "./common";
 
 /**
- * Pages platform staff who aren't members may open: the overview, team settings, the MCP servers and the
- * gateways (which platform staff read, as the API allows). Later team pages are members only.
+ * Pages platform staff who aren't members may open: the overview, team settings, the MCP servers, the
+ * gateways and the service accounts (which platform staff read, as the API allows). Later team pages are
+ * members only.
  */
-const staffPage = (path: string) => /^\/teams\/[^/]+(\/settings|\/(servers|gateways)(\/[^/]+)?)?\/?$/.test(path);
+const staffPage = (path: string) => /^\/teams\/[^/]+(\/settings|\/(servers|gateways|service-accounts)(\/[^/]+)?)?\/?$/.test(path);
 
 /** The team area: loads the team and provides it to the current team page. */
 export function TeamLayout() {

@@ -92,29 +92,35 @@ type LoginState struct {
 }
 
 type McpCall struct {
-	ID            int64
-	OccurredAt    time.Time
-	RequestID     string
-	Method        string
-	ExposedName   *string
-	GatewayID     uuid.UUID
-	GatewaySlug   string
-	GatewayName   string
-	GatewayTeamID uuid.NullUUID
-	ServerID      uuid.NullUUID
-	ServerSlug    *string
-	ServerName    *string
-	ServerTeamID  uuid.NullUUID
-	CapabilityID  uuid.NullUUID
-	PrincipalKind string
-	UserID        uuid.UUID
-	ApiKeyID      uuid.NullUUID
-	ClientName    *string
-	Outcome       string
-	ErrorClass    *string
-	LatencyMs     int32
-	RequestBytes  int64
-	ResponseBytes int64
+	ID                   int64
+	OccurredAt           time.Time
+	RequestID            string
+	Method               string
+	ExposedName          *string
+	GatewayID            uuid.UUID
+	GatewaySlug          string
+	GatewayName          string
+	GatewayTeamID        uuid.NullUUID
+	ServerID             uuid.NullUUID
+	ServerSlug           *string
+	ServerName           *string
+	ServerTeamID         uuid.NullUUID
+	CapabilityID         uuid.NullUUID
+	PrincipalKind        string
+	UserID               uuid.NullUUID
+	ApiKeyID             uuid.NullUUID
+	ClientName           *string
+	Outcome              string
+	ErrorClass           *string
+	LatencyMs            int32
+	RequestBytes         int64
+	ResponseBytes        int64
+	ServiceAccountID     uuid.NullUUID
+	ServiceAccountName   *string
+	ServiceAccountTeamID uuid.NullUUID
+	OauthGrantID         uuid.NullUUID
+	OauthClientName      *string
+	KeyName              *string
 }
 
 type McpCapability struct {
@@ -186,6 +192,63 @@ type NetworkSetting struct {
 	UpdatedAt time.Time
 }
 
+type OauthClient struct {
+	ID           uuid.UUID
+	ClientID     string
+	ClientName   string
+	RedirectUris []string
+	ClientUri    *string
+	LogoUri      *string
+	CreatedAt    time.Time
+	LastUsedAt   time.Time
+}
+
+type OauthCode struct {
+	CodeHash      string
+	GrantID       uuid.UUID
+	ClientID      string
+	RedirectUri   string
+	CodeChallenge string
+	Resource      string
+	ExpiresAt     time.Time
+	CreatedAt     time.Time
+}
+
+type OauthGrant struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	GatewayID     uuid.UUID
+	ClientID      string
+	ClientKind    string
+	ClientName    string
+	ClientUri     *string
+	LogoUri       *string
+	Resource      string
+	CreatedAt     time.Time
+	LastUsedAt    *time.Time
+	RevokedAt     *time.Time
+	RevokedReason *string
+}
+
+type OauthSetting struct {
+	ID             int16
+	TrustedClients json.RawMessage
+	Revision       int64
+	UpdatedBy      uuid.NullUUID
+	UpdatedAt      time.Time
+}
+
+type OauthToken struct {
+	ID        uuid.UUID
+	GrantID   uuid.UUID
+	Kind      string
+	TokenHash string
+	Resource  string
+	ExpiresAt time.Time
+	RotatedAt *time.Time
+	CreatedAt time.Time
+}
+
 type PlatformBootstrap struct {
 	OIDCIssuer  string
 	OIDCSubject string
@@ -198,6 +261,42 @@ type PlatformSetting struct {
 	Revision             int64
 	UpdatedBy            uuid.NullUUID
 	UpdatedAt            time.Time
+}
+
+type ServiceAccount struct {
+	ID          uuid.UUID
+	TeamID      uuid.UUID
+	Name        string
+	Description string
+	Role        string
+	Enabled     bool
+	Revision    int64
+	CreatedBy   uuid.NullUUID
+	CreatedAt   time.Time
+	UpdatedBy   uuid.NullUUID
+	UpdatedAt   time.Time
+	LastUsedAt  *time.Time
+}
+
+type ServiceAccountKey struct {
+	ID               uuid.UUID
+	ServiceAccountID uuid.UUID
+	Name             string
+	Prefix           string
+	Digest           string
+	CreatedBy        uuid.NullUUID
+	CreatedAt        time.Time
+	ExpiresAt        time.Time
+	RevokedAt        *time.Time
+	LastUsedAt       *time.Time
+}
+
+type ServiceAccountKeyGateway struct {
+	KeyID       uuid.UUID
+	GatewayID   uuid.UUID
+	GatewaySlug string
+	GatewayName string
+	AddedAt     time.Time
 }
 
 type Session struct {

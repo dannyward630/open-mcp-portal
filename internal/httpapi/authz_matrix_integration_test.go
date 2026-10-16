@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"sort"
 	"strings"
 	"testing"
@@ -35,6 +36,8 @@ type teamFix struct {
 	server, capability string
 	// gateway is a team gateway.
 	gateway string
+	// serviceAccount is a service account with one key (saKey).
+	serviceAccount, saKey string
 }
 
 type matrixEnv struct {
@@ -50,7 +53,9 @@ type matrixEnv struct {
 	fakeURL string
 	// platformGateway is granted to team B and to every platform caller.
 	platformGateway string
-	n               int
+	// oauthClient is a registered OAuth client's ID.
+	oauthClient string
+	n           int
 }
 
 func (e *matrixEnv) next() int { e.n++; return e.n }
@@ -97,7 +102,31 @@ func (e *matrixEnv) newTeam(slug, name string) teamFix {
 	tf.server = e.newServer(tf, "published")
 	tf.capability = e.newChangedCapability(tf.server)
 	tf.gateway = e.newGateway(tf.id)
+	tf.serviceAccount = e.newServiceAccount(tf.id)
+	tf.saKey = e.newServiceAccountKey(tf.serviceAccount)
 	return tf
+}
+
+// newServiceAccount inserts a service account of a team.
+func (e *matrixEnv) newServiceAccount(teamID string) string {
+	return e.exec(`INSERT INTO service_accounts (team_id, name) VALUES ($1, $2) RETURNING id::text`, teamID, fmt.Sprintf("sa-%d", e.next()))
+}
+
+// newServiceAccountKey inserts a key of a service account.
+func (e *matrixEnv) newServiceAccountKey(saID string) string {
+	return e.exec(`INSERT INTO service_account_keys (service_account_id, name, prefix, digest, expires_at)
+		VALUES ($1, 'k', 'omcp_sa_matrix00', encode(sha256($2::bytea), 'hex'), now() + interval '1 day') RETURNING id::text`,
+		saID, fmt.Sprintf("sa-key-%d", e.next()))
+}
+
+// consentQuery is an authorization request of the matrix's registered
+// client for the fixture platform gateway.
+func (e *matrixEnv) consentQuery() string {
+	slug := e.exec(`SELECT slug FROM gateways WHERE id = $1`, e.platformGateway)
+	q := url.Values{"client_id": {e.oauthClient}, "redirect_uri": {"http://127.0.0.1:4545/callback"}, "response_type": {"code"},
+		"code_challenge": {strings.Repeat("c", 43)}, "code_challenge_method": {"S256"}, "resource": {e.app.URL + "/mcp/" + slug},
+		"state": {"matrix"}}
+	return q.Encode()
 }
 
 // newGateway inserts a gateway: a team gateway of teamID, or a platform
@@ -171,6 +200,8 @@ func newMatrixEnv(t *testing.T) *matrixEnv {
 	for _, c := range []caller{cPlatformAdmin, cAuditor} {
 		e.exec(`INSERT INTO gateway_grants (gateway_id, subject_kind, user_id) VALUES ($1, 'user', $2) RETURNING id::text`, e.platformGateway, e.userIDs[c])
 	}
+	e.oauthClient = e.exec(`INSERT INTO oauth_clients (client_id, client_name, redirect_uris)
+		VALUES ('omcl_' || repeat('m', 43), 'Matrix client', ARRAY['http://127.0.0.1/callback']) RETURNING client_id`)
 	e.spareUser = e.newUser("spare@example.com", "none")
 	e.spareTeam = e.newTeam("spare", "Spare Team").slug
 	return e
@@ -257,6 +288,39 @@ func (c *mctx) apiKey() string {
 	return c.e.exec(`INSERT INTO api_keys (user_id, name, prefix, digest, expires_at)
 		VALUES ($1, 'k', 'omcp_matrix00', encode(sha256($2::bytea), 'hex'), now() + interval '1 day') RETURNING id::text`,
 		owner, fmt.Sprintf("matrix-%d", n))
+}
+
+// oauthGrant is a connected app (a grant on the fixture platform gateway):
+// of the caller (mine) or of the spare user when the call is expected to
+// succeed, else of another person.
+func (c *mctx) oauthGrant(mine bool) string {
+	owner := c.e.spareUser
+	if c.allowed && mine {
+		owner = c.e.userIDs[c.who]
+	} else if !c.allowed && !mine {
+		owner = c.e.userIDs[cMember]
+	}
+	return c.e.exec(`INSERT INTO oauth_grants (user_id, gateway_id, client_id, client_kind, client_name, resource)
+		VALUES ($1, $2, $3, 'registered', 'Matrix client', 'x') RETURNING id::text`, owner, c.e.platformGateway, fmt.Sprintf("omcl_matrix_%d", c.e.next()))
+}
+
+// serviceAccount is a fresh service account of the team when the call is
+// expected to succeed, else the team's fixture one.
+func (c *mctx) serviceAccount() string {
+	if c.allowed {
+		return c.e.newServiceAccount(c.tf.id)
+	}
+	return c.tf.serviceAccount
+}
+
+// serviceAccountKey is a service account and its key: fresh ones when the
+// call is expected to succeed.
+func (c *mctx) serviceAccountKey() (sa, key string) {
+	if c.allowed {
+		sa = c.e.newServiceAccount(c.tf.id)
+		return sa, c.e.newServiceAccountKey(sa)
+	}
+	return c.tf.serviceAccount, c.tf.saKey
 }
 
 func (c *mctx) user() string {

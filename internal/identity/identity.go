@@ -89,28 +89,38 @@ func Header(staticHeader, token string) (name, value string) {
 
 // Claims are what a token says beyond iss, iat, exp and jti.
 type Claims struct {
-	Audience string   // the server's URL
-	Subject  string   // the person's user ID
-	Email    string   //
-	Name     string   //
-	Teams    []string // slugs of the person's teams
-	Gateway  string   // the gateway's slug
-	Tool     string   // the exposed tool name (tools/call)
-	Prompt   string   // the exposed prompt name (prompts/get)
-	Resource string   // the exposed resource URI read (resources/read)
-	Client   string   // clientInfo.name when known, else the API key's name
+	Audience string // the server's URL
+	// PrincipalType is who calls: PrincipalUser (a person, with a key or a
+	// connected client) or PrincipalServiceAccount.
+	PrincipalType string
+	Subject       string   // the person's user ID, or the service account's ID
+	Email         string   // the person's email (none for a service account)
+	Name          string   // the person's display name, or the service account's name
+	Teams         []string // slugs of the person's teams, or the service account's team
+	Gateway       string   // the gateway's slug
+	Tool          string   // the exposed tool name (tools/call)
+	Prompt        string   // the exposed prompt name (prompts/get)
+	Resource      string   // the exposed resource URI read (resources/read)
+	Client        string   // the OAuth client's name; else clientInfo.name when known, else the key's name
 }
+
+// Principal types (claim principal_type).
+const (
+	PrincipalUser           = "user"
+	PrincipalServiceAccount = "service_account"
+)
 
 // tokenClaims are the private claims of a token.
 type tokenClaims struct {
-	Email    string   `json:"email,omitempty"`
-	Name     string   `json:"name,omitempty"`
-	Teams    []string `json:"teams"`
-	Gateway  string   `json:"gateway"`
-	Tool     string   `json:"tool,omitempty"`
-	Prompt   string   `json:"prompt,omitempty"`
-	Resource string   `json:"resource,omitempty"`
-	Client   string   `json:"client,omitempty"`
+	PrincipalType string   `json:"principal_type"`
+	Email         string   `json:"email,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	Teams         []string `json:"teams"`
+	Gateway       string   `json:"gateway"`
+	Tool          string   `json:"tool,omitempty"`
+	Prompt        string   `json:"prompt,omitempty"`
+	Resource      string   `json:"resource,omitempty"`
+	Client        string   `json:"client,omitempty"`
 }
 
 // Key states.
@@ -177,7 +187,11 @@ func (s *Service) Sign(ctx context.Context, c Claims) (string, error) {
 	if teams == nil {
 		teams = []string{}
 	}
-	priv := tokenClaims{Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Resource: c.Resource, Client: c.Client}
+	pt := c.PrincipalType
+	if pt == "" {
+		pt = PrincipalUser
+	}
+	priv := tokenClaims{PrincipalType: pt, Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Resource: c.Resource, Client: c.Client}
 	return jwt.Signed(k.signer).Claims(reg).Claims(priv).Serialize()
 }
 

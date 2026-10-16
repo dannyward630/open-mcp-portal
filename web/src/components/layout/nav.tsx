@@ -14,7 +14,7 @@
  *   3. add its breadcrumb in breadcrumbs.tsx.
  * Only list pages that exist: no placeholders or "coming soon" links.
  */
-import { Activity, BadgeCheck, FileClock, Home, LayoutDashboard, Library, Network, Server, Settings, Users, UsersRound, Waypoints } from "lucide-react";
+import { Activity, BadgeCheck, Bot, FileClock, Home, LayoutDashboard, Library, Network, Server, Settings, ShieldCheck, Users, UsersRound, Waypoints } from "lucide-react";
 import { type ReactNode } from "react";
 import { terms } from "../../lib/terms";
 import { type Me } from "../../session";
@@ -46,7 +46,7 @@ export type TeamAccess = {
   canEdit: boolean;
   /** An active team's admins and owners. */
   isManager: boolean;
-  /** A platform admin or auditor (may view any team's overview, settings, MCP servers and gateways). */
+  /** A platform admin or auditor (may view any team's overview, settings, MCP servers, gateways and service accounts). */
   staff: boolean;
 };
 
@@ -62,14 +62,14 @@ export function teamAccess(me: Me, mine: Membership | undefined): TeamAccess {
   };
 }
 
-export type TeamPath = "/teams/$team" | "/teams/$team/servers" | "/teams/$team/gateways" | "/teams/$team/settings";
+export type TeamPath = "/teams/$team" | "/teams/$team/servers" | "/teams/$team/gateways" | "/teams/$team/service-accounts" | "/teams/$team/settings";
 
 export type TeamNavItem = {
   to: TeamPath;
   label: string;
   icon: ReactNode;
   exact?: boolean;
-  /** Who gets the item. Platform staff who aren't members get the overview, the MCP servers, the gateways and settings. */
+  /** Who gets the item. Platform staff who aren't members get the overview, the MCP servers, the gateways, the service accounts and settings. */
   access: (a: TeamAccess) => boolean;
   /** Extra command-palette search words. */
   keywords?: string[];
@@ -93,6 +93,13 @@ const teamNav: TeamNavItem[] = [
     keywords: ["gateway", "gateways", "endpoint", "url", "curate", "tools", "prompts", "connect", "calls", "activity"],
   },
   {
+    to: "/teams/$team/service-accounts",
+    label: terms.serviceAccounts,
+    icon: icon(Bot),
+    access: (a) => a.member || a.staff,
+    keywords: ["service account", "bot", "robot", "automation", "ci", "headless", "agent", "script", "key", "keys", "rotate", "omcp_sa"],
+  },
+  {
     to: "/teams/$team/settings",
     label: terms.teamSettings,
     icon: icon(Settings),
@@ -112,7 +119,16 @@ export function teamNavFor(me: Me, slug: string): TeamNavItem[] {
 
 /* ---------------- admin ---------------- */
 
-export type AdminPath = "/admin/users" | "/admin/teams" | "/admin/servers" | "/admin/publishing" | "/admin/networks" | "/admin/gateways" | "/admin/audit" | "/admin/calls";
+export type AdminPath =
+  | "/admin/users"
+  | "/admin/teams"
+  | "/admin/servers"
+  | "/admin/publishing"
+  | "/admin/networks"
+  | "/admin/gateways"
+  | "/admin/trusted-clients"
+  | "/admin/audit"
+  | "/admin/calls";
 
 export type AdminNavItem = { to: AdminPath; label: string; icon: ReactNode; exact?: boolean };
 
@@ -140,7 +156,10 @@ export const adminSections: { label?: string; defaultOpen?: boolean; items: Admi
   {
     label: "Access",
     defaultOpen: true,
-    items: [{ to: "/admin/gateways", label: terms.gateways, icon: icon(Network) }],
+    items: [
+      { to: "/admin/gateways", label: terms.gateways, icon: icon(Network) },
+      { to: "/admin/trusted-clients", label: terms.trustedClients, icon: icon(ShieldCheck) },
+    ],
   },
   {
     label: "Records",
@@ -168,6 +187,7 @@ export const adminKeywords: Partial<Record<AdminPath, string[]>> = {
   "/admin/publishing": ["policy", "approval required", "self publish", "default", "catalog"],
   "/admin/networks": ["internal", "network", "cidr", "allowlist", "private address", "host", "http", "ssrf", "egress"],
   "/admin/gateways": ["gateway", "platform gateway", "grant", "grants", "access", "sso group", "team gateway", "disable"],
+  "/admin/trusted-clients": ["oauth", "trusted", "client", "clients", "consent", "skip consent", "allowlist", "claude", "vs code", "metadata document", "cimd"],
   "/admin/audit": ["audit log", "history", "changes", "who changed", "sign-ins", "export", "csv"],
   "/admin/calls": ["calls", "call log", "tool calls", "usage", "activity", "denied", "errors", "latency"],
 };

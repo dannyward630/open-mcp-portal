@@ -291,4 +291,53 @@ var matrixPolicies = map[string]policy{
 		return post("/v1/me/api-keys", map[string]any{"name": "matrix key", "gatewayIds": []string{c.e.platformGateway}})
 	}},
 	"revokeMyApiKey": {own: signedIn, build: func(c *mctx) request { return del("/v1/me/api-keys/" + c.apiKey()) }},
+
+	// OAuth: the consent page (an authorization request of a registered
+	// client for the fixture platform gateway, which every signed-in matrix
+	// caller may use), connected apps and trusted clients.
+	"getOAuthConsent": {own: signedIn, build: func(c *mctx) request { return get("/v1/oauth/consent?" + c.e.consentQuery()) }},
+	"decideOAuthConsent": {own: signedIn, build: func(c *mctx) request {
+		return post("/v1/oauth/consent", map[string]any{"query": c.e.consentQuery(), "decision": "allow"})
+	}},
+	"listMyOAuthGrants":  {own: signedIn, build: func(*mctx) request { return get("/v1/me/oauth-grants") }},
+	"revokeMyOAuthGrant": {own: signedIn, build: func(c *mctx) request { return del("/v1/me/oauth-grants/" + c.oauthGrant(true)) }},
+	"adminListUserOAuthGrants": {own: platform, build: func(c *mctx) request {
+		return get("/v1/admin/users/" + c.e.spareUser + "/oauth-grants")
+	}},
+	"adminRevokeUserOAuthGrant": {own: padmin, build: func(c *mctx) request {
+		return del("/v1/admin/users/" + c.e.spareUser + "/oauth-grants/" + c.oauthGrant(false))
+	}},
+	"adminGetTrustedClients": {own: platform, build: func(*mctx) request { return get("/v1/admin/settings/oauth-clients") }},
+	"adminUpdateTrustedClients": {own: padmin, build: func(c *mctx) request {
+		rev := c.e.exec(`SELECT revision::text FROM oauth_settings`)
+		return request{method: "PUT", path: "/v1/admin/settings/oauth-clients",
+			body:    map[string]any{"clients": []any{map[string]any{"clientId": "https://claude.ai/oauth/claude-code-client-metadata", "label": "Claude Code"}}},
+			headers: map[string]string{"If-Match": `"` + rev + `"`}}
+	}},
+
+	// Service accounts (owners and admins manage them and their keys;
+	// members and platform staff see them; platform staff see keys).
+	"listServiceAccounts": {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request { return get(c.team("/service-accounts")) }},
+	"createServiceAccount": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
+		return post(c.team("/service-accounts"), map[string]any{"name": fmt.Sprintf("bot-%d", c.e.next()), "role": "editor"})
+	}},
+	"getServiceAccount": {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request {
+		return get(c.team("/service-accounts/" + c.tf.serviceAccount))
+	}},
+	"updateServiceAccount": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
+		return patch(c.team("/service-accounts/"+c.serviceAccount()), map[string]any{"description": "updated by the matrix"}).h(rev1)
+	}},
+	"deleteServiceAccount": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
+		return del(c.team("/service-accounts/" + c.serviceAccount()))
+	}},
+	"listServiceAccountKeys": {scope: scopeTeam, own: admins, foreign: platform, build: func(c *mctx) request {
+		return get(c.team("/service-accounts/" + c.tf.serviceAccount + "/keys"))
+	}},
+	"createServiceAccountKey": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
+		return post(c.team("/service-accounts/"+c.serviceAccount()+"/keys"), map[string]any{"name": "matrix key", "expiresInDays": 30})
+	}},
+	"revokeServiceAccountKey": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
+		sa, key := c.serviceAccountKey()
+		return del(c.team("/service-accounts/" + sa + "/keys/" + key))
+	}},
 }

@@ -18,7 +18,8 @@ import { myApiKeysQuery } from "../../api/queries";
 import { ConfirmMutationDialog } from "../../components/confirm-dialog";
 import type { ApiKey } from "../../components/gateways/labels";
 import { ListPage, RelativeTime, timeColumn } from "../../components/templates/list-page";
-import { calendarDayDiff, formatDate, formatRelativeTime, toDate } from "../../lib/bitop-format";
+import { formatDate, toDate } from "../../lib/bitop-format";
+import { expiryText } from "../../lib/expiry";
 import { useIntent } from "../../lib/intents";
 import { terms } from "../../lib/terms";
 import { Alert } from "@/components/ui/alert/alert";
@@ -34,18 +35,7 @@ import { CreateKeyDialog } from "./create-key-dialog";
 const statusLabels: Record<ApiKey["status"], string> = { active: "Active", expired: "Expired", revoked: "Revoked" };
 const statusTone = { active: "success", expired: "neutral", revoked: "danger" } as const;
 
-/** "in 7 days", "tomorrow", "in 5 hours", "3 days ago": whole days from a day away, never weeks or months. */
-export function expiryText(value: string | null | undefined, now = new Date()): string {
-  const date = toDate(value);
-  if (!date) return "";
-  const days = calendarDayDiff(date, now);
-  if (Math.abs(date.getTime() - now.getTime()) < 86_400_000 / 2 || days === 0) return formatRelativeTime(date, { now });
-  try {
-    return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(days, "day");
-  } catch {
-    return formatDate(date);
-  }
-}
+export { expiryText };
 
 function Expiry({ value }: { value: string | null | undefined }) {
   const date = toDate(value);
@@ -142,8 +132,10 @@ export function ApiKeysPage() {
               </Alert>
             )}
             <Alert tone="info">
-              Connect a client from <TextLink render={<Link to="/gateways" />}>{terms.myGateways}</TextLink>: each gateway shows the snippets to copy. Keep keys secret, and revoke a key you no
-              longer use.
+              Connect a client from <TextLink render={<Link to="/gateways" />}>{terms.myGateways}</TextLink>: each gateway shows the snippets to copy. Claude Code, VS Code
+              and Cursor can sign in through your browser instead (<TextLink render={<Link to="/settings/connected-apps" />}>{terms.connectedApps}</TextLink>); keys
+              are for clients that can&apos;t, and for your own scripts. For CI and shared automation, use a team&apos;s service account. Keep keys secret, and
+              revoke a key you no longer use.
             </Alert>
           </>
         }

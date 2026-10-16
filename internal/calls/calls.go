@@ -44,17 +44,34 @@ var (
 	errPlatformRead = apperr.Forbidden("Only platform admins and auditors can see this")
 )
 
+// Principal kinds (the API's CallPrincipal.kind).
+const (
+	PrincipalAPIKey         = "api_key"
+	PrincipalOAuth          = "oauth"
+	PrincipalServiceAccount = "service_account"
+)
+
 // Call is one record. Strings are bounded by Record.
 type Call struct {
 	RequestID, Method, ExposedName string
 	Gateway                        dbgen.Gateway
 	Server                         *dbgen.McpServer
 	CapabilityID                   uuid.UUID
-	UserID, APIKeyID               uuid.UUID
-	ClientName                     string
-	Outcome, ErrorClass            string
-	Latency                        time.Duration
-	RequestBytes, ResponseBytes    int64
+	// PrincipalKind says who called (PrincipalAPIKey when empty): a person
+	// with a key (UserID, APIKeyID) or a connected client (UserID,
+	// OAuthGrantID, OAuthClientName), or a service account (ServiceAccount*
+	// and its key in APIKeyID). KeyName is the key's name as it was.
+	PrincipalKind                          string
+	UserID, APIKeyID                       uuid.UUID
+	KeyName                                string
+	ServiceAccountID, ServiceAccountTeamID uuid.UUID
+	ServiceAccountName                     string
+	OAuthGrantID                           uuid.UUID
+	OAuthClientName                        string
+	ClientName                             string
+	Outcome, ErrorClass                    string
+	Latency                                time.Duration
+	RequestBytes, ResponseBytes            int64
 }
 
 func clip(s string, n int) *string {
@@ -73,10 +90,15 @@ func null(id uuid.UUID) uuid.NullUUID { return uuid.NullUUID{UUID: id, Valid: id
 
 // Record stores a call.
 func Record(ctx context.Context, q *dbgen.Queries, c Call) error {
+	if c.PrincipalKind == "" {
+		c.PrincipalKind = PrincipalAPIKey
+	}
 	p := dbgen.InsertMCPCallParams{
 		RequestID: c.RequestID, Method: c.Method, ExposedName: clip(c.ExposedName, 1100),
 		GatewayID: c.Gateway.ID, GatewaySlug: c.Gateway.Slug, GatewayName: c.Gateway.Name, GatewayTeamID: c.Gateway.TeamID,
-		CapabilityID: null(c.CapabilityID), UserID: c.UserID, ApiKeyID: null(c.APIKeyID),
+		CapabilityID: null(c.CapabilityID), PrincipalKind: c.PrincipalKind, UserID: null(c.UserID), ApiKeyID: null(c.APIKeyID),
+		KeyName: clip(c.KeyName, 100), ServiceAccountID: null(c.ServiceAccountID), ServiceAccountName: clip(c.ServiceAccountName, 64),
+		ServiceAccountTeamID: null(c.ServiceAccountTeamID), OauthGrantID: null(c.OAuthGrantID), OauthClientName: clip(c.OAuthClientName, 200),
 		ClientName: clip(c.ClientName, 200), Outcome: c.Outcome, ErrorClass: clip(c.ErrorClass, 64),
 		LatencyMs: int32(min(c.Latency.Milliseconds(), 1<<31-1)), RequestBytes: max(c.RequestBytes, 0), ResponseBytes: max(c.ResponseBytes, 0),
 	}
@@ -104,12 +126,12 @@ func New(pool *pgxpool.Pool) *Service {
 
 // Filter narrows and pages a list (newest first, by ID).
 type Filter struct {
-	Gateway, Server, User *uuid.UUID
-	Outcome               *string
-	From, To              *time.Time
-	BeforeID              *int64
-	Team                  string // admin list: a team slug or ID
-	Limit                 int32
+	Gateway, Server, User, ServiceAccount *uuid.UUID
+	Outcome                               *string
+	From, To                              *time.Time
+	BeforeID                              *int64
+	Team                                  string // admin list: a team slug or ID
+	Limit                                 int32
 }
 
 func (f Filter) query() dbgen.ListMCPCallsParams {
@@ -122,6 +144,9 @@ func (f Filter) query() dbgen.ListMCPCallsParams {
 	}
 	if f.User != nil {
 		p.UserID = null(*f.User)
+	}
+	if f.ServiceAccount != nil {
+		p.ServiceAccountID = null(*f.ServiceAccount)
 	}
 	return p
 }

@@ -24,12 +24,23 @@ describe("navigation lists", () => {
     ]);
     expect(teamNavFor(meFor("none", "member"), team.slug).find((n) => n.label === "MCP servers")?.to).toBe("/teams/$team/servers");
     expect(teamNavFor(meFor("none", "member"), team.slug).find((n) => n.label === "Gateways")?.to).toBe("/teams/$team/gateways");
-    expect(adminNav.map((n) => n.to)).toEqual(["/admin/users", "/admin/teams", "/admin/servers", "/admin/publishing", "/admin/networks", "/admin/gateways", "/admin/audit", "/admin/calls"]);
+    expect(teamNavFor(meFor("none", "member"), team.slug).find((n) => n.label === "Service accounts")?.to).toBe("/teams/$team/service-accounts");
+    expect(adminNav.map((n) => n.to)).toEqual([
+      "/admin/users",
+      "/admin/teams",
+      "/admin/servers",
+      "/admin/publishing",
+      "/admin/networks",
+      "/admin/gateways",
+      "/admin/trusted-clients",
+      "/admin/audit",
+      "/admin/calls",
+    ]);
     const labels = [...workspaceNav, ...teamNavFor(meFor("none", "owner"), team.slug), ...adminNav].map((n) => n.label);
     expect(labels).not.toContain("Connect");
   });
 
-  it("resolve the record routes the lists link to (a server, a catalog entry, gateways, API keys)", () => {
+  it("resolve the record routes the lists link to (a server, a catalog entry, gateways, API keys, connected apps, service accounts, consent)", () => {
     const paths = routePaths();
     const records = [
       "/teams/$team/servers/$serverId",
@@ -39,12 +50,15 @@ describe("navigation lists", () => {
       "/admin/gateways/$gatewayId",
       "/gateways/$gatewayId",
       "/settings/api-keys",
+      "/settings/connected-apps",
+      "/teams/$team/service-accounts/$serviceAccountId",
+      "/oauth/consent",
     ];
     for (const to of records) expect(paths, to).toContain(to);
   });
 
-  it("give every team role the overview, the MCP servers, the gateways and settings, and platform staff who aren't members the same", () => {
-    const all = ["Overview", "MCP servers", "Gateways", "Team settings"];
+  it("give every team role the overview, the MCP servers, the gateways, the service accounts and settings, and platform staff who aren't members the same", () => {
+    const all = ["Overview", "MCP servers", "Gateways", "Service accounts", "Team settings"];
     for (const role of ["owner", "admin", "editor", "member"] as const) {
       expect(teamNavFor(meFor("none", role), team.slug).map((n) => n.label)).toEqual(all);
     }
@@ -65,6 +79,7 @@ describe("navigation lists", () => {
   it("groups the admin pages and finds the current page's group", () => {
     expect(adminSections.map((s) => s.label)).toEqual(["People", "Catalog", "Access", "Records"]);
     expect(activeAdminGroup("/admin/gateways/abc")).toBe("Access");
+    expect(activeAdminGroup("/admin/trusted-clients")).toBe("Access");
     expect(activeAdminGroup("/admin/calls")).toBe("Records");
     expect(activeAdminGroup("/admin/users/abc")).toBe("People");
     expect(activeAdminGroup("/admin/servers/abc")).toBe("Catalog");
@@ -98,7 +113,8 @@ describe("workspace sidebar", () => {
     renderApp(`/teams/${team.slug}`);
     const nav = await screen.findByRole("navigation", { name: "Main" });
     await waitFor(() => expect(within(nav).getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page"));
-    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Home", "Catalog", "My gateways", "Overview", "MCP servers", "Gateways", "Team settings"]);
+    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Home", "Catalog", "My gateways", "Overview", "MCP servers", "Gateways", "Service accounts", "Team settings"]);
+    expect(within(nav).getByRole("link", { name: "Service accounts" })).toHaveAttribute("href", `/teams/${team.slug}/service-accounts`);
     expect(within(nav).getByRole("link", { name: "Gateways" })).toHaveAttribute("href", `/teams/${team.slug}/gateways`);
     expect(within(nav).getByRole("link", { name: "MCP servers" })).toHaveAttribute("href", `/teams/${team.slug}/servers`);
     expect(within(nav).getByRole("link", { name: "Team settings" })).toHaveAttribute("href", `/teams/${team.slug}/settings`);

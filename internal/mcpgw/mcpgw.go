@@ -11,12 +11,15 @@
 // resources/subscribe and server/discover, so clients of the 2026-07-28
 // protocol fall back to initialize.
 //
-// Every request is authenticated with a personal API key (Authorization:
-// Bearer omcp_...) and re-checks everything before it lists or calls: the key
-// and its person are active, the key may be used on this gateway, the
-// gateway is enabled (and a team gateway's team not archived) and the person
-// may use it, and each capability is still selected, served (Availability)
-// and allowed to their role. A refused call looks like an unknown tool,
+// Every request is authenticated (Authorization: Bearer ...) with a
+// personal API key (omcp_...), an OAuth access token of a connected client
+// (omat_..., internal/oauth; accepted only by its own gateway) or a service
+// account key (omcp_sa_..., internal/serviceaccounts), and re-checks
+// everything before it lists or calls: the credential and its person (or
+// service account, and its team) are active, the key may be used on this
+// gateway, the gateway is enabled (and a team gateway's team not archived)
+// and the caller may use it, and each capability is still selected, served
+// (Availability) and allowed to their role. A refused call looks like an unknown tool,
 // prompt or resource, is recorded as denied and never reaches the server. Calls are
 // forwarded through internal/upstream (address guard, the server's timeout,
 // 1 MiB bounds, the server's static header) with a signed identity
@@ -40,6 +43,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
@@ -49,7 +53,9 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
+	"github.com/ncecere/open-mcp-gateway/internal/oauth"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
+	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
 )
@@ -114,11 +120,15 @@ var slugRE = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$`)
 type Handler struct {
 	Gateways *gateways.Service
 	Keys     *apikeys.Service
-	Identity *identity.Service
-	Registry *registry.Service
-	Pool     *pgxpool.Pool
-	AppURL   string
-	Log      *slog.Logger
+	// OAuth checks connected clients' access tokens (nil: none accepted).
+	OAuth *oauth.Service
+	// ServiceAccounts checks service account keys (nil: none accepted).
+	ServiceAccounts *serviceaccounts.Service
+	Identity        *identity.Service
+	Registry        *registry.Service
+	Pool            *pgxpool.Pool
+	AppURL          string
+	Log             *slog.Logger
 }
 
 func (h *Handler) log() *slog.Logger {
@@ -261,35 +271,99 @@ func acceptsJSON(values []string) bool {
 	return false
 }
 
-// authenticate checks the API key. Anything else is 401 with a
-// WWW-Authenticate challenge pointing at the protected resource metadata
-// (served from Phase 4), so OAuth can be added without changing clients.
-func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, slug string) (apikeys.Principal, bool) {
+// principal is who a request authenticates as: a person with an API key
+// (calls.PrincipalAPIKey), a person through a connected OAuth client
+// (calls.PrincipalOAuth), or a service account with one of its keys
+// (calls.PrincipalServiceAccount).
+type principal struct {
+	kind string
+	// user is the person (API keys and OAuth clients).
+	user dbgen.User
+	// keyID and keyName are the API key or service account key used.
+	keyID   uuid.UUID
+	keyName string
+	// scope limits a key to these gateways (empty: every gateway its owner
+	// may use). An OAuth token is bound to its gateway when authenticated.
+	scope []uuid.UUID
+	// grant is the connected client's grant (OAuth).
+	grant *dbgen.OauthGrant
+	// account is the service account and its team.
+	account *serviceaccounts.Principal
+}
+
+func (p principal) inScope(gatewayID uuid.UUID) bool {
+	return len(p.scope) == 0 || slices.Contains(p.scope, gatewayID)
+}
+
+// authenticate checks the credential: an OAuth access token (only for its
+// own gateway), a service account key or an API key. Anything else is 401
+// with a WWW-Authenticate challenge pointing at the gateway's protected
+// resource metadata, where OAuth clients learn how to sign in.
+func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, slug string) (principal, bool) {
 	metadata := h.AppURL + "/.well-known/oauth-protected-resource/mcp"
 	if slugRE.MatchString(slug) {
 		metadata += "/" + slug
 	}
 	raw := r.Header.Get("Authorization")
 	scheme, token, found := strings.Cut(raw, " ")
-	if raw == "" || !found || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+	token = strings.TrimSpace(token)
+	if raw == "" || !found || !strings.EqualFold(scheme, "Bearer") || token == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadata+`"`)
-		refuse(w, http.StatusUnauthorized, "Send an API key as Authorization: Bearer omcp_...")
-		return apikeys.Principal{}, false
+		refuse(w, http.StatusUnauthorized, "Sign in with OAuth, or send a key as Authorization: Bearer omcp_...")
+		return principal{}, false
 	}
-	p, err := h.Keys.Authenticate(r.Context(), strings.TrimSpace(token))
-	if errors.Is(err, apikeys.ErrInvalid) {
+	invalid := func(msg string) (principal, bool) {
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", resource_metadata="`+metadata+`"`)
-		refuse(w, http.StatusUnauthorized, "The API key is invalid, expired or revoked")
-		return apikeys.Principal{}, false
-	} else if err != nil {
+		refuse(w, http.StatusUnauthorized, msg)
+		return principal{}, false
+	}
+	failed := func(err error) (principal, bool) {
 		h.log().ErrorContext(r.Context(), "mcp authentication failed", "err", err, "request_id", httpx.RequestID(r.Context()))
 		refuse(w, http.StatusInternalServerError, "Something went wrong")
-		return apikeys.Principal{}, false
+		return principal{}, false
 	}
-	if err := h.Keys.Touch(r.Context(), p.Key.ID); err != nil {
-		h.log().WarnContext(r.Context(), "could not record API key use", "err", err)
+	ctx := r.Context()
+	switch {
+	case oauth.IsAccessToken(token):
+		if h.OAuth == nil {
+			return invalid("The access token is invalid, expired or revoked. Sign in again.")
+		}
+		p, err := h.OAuth.Authenticate(ctx, token, slug)
+		if errors.Is(err, oauth.ErrInvalidToken) {
+			return invalid("The access token is invalid, expired, revoked or for another gateway. Sign in again.")
+		} else if err != nil {
+			return failed(err)
+		}
+		if err := h.OAuth.Touch(ctx, p.Grant.ID); err != nil {
+			h.log().WarnContext(ctx, "could not record a connected app's use", "err", err)
+		}
+		g := p.Grant
+		return principal{kind: calls.PrincipalOAuth, user: p.User, grant: &g}, true
+	case serviceaccounts.LooksLikeKey(token):
+		if h.ServiceAccounts == nil {
+			return invalid("The service account key is invalid, expired or revoked")
+		}
+		p, err := h.ServiceAccounts.Authenticate(ctx, token)
+		if errors.Is(err, serviceaccounts.ErrInvalid) {
+			return invalid("The service account key is invalid, expired or revoked, or the account is turned off")
+		} else if err != nil {
+			return failed(err)
+		}
+		if err := h.ServiceAccounts.Touch(ctx, p); err != nil {
+			h.log().WarnContext(ctx, "could not record a service account key's use", "err", err)
+		}
+		return principal{kind: calls.PrincipalServiceAccount, keyID: p.Key.ID, keyName: p.Key.Name, scope: p.Gateways, account: &p}, true
 	}
-	return p, true
+	p, err := h.Keys.Authenticate(ctx, token)
+	if errors.Is(err, apikeys.ErrInvalid) {
+		return invalid("The API key is invalid, expired or revoked")
+	} else if err != nil {
+		return failed(err)
+	}
+	if err := h.Keys.Touch(ctx, p.Key.ID); err != nil {
+		h.log().WarnContext(ctx, "could not record API key use", "err", err)
+	}
+	return principal{kind: calls.PrincipalAPIKey, user: p.User, keyID: p.Key.ID, keyName: p.Key.Name, scope: p.Gateways}, true
 }
 
 // request is one exchange.
@@ -299,7 +373,7 @@ type request struct {
 	r            *http.Request
 	start        time.Time
 	msg          message
-	principal    apikeys.Principal
+	principal    principal
 	requestBytes int64
 	gateway      dbgen.Gateway
 	caller       gateways.Caller
@@ -330,14 +404,19 @@ func (rc *request) resolveGateway(slug string) bool {
 	}
 	rc.gateway = g
 	denied := ""
-	if !rc.principal.InScope(g.ID) {
+	if !rc.principal.inScope(g.ID) {
 		denied = DeniedKeyScope
 	} else if denied, err = rc.h.Gateways.Unserved(ctx, g); err != nil {
 		rc.internal(err)
 		return false
 	}
 	if denied == "" {
-		c, err := rc.h.Gateways.CallerOf(ctx, g, rc.principal.User)
+		var c gateways.Caller
+		if sa := rc.principal.account; sa != nil {
+			c, err = rc.h.Gateways.ServiceAccountCaller(ctx, g, sa.Team.ID, sa.Account.Role)
+		} else {
+			c, err = rc.h.Gateways.CallerOf(ctx, g, rc.principal.user)
+		}
 		if err != nil {
 			rc.internal(err)
 			return false
@@ -417,7 +496,16 @@ func (rc *request) requestedName() string {
 // record stores the exchange's metadata (never its arguments or result).
 func (rc *request) record(c calls.Call, responseBytes int64) {
 	c.RequestID, c.Method, c.Gateway = httpx.RequestID(rc.r.Context()), rc.msg.Method, rc.gateway
-	c.UserID, c.APIKeyID = rc.principal.User.ID, rc.principal.Key.ID
+	p := rc.principal
+	c.PrincipalKind, c.APIKeyID, c.KeyName = p.kind, p.keyID, p.keyName
+	switch {
+	case p.account != nil:
+		c.ServiceAccountID, c.ServiceAccountName, c.ServiceAccountTeamID = p.account.Account.ID, p.account.Account.Name, p.account.Team.ID
+	case p.grant != nil:
+		c.UserID, c.OAuthGrantID, c.OAuthClientName = p.user.ID, p.grant.ID, p.grant.ClientName
+	default:
+		c.UserID = p.user.ID
+	}
 	c.ClientName = rc.clientName()
 	c.Latency, c.RequestBytes, c.ResponseBytes = time.Since(rc.start), rc.requestBytes, responseBytes
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(rc.r.Context()), 5*time.Second)

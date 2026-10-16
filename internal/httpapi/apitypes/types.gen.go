@@ -95,13 +95,19 @@ func (e AuditViaKind) Valid() bool {
 
 // Defines values for CallPrincipalKind.
 const (
-	CallPrincipalKindApiKey CallPrincipalKind = "api_key"
+	CallPrincipalKindApiKey         CallPrincipalKind = "api_key"
+	CallPrincipalKindOauth          CallPrincipalKind = "oauth"
+	CallPrincipalKindServiceAccount CallPrincipalKind = "service_account"
 )
 
 // Valid indicates whether the value is a known member of the CallPrincipalKind enum.
 func (e CallPrincipalKind) Valid() bool {
 	switch e {
 	case CallPrincipalKindApiKey:
+		return true
+	case CallPrincipalKindOauth:
+		return true
+	case CallPrincipalKindServiceAccount:
 		return true
 	default:
 		return false
@@ -546,6 +552,42 @@ func (e NetworkEntryKind) Valid() bool {
 	}
 }
 
+// Defines values for OAuthClientInfoKind.
+const (
+	Metadata   OAuthClientInfoKind = "metadata"
+	Registered OAuthClientInfoKind = "registered"
+)
+
+// Valid indicates whether the value is a known member of the OAuthClientInfoKind enum.
+func (e OAuthClientInfoKind) Valid() bool {
+	switch e {
+	case Metadata:
+		return true
+	case Registered:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthConsentDecisionDecision.
+const (
+	Allow OAuthConsentDecisionDecision = "allow"
+	Deny  OAuthConsentDecisionDecision = "deny"
+)
+
+// Valid indicates whether the value is a known member of the OAuthConsentDecisionDecision enum.
+func (e OAuthConsentDecisionDecision) Valid() bool {
+	switch e {
+	case Allow:
+		return true
+	case Deny:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlatformRole.
 const (
 	None            PlatformRole = "none"
@@ -624,6 +666,45 @@ func (e ServerHealthStatus) Valid() bool {
 	case Healthy:
 		return true
 	case Unknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServiceAccountKeyStatus.
+const (
+	ServiceAccountKeyStatusActive  ServiceAccountKeyStatus = "active"
+	ServiceAccountKeyStatusExpired ServiceAccountKeyStatus = "expired"
+	ServiceAccountKeyStatusRevoked ServiceAccountKeyStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the ServiceAccountKeyStatus enum.
+func (e ServiceAccountKeyStatus) Valid() bool {
+	switch e {
+	case ServiceAccountKeyStatusActive:
+		return true
+	case ServiceAccountKeyStatusExpired:
+		return true
+	case ServiceAccountKeyStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServiceAccountRole.
+const (
+	ServiceAccountRoleEditor ServiceAccountRole = "editor"
+	ServiceAccountRoleMember ServiceAccountRole = "member"
+)
+
+// Valid indicates whether the value is a known member of the ServiceAccountRole enum.
+func (e ServiceAccountRole) Valid() bool {
+	switch e {
+	case ServiceAccountRoleEditor:
+		return true
+	case ServiceAccountRoleMember:
 		return true
 	default:
 		return false
@@ -877,16 +958,28 @@ type AuthConfig struct {
 
 // CallPrincipal defines model for CallPrincipal.
 type CallPrincipal struct {
-	ApiKeyName  *string `json:"apiKeyName,omitempty"`
-	DisplayName string  `json:"displayName"`
-	Email       string  `json:"email"`
+	// ApiKeyName The key used (api_key and service_account)
+	ApiKeyName *string `json:"apiKeyName,omitempty"`
 
-	// Kind Phase 4 adds oauth and service_account
-	Kind   CallPrincipalKind  `json:"kind"`
-	UserId openapi_types.UUID `json:"userId"`
+	// DisplayName The person's name, or the service account's name
+	DisplayName string `json:"displayName"`
+
+	// Email The person (api_key and oauth)
+	Email *string `json:"email,omitempty"`
+
+	// Kind api_key: a personal key; oauth: a connected MCP client acting for a person; service_account: a team service account key
+	Kind CallPrincipalKind `json:"kind"`
+
+	// OauthClientName The connected client (oauth)
+	OauthClientName        *string             `json:"oauthClientName,omitempty"`
+	ServiceAccountId       *openapi_types.UUID `json:"serviceAccountId,omitempty"`
+	ServiceAccountTeamSlug *string             `json:"serviceAccountTeamSlug,omitempty"`
+
+	// UserId The person (api_key and oauth)
+	UserId *openapi_types.UUID `json:"userId,omitempty"`
 }
 
-// CallPrincipalKind Phase 4 adds oauth and service_account
+// CallPrincipalKind api_key: a personal key; oauth: a connected MCP client acting for a person; service_account: a team service account key
 type CallPrincipalKind string
 
 // CallRef defines model for CallRef.
@@ -1611,6 +1704,60 @@ type NetworkSettingsUpdate struct {
 	Entries []NetworkEntry `json:"entries"`
 }
 
+// OAuthClientInfo defines model for OAuthClientInfo.
+type OAuthClientInfo struct {
+	// Host The host that vouches for the client, or a registered client's own home page host (may be empty)
+	Host string `json:"host"`
+
+	// Id The client_id: an https URL (a Client ID Metadata Document) or a registered client's id
+	Id string `json:"id"`
+
+	// Kind metadata: its host vouches for it; registered: it registered itself, so its name is unverified
+	Kind    OAuthClientInfoKind `json:"kind"`
+	LogoUrl *string             `json:"logoUrl"`
+	Name    string              `json:"name"`
+
+	// Trusted On the trusted-client list (skips the consent screen)
+	Trusted bool    `json:"trusted"`
+	Uri     *string `json:"uri"`
+}
+
+// OAuthClientInfoKind metadata: its host vouches for it; registered: it registered itself, so its name is unverified
+type OAuthClientInfoKind string
+
+// OAuthConsent defines model for OAuthConsent.
+type OAuthConsent struct {
+	Client  OAuthClientInfo `json:"client"`
+	Gateway MyGateway       `json:"gateway"`
+
+	// RedirectHost Where the browser goes back to, such as 127.0.0.1:53211
+	RedirectHost string `json:"redirectHost"`
+	RedirectUri  string `json:"redirectUri"`
+
+	// Remembered The caller already allowed this client for this gateway
+	Remembered bool `json:"remembered"`
+}
+
+// OAuthConsentDecision defines model for OAuthConsentDecision.
+type OAuthConsentDecision struct {
+	Decision OAuthConsentDecisionDecision `json:"decision"`
+
+	// Query The authorization request's query string, as the consent page received it
+	Query string `json:"query"`
+}
+
+// OAuthConsentDecisionDecision defines model for OAuthConsentDecision.Decision.
+type OAuthConsentDecisionDecision string
+
+// OAuthGrant defines model for OAuthGrant.
+type OAuthGrant struct {
+	Client     OAuthClientInfo    `json:"client"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	Gateway    CallRef            `json:"gateway"`
+	Id         openapi_types.UUID `json:"id"`
+	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
+}
+
 // Ok defines model for Ok.
 type Ok struct {
 	Ok bool `json:"ok"`
@@ -1665,6 +1812,88 @@ type ServerHealth struct {
 
 // ServerHealthStatus defines model for ServerHealth.Status.
 type ServerHealthStatus string
+
+// ServiceAccount defines model for ServiceAccount.
+type ServiceAccount struct {
+	ActiveKeyCount int64              `json:"activeKeyCount"`
+	CreatedAt      time.Time          `json:"createdAt"`
+	CreatedByName  *string            `json:"createdByName,omitempty"`
+	Description    string             `json:"description"`
+	Enabled        bool               `json:"enabled"`
+	Id             openapi_types.UUID `json:"id"`
+	LastUsedAt     *time.Time         `json:"lastUsedAt,omitempty"`
+
+	// Name Example: ci-release-bot
+	Name string `json:"name"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision Revision `json:"revision"`
+
+	// Role The team role used for capabilities' minimum roles (decision 22)
+	Role      ServiceAccountRole `json:"role"`
+	TeamId    openapi_types.UUID `json:"teamId"`
+	TeamSlug  string             `json:"teamSlug"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// ServiceAccountCreate defines model for ServiceAccountCreate.
+type ServiceAccountCreate struct {
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// Name Lower-case letters, digits and dashes; unique within the team
+	Name string              `json:"name"`
+	Role *ServiceAccountRole `json:"role,omitempty"`
+}
+
+// ServiceAccountKey defines model for ServiceAccountKey.
+type ServiceAccountKey struct {
+	CreatedAt     time.Time `json:"createdAt"`
+	CreatedByName *string   `json:"createdByName,omitempty"`
+	ExpiresAt     time.Time `json:"expiresAt"`
+
+	// Gateways The gateways the key is limited to (empty = every gateway the account can use)
+	Gateways   []ApiKeyGateway    `json:"gateways"`
+	Id         openapi_types.UUID `json:"id"`
+	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
+	Name       string             `json:"name"`
+
+	// Prefix The first characters of the key (omcp_sa_xxxxxxxx)
+	Prefix    string                  `json:"prefix"`
+	RevokedAt *time.Time              `json:"revokedAt,omitempty"`
+	Status    ServiceAccountKeyStatus `json:"status"`
+}
+
+// ServiceAccountKeyStatus defines model for ServiceAccountKey.Status.
+type ServiceAccountKeyStatus string
+
+// ServiceAccountKeyCreate defines model for ServiceAccountKeyCreate.
+type ServiceAccountKeyCreate struct {
+	ExpiresInDays *int32                `json:"expiresInDays,omitempty"`
+	GatewayIds    *[]openapi_types.UUID `json:"gatewayIds,omitempty"`
+	Name          string                `json:"name"`
+}
+
+// ServiceAccountKeyCreated defines model for ServiceAccountKeyCreated.
+type ServiceAccountKeyCreated struct {
+	Key ServiceAccountKey `json:"key"`
+
+	// Secret The full key, shown only now
+	Secret string `json:"secret"`
+}
+
+// ServiceAccountRole The team role used for capabilities' minimum roles (decision 22)
+type ServiceAccountRole string
+
+// ServiceAccountUpdate defines model for ServiceAccountUpdate.
+type ServiceAccountUpdate struct {
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Name        *string `json:"name,omitempty"`
+
+	// Role The team role used for capabilities' minimum roles (decision 22)
+	Role *ServiceAccountRole `json:"role,omitempty"`
+}
 
 // Team defines model for Team.
 type Team struct {
@@ -1755,6 +1984,29 @@ type TeamView struct {
 	Team Team      `json:"team"`
 }
 
+// TrustedClient defines model for TrustedClient.
+type TrustedClient struct {
+	// ClientId Example: https://claude.ai/oauth/claude-code-client-metadata
+	ClientId string `json:"clientId"`
+
+	// Label Example: Claude Code
+	Label *string `json:"label,omitempty"`
+}
+
+// TrustedClients defines model for TrustedClients.
+type TrustedClients struct {
+	Clients []TrustedClient `json:"clients"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision  Revision  `json:"revision"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// TrustedClientsUpdate defines model for TrustedClientsUpdate.
+type TrustedClientsUpdate struct {
+	Clients []TrustedClient `json:"clients"`
+}
+
 // User defines model for User.
 type User struct {
 	CreatedAt    time.Time          `json:"createdAt"`
@@ -1823,6 +2075,9 @@ type CallOutcomeParam = McpCallOutcome
 // CallServerParam defines model for CallServerParam.
 type CallServerParam = openapi_types.UUID
 
+// CallServiceAccountParam defines model for CallServiceAccountParam.
+type CallServiceAccountParam = openapi_types.UUID
+
 // CallUserParam defines model for CallUserParam.
 type CallUserParam = openapi_types.UUID
 
@@ -1853,11 +2108,17 @@ type IfMatchHeader = string
 // LimitParam defines model for LimitParam.
 type LimitParam = int
 
+// OAuthGrantIdParam defines model for OAuthGrantIdParam.
+type OAuthGrantIdParam = openapi_types.UUID
+
 // SearchParam defines model for SearchParam.
 type SearchParam = string
 
 // ServerIdParam defines model for ServerIdParam.
 type ServerIdParam = openapi_types.UUID
+
+// ServiceAccountIdParam defines model for ServiceAccountIdParam.
+type ServiceAccountIdParam = openapi_types.UUID
 
 // TeamParam defines model for TeamParam.
 type TeamParam = string
@@ -1939,6 +2200,9 @@ type AdminListCallsParams struct {
 
 	// User Only calls made by this person (any credential)
 	User *CallUserParam `form:"user,omitempty" json:"user,omitempty"`
+
+	// ServiceAccount Only calls made by this service account
+	ServiceAccount *CallServiceAccountParam `form:"serviceAccount,omitempty" json:"serviceAccount,omitempty"`
 
 	// Team Team slug or ID (calls through its gateways or to its servers)
 	Team *string `form:"team,omitempty" json:"team,omitempty"`
@@ -2022,6 +2286,12 @@ type AdminUpdateNetworkSettingsParams struct {
 	IfMatch IfMatchHeader `json:"If-Match"`
 }
 
+// AdminUpdateTrustedClientsParams defines parameters for AdminUpdateTrustedClients.
+type AdminUpdateTrustedClientsParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // AdminUpdatePublishingSettingsParams defines parameters for AdminUpdatePublishingSettings.
 type AdminUpdatePublishingSettingsParams struct {
 	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
@@ -2085,6 +2355,18 @@ type GetMeParams struct {
 	Optional *bool `form:"optional,omitempty" json:"optional,omitempty"`
 }
 
+// GetOAuthConsentParams defines parameters for GetOAuthConsent.
+type GetOAuthConsentParams struct {
+	ClientId            string  `form:"client_id" json:"client_id"`
+	RedirectUri         string  `form:"redirect_uri" json:"redirect_uri"`
+	ResponseType        string  `form:"response_type" json:"response_type"`
+	CodeChallenge       string  `form:"code_challenge" json:"code_challenge"`
+	CodeChallengeMethod string  `form:"code_challenge_method" json:"code_challenge_method"`
+	Resource            string  `form:"resource" json:"resource"`
+	State               *string `form:"state,omitempty" json:"state,omitempty"`
+	Scope               *string `form:"scope,omitempty" json:"scope,omitempty"`
+}
+
 // ListTeamAuditParams defines parameters for ListTeamAudit.
 type ListTeamAuditParams struct {
 	// Cursor nextCursor from the previous page
@@ -2125,6 +2407,9 @@ type ListTeamCallsParams struct {
 
 	// User Only calls made by this person (any credential)
 	User *CallUserParam `form:"user,omitempty" json:"user,omitempty"`
+
+	// ServiceAccount Only calls made by this service account
+	ServiceAccount *CallServiceAccountParam `form:"serviceAccount,omitempty" json:"serviceAccount,omitempty"`
 
 	// From Entries at or after this time
 	From *AuditFromParam `form:"from,omitempty" json:"from,omitempty"`
@@ -2200,6 +2485,12 @@ type UpdateMemberParams struct {
 	IfMatch IfMatchHeader `json:"If-Match"`
 }
 
+// UpdateServiceAccountParams defines parameters for UpdateServiceAccount.
+type UpdateServiceAccountParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // DevLoginJSONRequestBody defines body for DevLogin for application/json ContentType.
 type DevLoginJSONRequestBody = DevLoginRequest
 
@@ -2224,6 +2515,9 @@ type AdminUpdateNetworkSettingsJSONRequestBody = NetworkSettingsUpdate
 // AdminCheckNetworkUrlJSONRequestBody defines body for AdminCheckNetworkUrl for application/json ContentType.
 type AdminCheckNetworkUrlJSONRequestBody = NetworkCheckRequest
 
+// AdminUpdateTrustedClientsJSONRequestBody defines body for AdminUpdateTrustedClients for application/json ContentType.
+type AdminUpdateTrustedClientsJSONRequestBody = TrustedClientsUpdate
+
 // AdminUpdatePublishingSettingsJSONRequestBody defines body for AdminUpdatePublishingSettings for application/json ContentType.
 type AdminUpdatePublishingSettingsJSONRequestBody = PublishingSettingsUpdate
 
@@ -2244,6 +2538,9 @@ type AdminUpdateUserJSONRequestBody = UserUpdate
 
 // CreateMyApiKeyJSONRequestBody defines body for CreateMyApiKey for application/json ContentType.
 type CreateMyApiKeyJSONRequestBody = ApiKeyCreate
+
+// DecideOAuthConsentJSONRequestBody defines body for DecideOAuthConsent for application/json ContentType.
+type DecideOAuthConsentJSONRequestBody = OAuthConsentDecision
 
 // CreateTeamGatewayJSONRequestBody defines body for CreateTeamGateway for application/json ContentType.
 type CreateTeamGatewayJSONRequestBody = GatewayCreate
@@ -2268,3 +2565,12 @@ type AddMemberJSONRequestBody = MemberAdd
 
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = MemberUpdate
+
+// CreateServiceAccountJSONRequestBody defines body for CreateServiceAccount for application/json ContentType.
+type CreateServiceAccountJSONRequestBody = ServiceAccountCreate
+
+// UpdateServiceAccountJSONRequestBody defines body for UpdateServiceAccount for application/json ContentType.
+type UpdateServiceAccountJSONRequestBody = ServiceAccountUpdate
+
+// CreateServiceAccountKeyJSONRequestBody defines body for CreateServiceAccountKey for application/json ContentType.
+type CreateServiceAccountKeyJSONRequestBody = ServiceAccountKeyCreate

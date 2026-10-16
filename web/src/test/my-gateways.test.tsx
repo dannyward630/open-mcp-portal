@@ -49,7 +49,7 @@ describe("My gateways", () => {
     expect(await screen.findByText("No gateways for you yet.")).toBeInTheDocument();
   });
 
-  it("shows what a gateway offers the person and how to connect, without a key", async () => {
+  it("shows what a gateway offers the person and how to connect with OAuth sign-in, without a key", async () => {
     mockApi(routes());
     const { container } = renderApp(`/gateways/${gatewayId}`);
     expect(await screen.findByRole("heading", { level: 1, name: "Support tools" })).toBeInTheDocument();
@@ -59,8 +59,9 @@ describe("My gateways", () => {
     expect(screen.getByRole("button", { name: /Copy endpoint URL/ })).toBeInTheDocument();
     const claude = screen.getByText(/claude mcp add/);
     expect(claude.textContent).toContain("https://mcp.example.com/mcp/support-tools");
-    expect(claude.textContent).toContain("<YOUR_API_KEY>");
-    expect(screen.getByText(/signing in from the client comes in a later release/)).toBeInTheDocument();
+    expect(claude.textContent).not.toContain("--header");
+    expect(screen.getByText(/On first use the client opens your browser/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Account › Connected apps" })).toHaveAttribute("href", "/settings/connected-apps");
     expect(screen.getByRole("link", { name: "Open in your team" })).toHaveAttribute("href", `/teams/${team.slug}/gateways/${gatewayId}`);
     await waitFor(() => expect(document.title).toBe("Support tools · My gateways · Open MCP Gateway"));
     expect(await axe(container)).toHaveNoViolations();

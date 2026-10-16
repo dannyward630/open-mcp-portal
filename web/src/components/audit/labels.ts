@@ -51,11 +51,32 @@ const actionLabels: Record<string, string> = {
   "gateway.grant_remove": "Removed gateway access",
   "api_key.create": "Created API key",
   "api_key.revoke": "Revoked API key",
+  "oauth.client_register": "Registered OAuth client",
+  "oauth.consent": "Allowed connected app",
+  "oauth.token_issue": "Issued tokens to an app",
+  "oauth.revoke": "Disconnected app",
+  "settings.oauth_clients_update": "Changed trusted clients",
+  "service_account.create": "Created service account",
+  "service_account.update": "Changed service account",
+  "service_account.delete": "Deleted service account",
+  "service_account_key.create": "Created service account key",
+  "service_account_key.revoke": "Revoked service account key",
+};
+
+/** Why a connected app's sign-in ended (oauth.revoke, metadata.reason). */
+export const oauthRevokeReasons: Record<string, string> = {
+  user: "by its person",
+  admin: "by a platform admin",
+  client: "by the app",
+  refresh_reuse: "after a refresh token was reused",
 };
 
 /** "Added member" for team.member_add; unknown actions are spelled out ("foo.bar_baz" → "Foo: bar baz"). */
-export function actionLabel(action: string, _entry?: Partial<Pick<AuditEntry, "after" | "metadata">>) {
+export function actionLabel(action: string, entry?: Partial<Pick<AuditEntry, "after" | "metadata">>) {
   const known = actionLabels[action];
+  // A disconnection says why, when the reason is one we know ("Disconnected app after the person was suspended").
+  const reason = action === "oauth.revoke" ? entry?.metadata?.reason : undefined;
+  if (known && typeof reason === "string" && oauthRevokeReasons[reason]) return `${known} ${oauthRevokeReasons[reason]}`;
   if (known) return known;
   const [group = "", rest = ""] = action.split(".");
   const words = rest.replace(/_/g, " ");
@@ -70,7 +91,10 @@ export const actionGroups: { prefix: string; label: string; platform?: boolean }
   { prefix: "mcp_server.", label: "MCP servers" },
   { prefix: "mcp_capability.", label: "Capability approvals" },
   { prefix: "gateway.", label: "Gateways" },
+  { prefix: "service_account.", label: "Service accounts" },
+  { prefix: "service_account_key.", label: "Service account keys" },
   { prefix: "api_key.", label: "API keys", platform: true },
+  { prefix: "oauth.", label: "Connected apps", platform: true },
   { prefix: "settings.", label: "Platform settings", platform: true },
   { prefix: "platform.", label: "Platform and users", platform: true },
   { prefix: "auth.", label: "Sign-in", platform: true },
@@ -143,6 +167,10 @@ export const targetTypeLabels: Record<string, string> = {
   gateway_grant: "Gateway grant",
   api_key: "API key",
   platform_settings: "Platform settings",
+  service_account: "Service account",
+  service_account_key: "Service account key",
+  oauth_client: "OAuth client",
+  oauth_grant: "Connected app",
 };
 
 /** An entry's action and target in one line for a short list ("Added member: Una User"). */

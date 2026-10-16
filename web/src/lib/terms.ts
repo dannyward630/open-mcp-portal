@@ -24,6 +24,9 @@ export const terms = {
   gateways: "Gateways",
   myGateways: "My gateways",
   apiKeys: "API keys",
+  connectedApps: "Connected apps",
+  trustedClients: "Trusted clients",
+  serviceAccounts: "Service accounts",
   calls: "Calls",
 } as const;
 

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
+	"github.com/ncecere/open-mcp-gateway/internal/calls"
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
@@ -114,7 +115,7 @@ func toAPICall(r dbgen.ListMCPCallsRow) apitypes.McpCall {
 	out := apitypes.McpCall{
 		Id: r.ID, OccurredAt: r.OccurredAt, Method: r.Method, ExposedName: r.ExposedName,
 		Gateway:    apitypes.CallRef{Id: r.GatewayID, Slug: r.GatewaySlug, Name: r.GatewayName, Exists: r.GatewayExists},
-		Principal:  apitypes.CallPrincipal{Kind: apitypes.CallPrincipalKind(r.PrincipalKind), UserId: r.UserID, DisplayName: r.UserDisplayName, Email: r.UserEmail, ApiKeyName: r.ApiKeyName},
+		Principal:  toAPICallPrincipal(r),
 		ClientName: r.ClientName, Outcome: apitypes.McpCallOutcome(r.Outcome), ErrorClass: r.ErrorClass, LatencyMs: r.LatencyMs,
 		RequestBytes: r.RequestBytes, ResponseBytes: r.ResponseBytes, RequestId: r.RequestID,
 	}
@@ -122,4 +123,19 @@ func toAPICall(r dbgen.ListMCPCallsRow) apitypes.McpCall {
 		out.Server = &apitypes.CallRef{Id: r.ServerID.UUID, Slug: r.ServerSlug, Name: r.ServerName, Exists: r.ServerExists}
 	}
 	return out
+}
+
+// toAPICallPrincipal: a person (api_key with the key's name, oauth with the
+// client's name), or a service account (its name, team and key).
+func toAPICallPrincipal(r dbgen.ListMCPCallsRow) apitypes.CallPrincipal {
+	p := apitypes.CallPrincipal{Kind: apitypes.CallPrincipalKind(r.PrincipalKind), DisplayName: r.UserDisplayName}
+	switch r.PrincipalKind {
+	case calls.PrincipalServiceAccount:
+		p.ServiceAccountId, p.ServiceAccountTeamSlug, p.ApiKeyName = nullUUID(r.ServiceAccountID), nonEmpty(r.ServiceAccountTeamSlug), nonEmpty(r.ApiKeyName)
+	case calls.PrincipalOAuth:
+		p.UserId, p.Email, p.OauthClientName = nullUUID(r.UserID), nonEmpty(r.UserEmail), r.OauthClientName
+	default:
+		p.UserId, p.Email, p.ApiKeyName = nullUUID(r.UserID), nonEmpty(r.UserEmail), nonEmpty(r.ApiKeyName)
+	}
+	return p
 }

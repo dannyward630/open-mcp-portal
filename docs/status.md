@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-10-16 (internal networks, decision 20).
+Last updated: 2026-10-16 (Phase 4 backend: OAuth sign-in for MCP clients, service accounts).
 
 ## Where things stand
 
@@ -44,7 +44,7 @@ Last updated: 2026-10-16 (internal networks, decision 20).
     team/user/group, `/v1/me/gateways` reasons, an SDK-client end-to-end run (JWT verified against the JWKS, aud =
     server URL, never the API key), nine refusals between list and call that never reach the server, key rotation, and
     a sentinel check that arguments/results are absent from `mcp_calls`, audit and logs.
-  - Gaps: resource subscriptions; OAuth protected-resource metadata (Phase 4); no rate limit on `/mcp`; no SSE relay (calls are
+  - Gaps: resource subscriptions; no rate limit on `/mcp`; no SSE relay (calls are
     buffered within 1 MiB); `server/discover` (2026-07-28 stateless protocol) answered "method not found".
   - Follow-ups done (not yet browser-checked): archived teams stop serving (their team gateways answer 404, their
     servers leave the catalog, gateway-options and health loop, other gateways show `team_archived`; unarchive
@@ -79,6 +79,29 @@ Last updated: 2026-10-16 (internal networks, decision 20).
   - UI: the add-server and settings URL fields let plain http through to the server (it decides from the allowlist);
     a `private_address` refusal links platform admins to Internal networks and tells others to ask one.
 
+- **Phase 4 (client sign-in and service accounts): backend done; UI in progress (parallel).** OAuth 2.1 authorization
+  server for `/mcp/{slug}` (always on; CIMD and DCR clients, PKCE S256, resource = one gateway, consent per person +
+  client + gateway, trusted clients, rotating refresh tokens) and team service accounts with `omcp_sa_` keys. See
+  [phase4-client-auth.md](phase4-client-auth.md) "As built", [connect-clients.md](connect-clients.md) and
+  [upstream-identity.md](upstream-identity.md) (`principal_type`).
+  - Migration `00008_client_auth` adds `oauth_settings` (trusted clients, seeded with Claude, Claude Code, VS Code),
+    `oauth_clients`, `oauth_grants`, `oauth_codes`, `oauth_tokens`, `service_accounts`, `service_account_keys`,
+    `service_account_key_gateways`; `mcp_calls` gains principal kinds `oauth`/`service_account` (nullable `user_id`)
+    and snapshot columns.
+  - New packages: `internal/oauth`, `internal/serviceaccounts`, `internal/ratelimit`. `upstream.Client.GuardedDial`
+    lets metadata documents use the MCP servers' address guard and allowlist. `auth.SessionUser`/`LoginURL`; the
+    post-login `next` limit grew to 8300 characters (an authorization request).
+  - Protocol endpoints `/oauth/*` and `/.well-known/oauth-*` are outside the OpenAPI contract (the contract test skips
+    `/oauth/`). Every `/v1` route already in `api/openapi.yaml` is served with **no contract changes**; the authz
+    matrix covers all 16 new operations.
+  - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), and a curl smoke
+    test (fake MCP server, CIMD on a loopback http server under the development allowance, hand-made PKCE pair,
+    consent, token, `tools/call whoami` showing `principal_type: user` and `client`, refresh rotation, then a service
+    account key showing `principal_type: service_account`). Not browser-checked.
+  - Gaps: no rate limit on `/mcp` itself; rate counters per process; no previous-pepper support (rotating
+    `API_KEY_PEPPER` signs clients out and invalidates keys); no CORS on OAuth endpoints; no private-use redirect
+    schemes; DCR clean-up runs on registration; the previous release can't list call records of service accounts.
+
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
   example overlay in `deploy/kubernetes` (one Deployment with a migrate init container, Service, PDB, NetworkPolicies,
@@ -92,7 +115,8 @@ Last updated: 2026-10-16 (internal networks, decision 20).
 - Rate limits are in-memory per process for now (shared PostgreSQL counters planned in Phase 6).
 - Listen address env var is `LISTEN_ADDR` (default `:8088`); config file env var is `OMG_CONFIG_FILE`.
 - Malformed emails return `400 invalid_json` (generated Email type), same as Grounded.
-- Dropped for now: notifications/email, OAuth server (Phase 4), metrics/tracing, retention job. SSO groups are back
+- OAuth for MCP clients is always on (Grounded has a setting) and binds each connection to one gateway.
+- Dropped for now: notifications/email, metrics/tracing, retention job. SSO groups are back
   (`users.groups`, for grants); API keys are our own implementation (`internal/apikeys`), personal only.
 
 ## Resume checklist
@@ -109,8 +133,10 @@ make test && make web-test
 
 ## Next steps
 
-1. Phase 4: OAuth for MCP clients (protected-resource metadata at the URL `/mcp` already advertises), service accounts.
-2. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, metrics; see [deploy.md](deploy.md)
+1. Phase 4 UI (consent page, connected apps, trusted clients, service accounts) and browser QA of the OAuth flow with
+   real clients (Claude Code, VS Code, Cursor) against a reachable deployment.
+2. Phase 5: auth providers, per-user token vault.
+3. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, metrics; see [deploy.md](deploy.md)
    "Not covered yet".
 
 ## Phase 1 UI

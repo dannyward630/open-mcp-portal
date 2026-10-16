@@ -21,9 +21,11 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
 	"github.com/ncecere/open-mcp-gateway/internal/mcpgw"
+	"github.com/ncecere/open-mcp-gateway/internal/oauth"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/secrets"
+	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/teams"
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
@@ -123,21 +125,28 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	reg := registry.New(pool, box, client, log)
 	gws := gateways.New(pool, cfg.AppURL, log)
 	keys := apikeys.New(pool, pepper, gws)
+	sas := serviceaccounts.New(pool, pepper, gws)
+	// Client metadata documents are fetched behind the same address guard
+	// as MCP servers.
+	as := oauth.New(pool, gws, oauth.Config{Issuer: cfg.AppURL, Pepper: pepper, Upstream: client})
+	as.Log = log
 	ids := identity.New(pool, box, cfg.AppURL, log)
 	ids.Prepublish = cfg.SigningKeyPrepublish
 	return httpapi.Deps{
-		Config:   cfg,
-		Pool:     pool,
-		Log:      log,
-		Auth:     auth.NewService(cfg, pool, log),
-		Teams:    teams.NewService(pool),
-		Platform: platform.NewService(pool),
-		Registry: reg,
-		Gateways: gws,
-		APIKeys:  keys,
-		Identity: ids,
-		Calls:    calls.New(pool),
-		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, Identity: ids, Registry: reg, Pool: pool,
+		Config:          cfg,
+		Pool:            pool,
+		Log:             log,
+		Auth:            auth.NewService(cfg, pool, log),
+		Teams:           teams.NewService(pool),
+		Platform:        platform.NewService(pool),
+		Registry:        reg,
+		Gateways:        gws,
+		APIKeys:         keys,
+		Identity:        ids,
+		Calls:           calls.New(pool),
+		OAuth:           as,
+		ServiceAccounts: sas,
+		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, OAuth: as, ServiceAccounts: sas, Identity: ids, Registry: reg, Pool: pool,
 			AppURL: cfg.AppURL, Log: log},
 	}, nil
 }

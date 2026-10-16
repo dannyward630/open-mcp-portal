@@ -1,6 +1,6 @@
 # Phase 4 — Client sign-in (OAuth) and service accounts (design draft)
 
-Status: **approved, in progress**. Builds on decisions 12, 15–17; open questions answered as decisions 21–24.
+Status: **backend built** (see "As built" at the end); UI in progress. Builds on decisions 12, 15–17; open questions answered as decisions 21–24.
 Grounded's OAuth server (`internal/oauth`, `docs/mcp.md` "Signing in with OAuth") is the reference, not a dependency.
 
 ## Goal
@@ -79,3 +79,99 @@ resource indicators, PKCE S256, RFC 9207 `iss`), like Grounded.
 ## Resolved questions
 
 All four recommendations accepted (decisions 21–24).
+
+## As built (backend)
+
+Code: `internal/oauth` (authorization server: `authorize.go`, `clients.go`, `metadata.go`, `token.go`, `grants.go`,
+`trusted.go`), `internal/serviceaccounts`, `internal/ratelimit`, `internal/httpapi/oauth.go` (protocol endpoints),
+`oauth_consent.go` and `service_accounts.go` (`/v1`), and changes to `internal/mcpgw` (three principal kinds),
+`internal/gateways` (`ServiceAccountCaller`, `UsableByServiceAccount`), `internal/identity` (`principal_type`),
+`internal/calls`, `internal/auth` (`SessionUser`, `LoginURL`). Migration `00008_client_auth.sql`. People's guide:
+[connect-clients.md](connect-clients.md); server authors: [upstream-identity.md](upstream-identity.md).
+
+**OAuth.** Always on (no setting). Grounded's rules, adapted:
+
+- **Endpoints** (outside the OpenAPI contract; the contract test skips `/oauth/` and `/.well-known/`):
+  `GET /.well-known/oauth-protected-resource/mcp/{slug}` (`resource`, `authorization_servers` = `[APP_URL]`,
+  `bearer_methods_supported`, `resource_name` = instance name; served for **any** well-formed slug without looking the
+  gateway up, so it doesn't reveal which gateways exist; a malformed slug is `404`), `GET /.well-known/oauth-authorization-server`
+  (code + `S256` only, `none` auth, `client_id_metadata_document_supported`, `authorization_response_iss_parameter_supported`,
+  registration and revocation endpoints; no `scopes_supported`: there are no scopes, a `scope` parameter is ignored and
+  the token response has none), `GET /oauth/authorize`, `POST /oauth/token`, `POST /oauth/register`, `POST /oauth/revoke`
+  (`GET` on the three POST endpoints is `405`, never the web app). The `/mcp` 401 challenge is unchanged.
+- **Authorize order.** Query > 8000 characters, a repeated parameter, an unknown/unfetchable client, a missing or
+  unregistered `redirect_uri` or a `state` over 1000 characters: an HTML **page** (400, never a redirect). Then errors go
+  back to the client with `state` and `iss`: `unsupported_response_type`, `invalid_request` (no PKCE, `plain`, malformed
+  challenge), `invalid_target` (resource missing or not exactly `<APP_URL>/mcp/{slug}`). Then the **browser session**:
+  none → `302` to sign in and back (`/auth/login?next=…` with OIDC; the web app's sign-in page `/?next=…` with only the
+  development login); a suspended person gets a page. Signed in, the resource must be a gateway they may use **now**
+  (exists, enabled, team not archived, access); otherwise `invalid_target` (unknown, off and no-access look the same,
+  checked only after sign-in). Then a **remembered** consent (active grant for person + client + gateway) or a
+  **trusted** client issues the code at once; anyone else is sent to `/oauth/consent?<the same query>`.
+- **Consent API.** `GET /v1/oauth/consent` re-checks the request: problems are `400` with code `oauth_<error>` (for
+  example `oauth_invalid_request`, `oauth_invalid_client`), a resource that isn't a gateway the caller can use is
+  `404 gateway_not_found`. `client.trusted` is true only for metadata clients on the list. `POST` (CSRF token) with
+  `allow` creates the grant (audited `oauth.consent`, metadata `how: allowed`) and a code; `deny` returns
+  `access_denied`. The query is re-validated on POST, so the page can't widen anything.
+- **Clients.** Metadata documents are fetched with `internal/upstream`'s address guard (`Client.GuardedDial`): public
+  addresses; internal ones only inside the allowlist of internal networks (decision 20); loopback, link-local and
+  metadata never — except with the development allowance, which also accepts a document at a plain-`http` loopback URL
+  (production: https only). No proxy, no redirects, 5 s, ≤ 16 KiB, `application/json` (or `+json`), `client_id` must
+  equal the URL, cached for `max-age` clamped to 1 min–1 h (10 min default). DCR: public clients only, IDs `omcl_…`,
+  10/min/address, unused registrations deleted after 30 days (on the next registration; an expired one is refused at
+  once); audited `oauth.client_register` by the system with the client IP.
+- **Trusted clients.** `oauth_settings` (one row, own revision), seeded with Claude, Claude Code and VS Code. Entries
+  must be https metadata-document URLs with a path (`422 invalid_client_id`, `details.index`, `details.reason`
+  `not_metadata_url`/`duplicate`/`too_many`; a label over 100 characters is `400 invalid_label`). Read from the database
+  on every authorization (no cache). A trusted client's first connection is still audited `oauth.consent` (`how: trusted`).
+- **Tokens.** Code `omac_` 60 s single use (deleted before any check); access `omat_` 1 h; refresh `omrt_` 30 days,
+  rotated; reuse within 30 s gets another pair, later reuse revokes the grant (`refresh_reuse`). Stored as hex
+  HMAC-SHA256 of `"oauth:" + token` under `API_KEY_PEPPER` (no previous-pepper support: rotating the pepper signs every
+  client out). An access token is accepted only by `/mcp/{slug}` of its gateway (another gateway: `401 invalid_token`
+  with that gateway's challenge) and never by `/v1`. Every request re-checks token expiry, grant, person active (`401`),
+  and access to the gateway (`404`, recorded `denied`), like API keys. Grants are deleted with their gateway.
+- **Revocation.** RFC 7009: a refresh token revokes the connection, an access token only itself; another client's
+  token or junk is a no-op `200`. Connected apps: `DELETE /v1/me/oauth-grants/{id}` (reason `user`), platform admins
+  `DELETE /v1/admin/users/{id}/oauth-grants/{id}` (reason `admin`; auditors `403`). Unknown user on the admin list: `404`.
+- **Rate limits** per address and process (in memory, like sign-in): 60/min on authorize, token and revoke, 10/min on
+  register; `429 slow_down` with `Retry-After`.
+- **Audit:** `oauth.client_register` (target `oauth_client`), `oauth.consent`, `oauth.token_issue` (`grantType`),
+  `oauth.revoke` (`reason`; `token: access` for a single access token) on target `oauth_grant` (label
+  "client · gateway"; team set for team gateways on consent and revoke), `settings.oauth_clients_update` (target
+  `platform_settings`/`oauth_clients`). Actions by a client carry `via: oauth` and `client`. Never a token.
+
+**Service accounts.** Names `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$` unique per team (`409 name_taken`), at most 100 per
+team (`409 too_many_service_accounts`), role `member`|`editor` (`400 invalid_role`). Owners/admins write (platform roles
+`403` through team routes, like gateways); members and platform staff list/get; owners/admins and platform staff list
+keys. Archived teams are read-only (`409 team_archived`). Keys `omcp_sa_` + 43 characters (prefix stored `omcp_sa_` + 8),
+HMAC with the pepper, 1–365 days (default 90), at most 2 active (`409 too_many_keys`), not for a turned-off account
+(`409 disabled`), optional `gatewayIds` (≤ 50 after de-duplication, each one the **account** can use now, else
+`422 gateway_not_usable`). Revoking a revoked key is a no-op. Deleting an account deletes its keys; call records keep
+its name (`mcp_calls.service_account_name`, `key_name`).
+
+- **Runtime.** A turned-off or deleted account, an archived team, or a revoked/expired key is `401` at the next request.
+  Access: the team's own gateways (role used for `minRole`) and platform gateways with a **team grant** to its team
+  (user and group grants never cover it). Key scopes behave like personal ones (`key_scope`).
+- **Identity JWT:** every token now has `principal_type` (`user` | `service_account`); a service account's has `sub` =
+  its ID, `name`, `teams` = [its team], no `email`; OAuth calls' `client` is the client's name.
+- **Call records:** `principal_kind` `api_key` | `oauth` | `service_account`; `user_id` is NULL for service accounts
+  (a CHECK ties the columns to the kind). `CallPrincipal`: `userId`/`email` for people, `apiKeyName` for keys,
+  `oauthClientName` for OAuth, `serviceAccountId`/`serviceAccountTeamSlug` for accounts. `?serviceAccount=` filters
+  team and admin call lists. Team call lists still mean "through the team's gateways or to its servers".
+- **Audit:** `service_account.create/update/delete` (target `service_account`) and `service_account_key.create/revoke`
+  (target `service_account_key`, label "account · key"), all with the team; never a secret.
+
+**Contract:** no changes to `api/openapi.yaml` were needed.
+
+**Tests:** `internal/oauth` (address guard with netpolicy entries for documents, cache, PKCE, redirect matching, resource
+shape, trusted-list validation), `internal/httpapi/oauth_integration_test.go` (discovery, authorize validation as page vs
+redirect, sign-in redirect, consent allow/deny/CSRF, remembered and trusted consent, registered clients never trusted,
+code reuse, wrong verifier, refresh rotation and reuse revocation, revoke endpoint, token bound to its gateway, connected
+apps, DCR expiry, document fetch rules, rate limits, re-checks without reaching the server, token sentinel),
+`service_accounts_integration_test.go` (management, key limits and rotation, role vs `minRole`, team-grant coverage,
+off/archived/expired/revoked/deleted refusals, JWT claims verified by the fake server, scope, call filter, secret
+sentinel), and the authz matrix for every new operation.
+
+**Not built / gaps:** rate limits on `/mcp` itself; per-tool scopes or step-up; private-use redirect schemes; CORS on
+the OAuth endpoints; previous-pepper support; DCR expiry runs only when someone registers (an expired registration is
+refused regardless); rate counters are per process.

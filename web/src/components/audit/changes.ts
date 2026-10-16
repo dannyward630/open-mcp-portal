@@ -28,10 +28,39 @@ const networkEntries: Format = (v) =>
     ? v.map((e: { value?: string; allowHttp?: boolean; note?: string }) => `${e.value ?? ""}${e.allowHttp ? " (http)" : ""}${e.note ? ` · ${e.note}` : ""}`)
     : v;
 
+/** Trusted clients as words: "Claude Code (https://claude.ai/oauth/claude-code-client-metadata)". */
+const trustedClients: Format = (v) =>
+  Array.isArray(v) ? v.map((c: { clientId?: string; label?: string }) => (c.label ? `${c.label} (${c.clientId ?? ""})` : (c.clientId ?? ""))) : v;
+
+const clientKindLabels: Record<string, string> = { metadata: "Yes (metadata document)", registered: "No (registered itself)" };
+
+const serviceAccountRoleLabels: Record<string, string> = { member: roleLabels.member, editor: roleLabels.editor };
+
 function fieldsFor(action: string): Fields | undefined {
   switch (action) {
     case "settings.network_update":
       return { entries: ["Allowed networks and hosts", networkEntries] };
+    case "settings.oauth_clients_update":
+      return { clients: ["Trusted clients", trustedClients] };
+    case "service_account.create":
+    case "service_account.update":
+    case "service_account.delete":
+      return { role: ["Role", label(serviceAccountRoleLabels)], enabled: ["Enabled", onOff], teamId: null };
+    case "service_account_key.create":
+    case "service_account_key.revoke":
+      return { serviceAccount: ["Service account"], expiresAt: ["Expires"], gatewayIds: null, serviceAccountId: null };
+    case "oauth.consent":
+    case "oauth.revoke":
+    case "oauth.token_issue":
+      return {
+        clientName: ["App"],
+        clientKind: ["Verified", label(clientKindLabels)],
+        clientId: ["Client ID"],
+        clientUri: ["App website"],
+        gatewaySlug: ["Gateway"],
+        gatewayId: null,
+        userId: null,
+      };
     case "platform.bootstrap_role":
     case "platform.user_suspend":
     case "platform.user_reactivate":

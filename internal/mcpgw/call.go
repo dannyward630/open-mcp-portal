@@ -208,22 +208,35 @@ type identityFor struct {
 	tool, prompt, resource string
 }
 
-// identityToken signs who is calling, for the server's URL.
+// identityToken signs who is calling, for the server's URL: a person
+// (principal_type user: their ID, email, name and teams) or a service
+// account (principal_type service_account: its ID, name and team, no
+// email). client is the connected OAuth client's name, else the request's
+// clientInfo.name, else the key's name.
 func (rc *request) identityToken(what identityFor, o gateways.Offer) (string, error) {
-	u := rc.principal.User
-	teamRows, err := dbgen.New(rc.h.Pool).ListTeamsForUser(rc.r.Context(), u.ID)
-	if err != nil {
-		return "", err
+	p := rc.principal
+	c := identity.Claims{Audience: o.Server.URL, Gateway: rc.gateway.Slug, Tool: what.tool, Prompt: what.prompt, Resource: what.resource}
+	if sa := p.account; sa != nil {
+		c.PrincipalType, c.Subject, c.Name, c.Teams = identity.PrincipalServiceAccount, sa.Account.ID.String(), sa.Account.Name, []string{sa.Team.Slug}
+	} else {
+		u := p.user
+		teamRows, err := dbgen.New(rc.h.Pool).ListTeamsForUser(rc.r.Context(), u.ID)
+		if err != nil {
+			return "", err
+		}
+		slugs := make([]string, len(teamRows))
+		for i, t := range teamRows {
+			slugs[i] = t.Slug
+		}
+		c.PrincipalType, c.Subject, c.Email, c.Name, c.Teams = identity.PrincipalUser, u.ID.String(), u.Email, u.DisplayName, slugs
 	}
-	slugs := make([]string, len(teamRows))
-	for i, t := range teamRows {
-		slugs[i] = t.Slug
+	switch {
+	case p.grant != nil:
+		c.Client = p.grant.ClientName
+	default:
+		if c.Client = rc.clientName(); c.Client == "" {
+			c.Client = p.keyName
+		}
 	}
-	client := rc.clientName()
-	if client == "" {
-		client = rc.principal.Key.Name
-	}
-	c := identity.Claims{Audience: o.Server.URL, Subject: u.ID.String(), Email: u.Email, Name: u.DisplayName, Teams: slugs,
-		Gateway: rc.gateway.Slug, Client: client, Tool: what.tool, Prompt: what.prompt, Resource: what.resource}
 	return rc.h.Identity.Sign(rc.r.Context(), c)
 }

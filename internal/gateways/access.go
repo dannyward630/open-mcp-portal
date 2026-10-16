@@ -170,6 +170,16 @@ func unserved(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway) (string, e
 // team gateway's team active, and they have access), in the order given,
 // and the IDs they may not (unknown ones included).
 func (s *Service) Usable(ctx context.Context, u dbgen.User, ids []uuid.UUID) ([]dbgen.Gateway, []uuid.UUID, error) {
+	return s.usable(ctx, ids, func(g dbgen.Gateway) (Caller, error) { return callerOf(ctx, s.q, g, u) })
+}
+
+// UsableByServiceAccount is Usable for a service account of a team with a
+// role (ServiceAccountCaller).
+func (s *Service) UsableByServiceAccount(ctx context.Context, teamID uuid.UUID, role string, ids []uuid.UUID) ([]dbgen.Gateway, []uuid.UUID, error) {
+	return s.usable(ctx, ids, func(g dbgen.Gateway) (Caller, error) { return serviceAccountCaller(ctx, s.q, g, teamID, role) })
+}
+
+func (s *Service) usable(ctx context.Context, ids []uuid.UUID, caller func(dbgen.Gateway) (Caller, error)) ([]dbgen.Gateway, []uuid.UUID, error) {
 	rows, err := s.q.ListUsableGatewayCandidates(ctx, ids)
 	if err != nil {
 		return nil, nil, err
@@ -187,7 +197,7 @@ func (s *Service) Usable(ctx context.Context, u dbgen.User, ids []uuid.UUID) ([]
 			if err != nil {
 				return nil, nil, err
 			}
-			c, err := callerOf(ctx, s.q, g, u)
+			c, err := caller(g)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -200,6 +210,34 @@ func (s *Service) Usable(ctx context.Context, u dbgen.User, ids []uuid.UUID) ([]
 		}
 	}
 	return usable, refused, nil
+}
+
+// AccessServiceAccount is why a service account may use a gateway: its
+// team's own gateway (with the account's role), or a platform gateway
+// granted to its team (decision 23; AccessTeamGrant).
+const AccessServiceAccount = "service_account"
+
+// ServiceAccountCaller works out a service account's access to a gateway:
+// its own team's gateways, with the account's role for minimum roles, and
+// platform gateways granted to its team (decision 23: no grants to
+// individual service accounts). It doesn't look at whether the gateway or
+// the account is enabled.
+func (s *Service) ServiceAccountCaller(ctx context.Context, g dbgen.Gateway, teamID uuid.UUID, role string) (Caller, error) {
+	return serviceAccountCaller(ctx, s.q, g, teamID, role)
+}
+
+func serviceAccountCaller(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway, teamID uuid.UUID, role string) (Caller, error) {
+	if g.OwnerKind == OwnerTeam {
+		if g.TeamID.UUID != teamID || !authz.ValidTeamRole(role) {
+			return Caller{}, nil
+		}
+		return Caller{Role: role, Access: []string{AccessServiceAccount}}, nil
+	}
+	ok, err := q.TeamHasGatewayGrant(ctx, dbgen.TeamHasGatewayGrantParams{GatewayID: g.ID, TeamID: uuid.NullUUID{UUID: teamID, Valid: true}})
+	if err != nil || !ok {
+		return Caller{}, err
+	}
+	return Caller{Access: []string{AccessTeamGrant}}, nil
 }
 
 // Resolve finds a gateway by slug (404 gateway_not_found).

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-gateway/internal/testutil"
 )
@@ -27,10 +28,17 @@ type gwEnv struct {
 
 func newGwEnv(t *testing.T, log *slog.Logger) *gwEnv {
 	t.Helper()
+	return newGwEnvHook(t, log, nil)
+}
+
+// newGwEnvHook is newGwEnv with a hook that adjusts the services before the
+// handler is built (nil: none).
+func newGwEnvHook(t *testing.T, log *slog.Logger, hook func(*httpapi.Deps)) *gwEnv {
+	t.Helper()
 	if log == nil {
 		log = testutil.Logger()
 	}
-	app := newTestAppLog(t, nil, log)
+	app := newTestAppDeps(t, nil, log, hook)
 	e := &gwEnv{t: t, app: app, fake: testutil.NewFakeMCP(t), otherFake: testutil.NewFakeMCP(t)}
 	e.fake.EnableGatewayTools()
 	e.otherFake.EnableGatewayTools()

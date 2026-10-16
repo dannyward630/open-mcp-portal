@@ -497,7 +497,7 @@ func (a *api) revokeMyApiKey(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, r, a.APIKeys.Revoke(r.Context(), a.actor(r), id))
 }
 
-// callFilter reads ?gateway=, ?server=, ?user=, ?outcome=, ?from=, ?to=,
+// callFilter reads ?gateway=, ?server=, ?user=, ?serviceAccount=, ?outcome=, ?from=, ?to=,
 // ?cursor= and ?limit=.
 func callFilter(w http.ResponseWriter, r *http.Request) (calls.Filter, int32, bool) {
 	limit, ok := pageLimit(w, r)
@@ -509,7 +509,7 @@ func callFilter(w http.ResponseWriter, r *http.Request) (calls.Filter, int32, bo
 	for _, p := range []struct {
 		name string
 		dst  **uuid.UUID
-	}{{"gateway", &f.Gateway}, {"server", &f.Server}, {"user", &f.User}} {
+	}{{"gateway", &f.Gateway}, {"server", &f.Server}, {"user", &f.User}, {"serviceAccount", &f.ServiceAccount}} {
 		if v := q.Get(p.name); v != "" {
 			id, err := uuid.Parse(v)
 			if err != nil {

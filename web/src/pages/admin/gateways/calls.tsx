@@ -1,18 +1,20 @@
 /*
  * Admin → Calls: every call through every gateway (metadata only), newest
  * first, with server-side filters in the URL: gateway, server, outcome,
- * person, team and date range. Platform admins and auditors.
+ * person, team, service account (of the chosen team) and date range.
+ * Platform admins and auditors.
  */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Activity } from "lucide-react";
 import { api, unwrap } from "@/api/client";
-import { callColumns, callsPrivacy, noCalls, outcomeFacet } from "@/components/gateways/calls-table";
+import { callColumns, callLabel, callsPrivacy, noCalls, outcomeFacet, serviceAccountFacet, useServiceAccountOptions } from "@/components/gateways/calls-table";
 import type { CallOutcome, McpCall } from "@/components/gateways/labels";
 import { ListPage, useListFilters } from "@/components/templates/list-page";
 import { Alert } from "@/components/ui/alert/alert";
 import type { Facet, FacetOption } from "@/components/ui/filter-bar/filter-bar";
 import { NARROW_QUERY, useMediaQuery } from "@/lib/bitop-utils";
 import { terms } from "@/lib/terms";
+import { useSearchParams } from "@/lib/url-search";
 import { dateFacet, one, rangeWindow, usePeopleOptions } from "../audit/common";
 import { useTeamOptions } from "./list";
 
@@ -34,12 +36,17 @@ function useFacets(): Facet<McpCall>[] {
   const servers = useOptions("servers");
   const people = usePeopleOptions();
   const teams = useTeamOptions();
+  // Service accounts belong to a team: the chosen team's are offered.
+  const [params] = useSearchParams();
+  const team = params.get("team") || undefined;
+  const accounts = useServiceAccountOptions(team);
   return [
     { id: "gateway", label: "Gateway", type: "select", placeholder: "Any gateway", options: gateways },
     { id: "server", label: "Server", type: "select", placeholder: "Any server", options: servers },
     outcomeFacet,
     { id: "person", label: "Person", type: "select", placeholder: "Anyone", options: people },
     { id: "team", label: "Team", type: "select", placeholder: "Any team", options: teams.data ?? [] },
+    serviceAccountFacet(accounts, team ? "Any service account" : "Choose a team first"),
     dateFacet<McpCall>(),
   ];
 }
@@ -54,6 +61,7 @@ export function AdminCallsPage() {
     outcome: (one(values, "outcome") || undefined) as CallOutcome | undefined,
     user: one(values, "person") || undefined,
     team: one(values, "team") || undefined,
+    serviceAccount: one(values, "serviceAccount") || undefined,
     ...rangeWindow(values),
   };
   const calls = useInfiniteQuery({
@@ -67,13 +75,13 @@ export function AdminCallsPage() {
     <ListPage<McpCall>
       id="admin-calls"
       title={terms.calls}
-      description="Every call through every gateway: who called which tool or prompt, through which gateway, and how it went."
+      description="Every call through every gateway: who called which tool or prompt (a person with a key or a connected app, or a team's service account), through which gateway, and how it went."
       notices={<Alert tone="info">{callsPrivacy}</Alert>}
       caption={terms.calls}
       columns={callColumns({ gateway: true, adminLinks: true, narrow })}
       data={items}
       getRowId={(c) => String(c.id)}
-      rowLabel={(c) => `${c.exposedName ?? c.method} by ${c.principal.displayName || c.principal.email}`}
+      rowLabel={callLabel}
       facets={facets}
       manual
       loading={calls.isLoading}

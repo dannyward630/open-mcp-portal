@@ -39,9 +39,9 @@ func TestRoutesMatchOpenAPI(t *testing.T) {
 	}
 	served := map[string]bool{}
 	for _, r := range apiRoutes(deps) {
-		// The MCP endpoint and the identity keys are protocols of their own,
-		// outside the management API's contract.
-		if strings.HasPrefix(r.Path, "/mcp/") || strings.HasPrefix(r.Path, "/.well-known/") {
+		// The MCP endpoint, the identity keys and the OAuth endpoints are
+		// protocols of their own, outside the management API's contract.
+		if strings.HasPrefix(r.Path, "/mcp/") || strings.HasPrefix(r.Path, "/.well-known/") || strings.HasPrefix(r.Path, "/oauth/") {
 			continue
 		}
 		if served[r.pattern()] {

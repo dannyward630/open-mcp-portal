@@ -115,11 +115,25 @@ describe("Gateway › Overview and Connect", () => {
     expect(await screen.findByText("1 capability isn't available right now")).toBeInTheDocument();
     expect(within(screen.getByRole("list", { name: "Unavailable capabilities" })).getByText(/Its server is turned off/)).toBeInTheDocument();
 
+    // OAuth sign-in by default: the URL only, no header, and the browser sign-in explained.
     const claude = screen.getByText(/claude mcp add --transport http/);
-    expect(claude.textContent).toBe('claude mcp add --transport http support-tools https://mcp.example.com/mcp/support-tools --header "Authorization: Bearer <YOUR_API_KEY>"');
-    expect(screen.getByRole("link", { name: "Account › API keys" })).toHaveAttribute("href", "/settings/api-keys");
+    expect(claude.textContent).toBe("claude mcp add --transport http support-tools https://mcp.example.com/mcp/support-tools");
+    expect(screen.getByText(/On first use the client opens your browser/)).toBeInTheDocument();
+    await u.click(screen.getByRole("tab", { name: "VS Code" }));
+    expect((await screen.findByText(/"servers"/)).textContent).not.toContain("headers");
+    await u.click(screen.getByRole("tab", { name: "Cursor" }));
+    expect((await screen.findByText(/"mcpServers"/)).textContent).not.toContain("Authorization");
+    await u.click(screen.getByRole("tab", { name: "Claude Code" }));
     await waitFor(() => expect(document.title).toBe("Support tools · Gateways · Open MCP Gateway"));
     expect(await axe(container)).toHaveNoViolations();
+
+    // The API-key variants stay a switch away (headless use), with a placeholder.
+    await u.click(screen.getByRole("switch", { name: /Use an API key instead/ }));
+    expect(screen.getByText(/claude mcp add --transport http/).textContent).toBe(
+      'claude mcp add --transport http support-tools https://mcp.example.com/mcp/support-tools --header "Authorization: Bearer <YOUR_API_KEY>"',
+    );
+    expect(screen.getByRole("link", { name: "Account › API keys" })).toHaveAttribute("href", "/settings/api-keys");
+    expect(screen.getByText(/use a key of a team's service account/)).toBeInTheDocument();
 
     // The name follows the field; VS Code prompts for the key instead of holding it.
     const name = screen.getByRole("textbox", { name: "Name in your client" });

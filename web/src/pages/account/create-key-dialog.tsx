@@ -142,7 +142,7 @@ function SecretView({ created }: { created: Schemas["ApiKeyCreated"] }) {
             </NativeSelect>
           </Field>
           <Checkbox label="Put this key into the snippets" description="Only on this screen. Anyone who sees the snippets can use the key." checked={fill} onCheckedChange={setFill} />
-          <ConnectSection key={chosen.id} slug={chosen.slug} url={chosen.url} secret={fill ? created.secret : undefined} bare />
+          <ConnectSection key={chosen.id} slug={chosen.slug} url={chosen.url} secret={fill ? created.secret : undefined} preferKey bare />
         </Stack>
       )}
     </Stack>

@@ -1,6 +1,8 @@
 # Verifying the gateway's identity token
 
-When a person calls a tool, gets a prompt or reads a resource through a gateway, the gateway forwards the request to your MCP server with a short-lived **identity token**: a JWT signed by the gateway that says who is calling, through which gateway and for which tool ([decisions](decisions.md) 7 and 19). Verify it before you trust it. The token is the only credential from the caller that reaches your server. The gateway never forwards the client's own API key or OAuth token.
+When someone calls a tool, gets a prompt or reads a resource through a gateway, the gateway forwards the request to your MCP server with a short-lived **identity token**: a JWT signed by the gateway that says who is calling, through which gateway and for which tool ([decisions](decisions.md) 7 and 19). Verify it before you trust it. The token is the only credential from the caller that reaches your server. The gateway never forwards the client's own API key, service account key or OAuth token.
+
+The caller is either a **person** (with a personal API key, or through an MCP client they connected with OAuth sign-in) or a team **service account** (a headless agent, CI job or script; decisions 22 and 23). The `principal_type` claim says which.
 
 Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`) are served from the definitions approved in the gateway, so your server only receives calls (`tools/call`, `prompts/get`, `resources/read`). A read arrives with your own URI (the gateway strips its `omcp://{server-slug}/` prefix). Each call also performs the MCP handshake again, because the gateway is stateless.
 
@@ -27,16 +29,26 @@ The claims:
 
 | Claim | Meaning |
 |---|---|
-| `sub` | The person's user ID in the gateway (a UUID, stable) |
-| `email`, `name` | Their email and display name at the time of the call |
-| `teams` | Slugs of the teams they belong to |
+| `principal_type` | `user` for a person, `service_account` for a team service account. Always present |
+| `sub` | A person's user ID, or the service account's ID (UUIDs, stable). Check `principal_type` before treating `sub` as a person |
+| `email` | A person's email at the time of the call. **Absent for service accounts** |
+| `name` | A person's display name, or the service account's name (such as `ci-release-bot`) |
+| `teams` | Slugs of the teams the person belongs to; for a service account, its own team only |
 | `gateway` | The gateway's slug |
 | `tool` / `prompt` | The exposed name of the tool (`tools/call`) or prompt (`prompts/get`), `{server-slug}__{name}` |
 | `resource` | The exposed URI read (`resources/read`): `omcp://{server-slug}/{your-uri}`, for example `omcp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set |
-| `client` | The MCP client's `clientInfo.name` when the request carried it, otherwise the name of the person's API key |
+| `client` | For a client connected with OAuth, the client's name as it signed in (such as `Claude Code`). Otherwise the MCP client's `clientInfo.name` when the request carried it, else the name of the API key or service account key |
 | `jti` | A unique ID for the token (useful in your logs) |
 
-The gateway has already checked that the person may use this tool. Your server decides what they may do with it, for example by reading `sub`, `email` or `teams`.
+The gateway has already checked that the caller may use this tool (for a service account: its team's own gateways, with its team role `member` or `editor` for minimum roles, and platform gateways granted to its team). Your server decides what they may do with it, for example by reading `principal_type`, `sub`, `email` or `teams`.
+
+A service account's token, for example:
+
+```json
+{"iss": "https://mcp.example.com", "aud": "https://status.example.com/mcp", "principal_type": "service_account",
+ "sub": "2f2e1390-9eca-4c8e-ac70-701505d92272", "name": "ci-bot", "teams": ["platform-tools"],
+ "gateway": "support", "tool": "status__check_outage", "client": "deploy", "jti": "…", "iat": 1760650000, "nbf": 1760649970, "exp": 1760650300}
+```
 
 ## Go (go-jose)
 
@@ -55,6 +67,7 @@ const gatewayURL = "https://mcp.example.com"
 const myURL = "https://status.example.com/mcp" // as registered in the gateway
 
 type Identity struct {
+	PrincipalType string `json:"principal_type"` // "user" or "service_account"
 	Email   string   `json:"email"`
 	Name    string   `json:"name"`
 	Teams   []string `json:"teams"`
@@ -116,7 +129,7 @@ def identity(headers) -> dict:
     return jwt.decode(
         token, key.key, algorithms=["ES256"], issuer=GATEWAY, audience=MY_URL, leeway=30,
         options={"require": ["exp", "iat", "iss", "aud", "sub"]},
-    )  # claims["sub"], claims["email"], claims["teams"], claims["tool"]
+    )  # claims["principal_type"], claims["sub"], claims.get("email"), claims["teams"], claims["tool"]
 ```
 
 ## TypeScript (jose)
@@ -135,7 +148,7 @@ export async function identity(headers: Headers) {
   const { payload } = await jwtVerify(token, jwks, {
     algorithms: ["ES256"], issuer: GATEWAY, audience: MY_URL, clockTolerance: 30,
   });
-  return payload; // payload.sub, payload.email, payload.teams, payload.tool
+  return payload; // payload.principal_type, payload.sub, payload.email (people only), payload.teams, payload.tool
 }
 ```
 
@@ -145,7 +158,7 @@ export async function identity(headers: Headers) {
 make fake-mcp   # go run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/jwks.json
 ```
 
-Register `http://127.0.0.1:8091/mcp` in a team, select its `whoami` tool in a gateway, create an API key under Account › API keys, and call it:
+Register `http://127.0.0.1:8091/mcp` in a team, select its `whoami` tool in a gateway, create an API key under Account › API keys (or a key of a team service account), and call it:
 
 ```sh
 curl -s http://localhost:8088/mcp/<gateway> -H "Authorization: Bearer omcp_..." \
@@ -153,4 +166,4 @@ curl -s http://localhost:8088/mcp/<gateway> -H "Authorization: Bearer omcp_..." 
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"<server>__whoami","arguments":{}}}'
 ```
 
-The result shows the header the token arrived in, its claims and `"verified": true` (with `-jwks`; without it, the claims are only decoded). The fake server also logs each call's identity.
+The result shows the header the token arrived in, its claims (including `principal_type`) and `"verified": true` (with `-jwks`; without it, the claims are only decoded). The fake server also logs each call's identity.

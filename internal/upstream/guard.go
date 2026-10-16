@@ -216,6 +216,16 @@ func (d *dialer) dial(ctx context.Context, network, address string) (net.Conn, e
 	return nil, fmt.Errorf("upstream: dial %s: %w", host, errors.Join(errs...))
 }
 
+// GuardedDial returns a dial function that applies the address rule of
+// this client (the development allowance and the allowlist in force) to
+// every address a host resolves to, and pins the connection to them; a
+// refused address fails with ErrBlockedAddress. Other fetches of URLs
+// chosen by someone else (OAuth client metadata documents) use it.
+func (c *Client) GuardedDial() func(ctx context.Context, network, address string) (net.Conn, error) {
+	d := &dialer{allowPrivate: c.AllowPrivate, policy: c.policy, lookup: c.resolve(), connect: c.Dial}
+	return d.dial
+}
+
 // exchange records what the server answered, for error classes.
 type exchange struct {
 	mu     sync.Mutex

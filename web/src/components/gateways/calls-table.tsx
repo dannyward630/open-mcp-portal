@@ -1,17 +1,20 @@
 /*
  * Call records (metadata only: never arguments or results) as a list: when,
- * who and with which key, what was called, through which gateway to which
+ * who (a person with the key they used or "via" the connected app, or a
+ * team's service account), what was called, through which gateway to which
  * server, the outcome (with why it failed, in words) and how long it took.
  * A gateway's Activity tab and Admin › Calls share the columns and the
  * outcome facet. On a phone, who and when (and the gateway) move under what
  * was called, so the outcome stays in view.
  */
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
+import { serviceAccountsQuery } from "../../api/queries";
 import { RelativeTime, timeColumn } from "../templates/list-page";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
-import type { Facet } from "@/components/ui/filter-bar/filter-bar";
+import type { Facet, FacetOption } from "@/components/ui/filter-bar/filter-bar";
 import { TextLink } from "@/components/ui/text-link/text-link";
 import s from "../../pages/shared.module.css";
 import { OutcomeBadge } from "./badges";
@@ -26,12 +29,55 @@ export const outcomeFacet: Facet<McpCall> = {
   options: callOutcomes.map((o) => ({ value: o, label: outcomeLabels[o] })),
 };
 
+/** A team's service accounts as filter options (none without a team: service accounts belong to one). */
+export function useServiceAccountOptions(team: string | undefined): FacetOption[] {
+  const accounts = useQuery({ ...serviceAccountsQuery(team ?? ""), enabled: Boolean(team), staleTime: 60_000 });
+  return (accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }));
+}
+
+/** The Service account facet (the API's serviceAccount filter). */
+export function serviceAccountFacet(options: FacetOption[], placeholder = "Any service account"): Facet<McpCall> {
+  return { id: "serviceAccount", label: "Service account", type: "select", placeholder, options };
+}
+
 const bytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${(n / 1024 / 1024).toFixed(1)} MiB`);
 
 /** What was called: the exposed tool or prompt name, or the method for a list call. */
 const what = (c: McpCall) => c.exposedName ?? c.method;
 
-const who = (c: McpCall) => c.principal.displayName || c.principal.email;
+type Principal = McpCall["principal"];
+
+/** Who made a call, in words: the person's or the service account's name. */
+export const principalName = (p: Principal) => p.displayName || p.email || (p.kind === "service_account" ? "Service account" : "Unknown");
+
+/** How they called: "API key: Laptop", "via Claude Code", "Service account · platform-tools". */
+export function principalDetail(p: Principal): string | undefined {
+  switch (p.kind) {
+    case "api_key":
+      return p.apiKeyName ? `API key: ${p.apiKeyName}` : "API key";
+    case "oauth":
+      return p.oauthClientName ? `via ${p.oauthClientName}` : "via a connected app";
+    case "service_account":
+      return p.serviceAccountTeamSlug ? `Service account · ${p.serviceAccountTeamSlug}` : "Service account";
+    default:
+      return undefined;
+  }
+}
+
+const who = (c: McpCall) => principalName(c.principal);
+
+/** A call's row name for screen readers: "service-status__get_status by Una User". */
+export const callLabel = (c: McpCall) => `${c.exposedName ?? c.method} by ${who(c)}`;
+
+/** Who made the call: a person (title: their email), or a service account linked to its record (members and staff read it). */
+function PrincipalCell({ p }: { p: Principal }) {
+  const detail = principalDetail(p);
+  if (p.kind === "service_account" && p.serviceAccountId && p.serviceAccountTeamSlug) {
+    const link = <Link to="/teams/$team/service-accounts/$serviceAccountId" params={{ team: p.serviceAccountTeamSlug, serviceAccountId: p.serviceAccountId }} />;
+    return <CellText primary={<TextLink render={link}>{principalName(p)}</TextLink>} secondary={detail} />;
+  }
+  return <CellText primary={<span title={p.email}>{principalName(p)}</span>} secondary={detail} />;
+}
 
 /** On a phone: who, when (and through which gateway), under what was called. */
 function NarrowLine({ call, gateway }: { call: McpCall; gateway: boolean }) {
@@ -67,12 +113,7 @@ export function callColumns({ gateway = false, adminLinks = false, narrow = fals
       header: "Who",
       defaultHiddenNarrow: true,
       accessor: who,
-      cell: (c) => (
-        <CellText
-          primary={<span title={c.principal.email}>{c.principal.displayName || c.principal.email}</span>}
-          secondary={c.principal.apiKeyName ? `API key: ${c.principal.apiKeyName}` : undefined}
-        />
-      ),
+      cell: (c) => <PrincipalCell p={c.principal} />,
     },
     {
       id: "what",

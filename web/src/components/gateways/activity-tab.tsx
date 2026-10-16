@@ -1,6 +1,7 @@
 /*
  * A gateway's Activity tab: the calls through it (metadata only), newest
- * first, filtered by outcome and date (in the URL). Team gateways' calls are
+ * first, filtered by outcome, the team's service account and date (in the
+ * URL). Team gateways' calls are
  * for the team's owners and admins and platform staff; others are told who
  * can see them.
  */
@@ -16,11 +17,11 @@ import { Card } from "@/components/ui/card/card";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import type { Facet } from "@/components/ui/filter-bar/filter-bar";
 import { NARROW_QUERY, useMediaQuery } from "@/lib/bitop-utils";
-import { callColumns, callsPrivacy, noCalls, outcomeFacet } from "./calls-table";
+import { callColumns, callLabel, callsPrivacy, noCalls, outcomeFacet, serviceAccountFacet, useServiceAccountOptions } from "./calls-table";
 import type { CallOutcome, Gateway, McpCall } from "./labels";
 import type { GatewayAbilities, GatewayScope } from "./scope";
 
-const facets: Facet<McpCall>[] = [outcomeFacet, { id: "range", label: "Date", type: "date-range", pickerProps: { max: new Date() } }];
+const dateFacet: Facet<McpCall> = { id: "range", label: "Date", type: "date-range", pickerProps: { max: new Date() } };
 
 type Props = { gateway: Gateway; scope: GatewayScope; abilities: GatewayAbilities };
 
@@ -40,10 +41,18 @@ export function GatewayActivityTab({ gateway, scope, abilities }: Props) {
 }
 
 function CallList({ gateway, scope }: { gateway: Gateway; scope: GatewayScope }) {
+  const team = gateway.teamSlug ?? (scope.kind === "team" ? scope.team : "");
+  // A team gateway's calls can come from its team's service accounts; a platform gateway's from any granted team's.
+  const accounts = useServiceAccountOptions(team || undefined);
+  const facets: Facet<McpCall>[] = [outcomeFacet, ...(team ? [serviceAccountFacet(accounts)] : []), dateFacet];
   const { values } = useListFilters(facets);
   const narrow = useMediaQuery(NARROW_QUERY);
-  const query = { gateway: gateway.id, outcome: (one(values, "outcome") || undefined) as CallOutcome | undefined, ...rangeWindow(values) };
-  const team = gateway.teamSlug ?? (scope.kind === "team" ? scope.team : "");
+  const query = {
+    gateway: gateway.id,
+    outcome: (one(values, "outcome") || undefined) as CallOutcome | undefined,
+    serviceAccount: one(values, "serviceAccount") || undefined,
+    ...rangeWindow(values),
+  };
   const calls = useInfiniteQuery({
     queryKey: [...(scope.kind === "team" ? teamGatewaysKey(scope.team) : adminGatewaysKey), gateway.id, "calls", query],
     queryFn: async ({ pageParam }) =>
@@ -63,7 +72,7 @@ function CallList({ gateway, scope }: { gateway: Gateway; scope: GatewayScope })
         columns={callColumns({ narrow })}
         data={items}
         getRowId={(c) => String(c.id)}
-        rowLabel={(c) => `${c.exposedName ?? c.method} by ${c.principal.displayName || c.principal.email}`}
+        rowLabel={callLabel}
         facets={facets}
         manual
         loading={calls.isLoading}

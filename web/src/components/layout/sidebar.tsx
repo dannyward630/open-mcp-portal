@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { KeyRound, LifeBuoy, LogOut, User } from "lucide-react";
+import { KeyRound, LifeBuoy, LogOut, Plug, User } from "lucide-react";
 import { pendingReviewsQuery } from "../../api/queries";
 import { InstanceLogo, useInstance, useSignOut, type Me } from "../../session";
 import { Badge } from "@/components/ui/badge/badge";
@@ -47,6 +47,9 @@ export function AppSidebar({ me, mode, active }: { me: Me; mode: Mode; active: A
           </MenuLinkItem>
           <MenuLinkItem icon={<KeyRound aria-hidden />} render={<Link to="/settings/api-keys" />}>
             API keys
+          </MenuLinkItem>
+          <MenuLinkItem icon={<Plug aria-hidden />} render={<Link to="/settings/connected-apps" />}>
+            Connected apps
           </MenuLinkItem>
           <MenuSeparator />
           <ThemeMenuGroup />

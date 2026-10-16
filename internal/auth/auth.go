@@ -215,6 +215,34 @@ func (s *Service) RequireSession(next http.Handler) http.Handler {
 	})
 }
 
+// SessionUser returns the person a request's browser session belongs to,
+// without CSRF checks (for top-level GET navigations such as the OAuth
+// authorization endpoint). ok is false without a current session; a
+// suspended person is returned with ok true (callers check the status).
+func (s *Service) SessionUser(r *http.Request) (dbgen.User, bool, error) {
+	cookie, err := r.Cookie(s.sessionCookieName())
+	if err != nil || cookie.Value == "" || len(cookie.Value) > 256 {
+		return dbgen.User{}, false, nil
+	}
+	row, err := s.q.GetSessionUser(r.Context(), Digest(cookie.Value))
+	if errors.Is(store.NotFound(err), store.ErrNotFound) {
+		return dbgen.User{}, false, nil
+	} else if err != nil {
+		return dbgen.User{}, false, err
+	}
+	return row.User, true, nil
+}
+
+// LoginURL is where to send a browser to sign in and come back to next (a
+// same-origin path): single sign-on when it is configured, otherwise the web
+// app's sign-in page (the development accounts), which returns to next.
+func (s *Service) LoginURL(next string) string {
+	if s.cfg.OIDC.Enabled() {
+		return "/auth/login?next=" + url.QueryEscape(next)
+	}
+	return "/?next=" + url.QueryEscape(next)
+}
+
 // admitLogin limits sign-in attempts per client address.
 func (s *Service) admitLogin(w http.ResponseWriter, r *http.Request) bool {
 	return s.admit(w, "login:"+Digest(s.clientIP(r)), s.cfg.LoginAttemptsPerMinute, "Too many sign-in attempts. Try again shortly.")

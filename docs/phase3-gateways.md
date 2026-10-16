@@ -165,7 +165,7 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
 - **Audit.** `gateway.create/update/delete/capabilities_set` (target `gateway`, team set for team gateways),
   `gateway.grant_add/grant_remove` (target `gateway_grant`), `api_key.create/revoke` (target `api_key`), all with live
   labels.
-- **Not built yet:** the protected-resource metadata endpoint (Phase 4), payload capture (`capture_payloads` stays
+- **Not built yet:** payload capture (`capture_payloads` stays
   false), rate limits on `/mcp`, resource subscriptions.
 
 Results relayed from upstream servers have `_meta["io.modelcontextprotocol/serverInfo"]` removed: clients talk to the

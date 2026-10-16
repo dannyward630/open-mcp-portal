@@ -15,6 +15,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-gateway/internal/testutil"
 )
@@ -371,7 +372,7 @@ func TestMCPEndToEnd(t *testing.T) {
 		t.Fatalf("denied calls = %d %+v", code, page)
 	}
 	for _, it := range page.Items {
-		if it.Outcome != "denied" || it.Principal.Email != "blair@localhost" || it.Principal.ApiKeyName == nil ||
+		if it.Outcome != "denied" || it.Principal.Email == nil || *it.Principal.Email != "blair@localhost" || it.Principal.Kind != "api_key" || it.Principal.ApiKeyName == nil ||
 			*it.Principal.ApiKeyName != "laptop" || it.Gateway.Slug != "support" || !it.Gateway.Exists {
 			t.Errorf("call %+v", it)
 		}
@@ -442,8 +443,12 @@ type rtEnv struct {
 	key             apitypes.ApiKeyCreated
 }
 
-func newRuntimeEnv(t *testing.T) *rtEnv {
-	e := &rtEnv{gwEnv: newGwEnv(t, nil)}
+func newRuntimeEnv(t *testing.T) *rtEnv { return newRuntimeEnvHook(t, nil, nil) }
+
+// newRuntimeEnvHook is newRuntimeEnv logging to log, with a hook that
+// adjusts the services before the handler is built (nil: none).
+func newRuntimeEnvHook(t *testing.T, log *slog.Logger, hook func(*httpapi.Deps)) *rtEnv {
+	e := &rtEnv{gwEnv: newGwEnvHook(t, log, hook)}
 	e.publish(e.owner, e.server)
 	whoami := e.capID(e.owner, e.server, "tool", "whoami")
 	support := e.createGateway(e.owner, toolsTeam+"/gateways", "support")

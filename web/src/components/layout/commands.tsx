@@ -6,7 +6,7 @@
  * up here when it's added there.
  */
 import { useNavigate } from "@tanstack/react-router";
-import { BadgeCheck, Boxes, FileClock, KeyRound, Network, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Bot, Boxes, FileClock, KeyRound, Network, Plug, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
 import { useMemo } from "react";
 import { requestIntent } from "../../lib/intents";
 import { type TeamSettingsTab } from "../../lib/tabs";
@@ -45,6 +45,14 @@ function pageGroup(navigate: Navigate, me: Me, slug: string | undefined, mine: M
       hint: "Page",
       keywords: ["account", "key", "keys", "token", "secret", "bearer", "revoke", "connect"],
       onSelect: () => void navigate({ to: "/settings/api-keys" }),
+    },
+    {
+      id: "connected-apps",
+      label: terms.connectedApps,
+      icon: icon(Plug),
+      hint: "Page",
+      keywords: ["account", "oauth", "apps", "clients", "claude", "vs code", "cursor", "disconnect", "sign-in", "authorized"],
+      onSelect: () => void navigate({ to: "/settings/connected-apps" }),
     },
     {
       id: "create-api-key",
@@ -133,6 +141,14 @@ function teamActionGroup(navigate: Navigate, slug: string, mine: Membership): Co
       keywords: ["new gateway", "gateway", "endpoint", "curate", "tools", "mcp"],
       // The list's create form is its URL (?form=new).
       onSelect: () => void navigate({ to: "/teams/$team/gateways", params: { team: slug }, search: { form: "new" } }),
+    });
+    actions.items.push({
+      id: "create-service-account",
+      label: "Create service account",
+      icon: <Bot aria-hidden />,
+      keywords: ["new service account", "bot", "automation", "ci", "headless", "agent", "script"],
+      // The list's create form is its URL (?form=new).
+      onSelect: () => void navigate({ to: "/teams/$team/service-accounts", params: { team: slug }, search: { form: "new" } }),
     });
     actions.items.push({
       id: "add-member",

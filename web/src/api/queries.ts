@@ -114,6 +114,25 @@ export const myGatewaysQuery = () =>
     queryFn: async () => unwrap(await api.GET("/v1/me/gateways")),
   });
 
+/* ---------------- service accounts and connected apps ---------------- */
+
+/** The query key prefix of a team's service accounts (the list, records and their keys). */
+export const serviceAccountsKey = (team: string) => ["team", team, "service-accounts"];
+
+/** A team's service accounts (members and platform staff). */
+export const serviceAccountsQuery = (team: string) =>
+  queryOptions({
+    queryKey: [...serviceAccountsKey(team), "list"],
+    queryFn: async () => unwrap(await api.GET("/v1/teams/{team}/service-accounts", { params: { path: { team } } })),
+  });
+
+/** One of a team's service accounts (the record page and its breadcrumb). */
+export const serviceAccountQuery = (team: string, serviceAccountId: string) =>
+  queryOptions({
+    queryKey: [...serviceAccountsKey(team), serviceAccountId],
+    queryFn: async () => unwrap(await api.GET("/v1/teams/{team}/service-accounts/{serviceAccountId}", { params: { path: { team, serviceAccountId } } })),
+  });
+
 /** The person's API keys. */
 export const myApiKeysQuery = () =>
   queryOptions({

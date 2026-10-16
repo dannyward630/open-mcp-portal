@@ -1,7 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "@tanstack/react-router";
-import { Boxes, Home, KeyRound, Library, Network, Shield, User } from "lucide-react";
-import { adminGatewayQuery, adminServerQuery, adminTeamQuery, adminUserQuery, catalogServerQuery, myGatewayQuery, teamGatewayQuery, teamQuery, teamServerQuery } from "../../api/queries";
+import { Boxes, Home, KeyRound, Library, Network, Plug, Shield, User } from "lucide-react";
+import {
+  adminGatewayQuery,
+  adminServerQuery,
+  adminTeamQuery,
+  adminUserQuery,
+  catalogServerQuery,
+  myGatewayQuery,
+  serviceAccountQuery,
+  teamGatewayQuery,
+  teamQuery,
+  teamServerQuery,
+} from "../../api/queries";
 import { terms } from "../../lib/terms";
 import { type BreadcrumbItem } from "@/components/ui/breadcrumbs/breadcrumbs";
 import { VisuallyHidden } from "@/components/ui/visually-hidden/visually-hidden";
@@ -67,11 +78,15 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
   const teamGateway = useQuery({ ...teamGatewayQuery(slug ?? "", gatewayId ?? ""), enabled: !!slug && !!gatewayId });
   const adminGateway = useQuery({ ...adminGatewayQuery(gatewayId ?? ""), enabled: canAdmin && !!gatewayId && routeId === "/app/admin/gateways/$gatewayId" });
   const myGateway = useQuery({ ...myGatewayQuery(gatewayId ?? ""), enabled: !!gatewayId && routeId === "/app/gateways/$gatewayId" });
+  // A service account's name, likewise.
+  const serviceAccountId = routeId === "/app/teams/$team/service-accounts/$serviceAccountId" ? params.serviceAccountId : undefined;
+  const serviceAccount = useQuery({ ...serviceAccountQuery(slug ?? "", serviceAccountId ?? ""), enabled: !!slug && !!serviceAccountId });
 
   if (routeId === "/app/") return [{ label: terms.home, icon: icon(Home) }];
   // From the account menu: the page itself, not "Home".
   if (routeId === "/app/settings/profile") return [{ label: "Profile", icon: icon(User) }];
   if (routeId === "/app/settings/api-keys") return [{ label: terms.apiKeys, icon: icon(KeyRound) }];
+  if (routeId === "/app/settings/connected-apps") return [{ label: terms.connectedApps, icon: icon(Plug) }];
   if (routeId === "/app/gateways") return [{ label: terms.myGateways, icon: icon(Network) }];
   if (routeId === "/app/gateways/$gatewayId") {
     return [
@@ -102,6 +117,11 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
     if (sub === "/gateways/$gatewayId") {
       crumbs.push({ label: terms.gateways, render: <Link to="/teams/$team/gateways" params={{ team: slug }} /> });
       if (!isNotFound(teamGateway.error)) crumbs.push({ label: teamGateway.data?.name ?? <VisuallyHidden>Gateway</VisuallyHidden> });
+      return crumbs;
+    }
+    if (sub === "/service-accounts/$serviceAccountId") {
+      crumbs.push({ label: terms.serviceAccounts, render: <Link to="/teams/$team/service-accounts" params={{ team: slug }} /> });
+      if (!isNotFound(serviceAccount.error)) crumbs.push({ label: serviceAccount.data?.name ?? <VisuallyHidden>Service account</VisuallyHidden> });
       return crumbs;
     }
     // The team page's own label from the navigation ("Overview", "Team settings"); an unknown page adds nothing (the not-found tail follows).

@@ -25,6 +25,11 @@ tags:
   description: Curated sets of MCP capabilities served at /mcp/{slug}, their access and their call records
 - name: api-keys
   description: Personal API keys for MCP clients and scripts
+- name: oauth
+  description: OAuth sign-in for MCP clients (docs/phase4-client-auth.md) — the consent page, connected apps and
+    trusted clients. The protocol endpoints (/oauth/*, /.well-known/oauth-*) are outside this contract, like /mcp.
+- name: service-accounts
+  description: Team-owned identities for headless agents, CI and scripts
 paths:
   /healthz:
     get:
@@ -1436,9 +1441,9 @@ paths:
       summary: Replace the platform admins' allowlist entries (platform admins)
       description: Entries are canonicalised (masked prefixes, lower-case host names without a trailing dot). 422
         invalid_entry with details.index and details.reason (invalid_kind, invalid_cidr, invalid_host, non_ascii,
-        ip_as_host, always_blocked, invalid_note, duplicate, too_many). Servers are never edited; one outside the new
-        policy fails its next exchange (error class not_allowed). Other replicas apply the change within 30 seconds.
-        Audited as settings.network_update.
+        ip_as_host, always_blocked, invalid_note, duplicate, too_many). Servers are never edited; one outside the
+        new policy fails its next exchange (error class not_allowed). Other replicas apply the change within 30
+        seconds. Audited as settings.network_update.
       parameters:
       - $ref: '#/components/parameters/IfMatchHeader'
       requestBody:
@@ -1478,8 +1483,8 @@ paths:
       - admin
       operationId: adminCheckNetworkUrl
       summary: Say whether the gateway would reach an MCP server URL now, and why (platform admins and auditors)
-      description: Applies the same rule as saving and dialling, with this replica's copy of the allowlist. Resolves the
-        host name (at most 3 seconds) but never connects. Every resolved address must be allowed.
+      description: Applies the same rule as saving and dialling, with this replica's copy of the allowlist. Resolves
+        the host name (at most 3 seconds) but never connects. Every resolved address must be allowed.
       requestBody:
         required: true
         content:
@@ -1735,10 +1740,10 @@ paths:
       - gateways
       operationId: setTeamGatewayCapabilities
       summary: Replace the gateway's selection (team owners and admins); If-Match is the gateway's revision
-      description: 422 capability_not_selectable (details.capabilityIds, and details.reasons mapping each to
-        unsupported_template or not_offered) when a capability is not offered by gateway-options (another team's
-        private server, unapproved, gone, or a resource template with unsupported expressions). 422 too_many (at
-        most 200). 422 name_clash (details.exposedName) when two selected capabilities expose the same name or URI.
+      description: 422 capability_not_selectable (details.capabilityIds, and details.reasons mapping each to unsupported_template
+        or not_offered) when a capability is not offered by gateway-options (another team's private server, unapproved,
+        gone, or a resource template with unsupported expressions). 422 too_many (at most 200). 422 name_clash (details.exposedName)
+        when two selected capabilities expose the same name or URI.
       parameters:
       - $ref: '#/components/parameters/IfMatchHeader'
       requestBody:
@@ -1813,6 +1818,7 @@ paths:
       - $ref: '#/components/parameters/CallServerParam'
       - $ref: '#/components/parameters/CallOutcomeParam'
       - $ref: '#/components/parameters/CallUserParam'
+      - $ref: '#/components/parameters/CallServiceAccountParam'
       - $ref: '#/components/parameters/AuditFromParam'
       - $ref: '#/components/parameters/AuditToParam'
       - $ref: '#/components/parameters/CursorParam'
@@ -2156,6 +2162,7 @@ paths:
       - $ref: '#/components/parameters/CallServerParam'
       - $ref: '#/components/parameters/CallOutcomeParam'
       - $ref: '#/components/parameters/CallUserParam'
+      - $ref: '#/components/parameters/CallServiceAccountParam'
       - name: team
         in: query
         required: false
@@ -2246,9 +2253,9 @@ paths:
       - api-keys
       operationId: createMyApiKey
       summary: Create a personal API key (browser session only); the secret is shown once
-      description: 409 too_many_keys (at most 20 active keys per person). 400 too_many_gateways (more than 50
-        gatewayIds). 422 gateway_not_usable (details.gatewayIds) when a gateway in gatewayIds doesn't exist, is
-        switched off or the caller can't use it now. An API key can't create keys.
+      description: 409 too_many_keys (at most 20 active keys per person). 400 too_many_gateways (more than 50 gatewayIds).
+        422 gateway_not_usable (details.gatewayIds) when a gateway in gatewayIds doesn't exist, is switched off
+        or the caller can't use it now. An API key can't create keys.
       requestBody:
         required: true
         content:
@@ -2292,6 +2299,481 @@ paths:
         '200':
           $ref: '#/components/responses/OkReply'
         '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/oauth/consent:
+    get:
+      tags:
+      - oauth
+      operationId: getOAuthConsent
+      summary: 'The consent page''s view of an authorization request: the client, the gateway and where the browser
+        goes back to'
+      description: Takes the authorization request's parameters as they are and checks them again (signed-in session
+        required). 400 with the reason for a request that isn't valid (the page shows it and never redirects). 404
+        when the resource names no gateway the caller can use.
+      parameters:
+      - name: client_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: redirect_uri
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: response_type
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: code_challenge
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: code_challenge_method
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: resource
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: scope
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The request is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/OAuthConsent'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - oauth
+      operationId: decideOAuthConsent
+      summary: Allow or deny an authorization request; returns where to send the browser
+      description: Allow records the caller's consent for the client and gateway (audited as oauth.consent) and
+        issues a single-use authorization code valid for 60 seconds. Deny sends the client access_denied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthConsentDecision'
+      responses:
+        '200':
+          description: Where to send the browser
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                    - redirectUrl
+                    properties:
+                      redirectUrl:
+                        type: string
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/oauth-grants:
+    get:
+      tags:
+      - oauth
+      operationId: listMyOAuthGrants
+      summary: 'The caller''s connected apps: MCP clients they allowed, per gateway'
+      responses:
+        '200':
+          description: Active grants, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OAuthGrant'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/oauth-grants/{grantId}:
+    parameters:
+    - $ref: '#/components/parameters/OAuthGrantIdParam'
+    delete:
+      tags:
+      - oauth
+      operationId: revokeMyOAuthGrant
+      summary: Disconnect one of the caller's apps; its tokens stop at once (audited as oauth.revoke)
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/users/{userId}/oauth-grants:
+    parameters:
+    - $ref: '#/components/parameters/UserIdParam'
+    get:
+      tags:
+      - admin
+      - oauth
+      operationId: adminListUserOAuthGrants
+      summary: A person's connected apps (platform admins and auditors)
+      responses:
+        '200':
+          description: Active grants, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OAuthGrant'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/users/{userId}/oauth-grants/{grantId}:
+    parameters:
+    - $ref: '#/components/parameters/UserIdParam'
+    - $ref: '#/components/parameters/OAuthGrantIdParam'
+    delete:
+      tags:
+      - admin
+      - oauth
+      operationId: adminRevokeUserOAuthGrant
+      summary: Disconnect a person's app (platform admins)
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/settings/oauth-clients:
+    get:
+      tags:
+      - admin
+      - oauth
+      operationId: adminGetTrustedClients
+      summary: Clients that skip the consent screen (platform admins and auditors)
+      responses:
+        '200':
+          description: Trusted clients
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TrustedClients'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    put:
+      tags:
+      - admin
+      - oauth
+      operationId: adminUpdateTrustedClients
+      summary: Replace the trusted-client list (platform admins)
+      description: 422 invalid_client_id (details.index) when an entry isn't an https URL with a path (Client ID
+        Metadata Document). At most 50 entries. Audited as settings.oauth_clients_update.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrustedClientsUpdate'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TrustedClients'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/service-accounts:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - service-accounts
+      operationId: listServiceAccounts
+      summary: The team's service accounts (members and above; platform staff read any team)
+      responses:
+        '200':
+          description: Service accounts ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceAccount'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - service-accounts
+      operationId: createServiceAccount
+      summary: Create a service account (team owners and admins)
+      description: 409 name_taken (names are unique within the team); 409 team_archived. At most 100 per team.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAccountCreate'
+      responses:
+        '201':
+          description: Created
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceAccount'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/service-accounts/{serviceAccountId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServiceAccountIdParam'
+    get:
+      tags:
+      - service-accounts
+      operationId: getServiceAccount
+      summary: One of the team's service accounts
+      responses:
+        '200':
+          description: Service account
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceAccount'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - service-accounts
+      operationId: updateServiceAccount
+      summary: Change a service account (team owners and admins); turning it off stops its keys at the next request
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAccountUpdate'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceAccount'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - service-accounts
+      operationId: deleteServiceAccount
+      summary: Delete a service account and revoke its keys (team owners and admins); its call records are kept
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/service-accounts/{serviceAccountId}/keys:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServiceAccountIdParam'
+    get:
+      tags:
+      - service-accounts
+      operationId: listServiceAccountKeys
+      summary: A service account's keys, including revoked and expired ones from the last 30 days (team owners and
+        admins; platform staff)
+      responses:
+        '200':
+          description: Keys, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceAccountKey'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - service-accounts
+      operationId: createServiceAccountKey
+      summary: Create a key (team owners and admins, browser session only); the secret is shown once
+      description: 409 too_many_keys (at most 2 active keys, for rotation). 422 gateway_not_usable (details.gatewayIds)
+        when a scoped gateway isn't one the service account can use. 409 disabled for a turned-off account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAccountKeyCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceAccountKeyCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/service-accounts/{serviceAccountId}/keys/{keyId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServiceAccountIdParam'
+    - name: keyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    delete:
+      tags:
+      - service-accounts
+      operationId: revokeServiceAccountKey
+      summary: Revoke a key (team owners and admins); takes effect on the next request
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
           $ref: '#/components/responses/ErrorReply'
         '404':
           $ref: '#/components/responses/ErrorReply'
@@ -2489,6 +2971,28 @@ components:
       in: query
       required: false
       description: Only calls made by this person (any credential)
+      schema:
+        type: string
+        format: uuid
+    OAuthGrantIdParam:
+      name: grantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ServiceAccountIdParam:
+      name: serviceAccountId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CallServiceAccountParam:
+      name: serviceAccount
+      in: query
+      required: false
+      description: Only calls made by this service account
       schema:
         type: string
         format: uuid
@@ -2854,8 +3358,8 @@ components:
             $ref: '#/components/schemas/MyTeam'
         groups:
           type: array
-          description: The caller's IdP groups as of their last sign-in (from OIDC_GROUPS_CLAIM; may be empty). Platform
-            gateways can be granted to them.
+          description: The caller's IdP groups as of their last sign-in (from OIDC_GROUPS_CLAIM; may be empty).
+            Platform gateways can be granted to them.
           items:
             type: string
         user:
@@ -3647,9 +4151,9 @@ components:
           $ref: '#/components/schemas/PublishPolicy'
     NetworkEntry:
       type: object
-      description: One allowlist entry. A cidr entry allows private addresses inside it (literal or resolved); a host
-        entry allows the private addresses a matching host resolves to. allowHttp also allows plain http for URLs
-        whose host matches (a host entry, or a literal address inside a cidr entry).
+      description: One allowlist entry. A cidr entry allows private addresses inside it (literal or resolved); a
+        host entry allows the private addresses a matching host resolves to. allowHttp also allows plain http for
+        URLs whose host matches (a host entry, or a literal address inside a cidr entry).
       required:
       - kind
       - value
@@ -3663,9 +4167,9 @@ components:
         value:
           type: string
           maxLength: 260
-          description: 'cidr: an IPv4 or IPv6 prefix such as 10.20.0.0/16 (a bare address means /32 or /128). host: an
-            exact ASCII host name such as mcp.corp.example.com, or *.corp.example.com for its subdomains only (not
-            corp.example.com itself).'
+          description: 'cidr: an IPv4 or IPv6 prefix such as 10.20.0.0/16 (a bare address means /32 or /128). host:
+            an exact ASCII host name such as mcp.corp.example.com, or *.corp.example.com for its subdomains only
+            (not corp.example.com itself).'
         allowHttp:
           type: boolean
         note:
@@ -3894,8 +4398,8 @@ components:
       - prompt
       - resource
       - resource_template
-      description: 'Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and
-        resource templates as omcp://{serverSlug}/{uriTemplate}'
+      description: Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri}
+        and resource templates as omcp://{serverSlug}/{uriTemplate}
     Gateway:
       type: object
       required:
@@ -3937,8 +4441,8 @@ components:
           type: string
         enabled:
           type: boolean
-          description: Turned off, the endpoint answers 404 to everyone. A team gateway of an archived team also answers
-            404, and its capabilities are unavailable (team_archived), until the team is unarchived
+          description: Turned off, the endpoint answers 404 to everyone. A team gateway of an archived team also
+            answers 404, and its capabilities are unavailable (team_archived), until the team is unarchived
         url:
           type: string
           description: The full MCP endpoint, APP_URL + /mcp/{slug}
@@ -4054,8 +4558,8 @@ components:
           description: The name the server uses
         exposedName:
           type: string
-          description: 'What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri} for
-            resources and resource templates'
+          description: 'What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri}
+            for resources and resource templates'
           example: service-status__check_outage
         title:
           type: string
@@ -4147,8 +4651,7 @@ components:
           description: The name the server uses (a resource's URI, a template's URI template)
         exposedName:
           type: string
-          description: 'What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and
-            templates'
+          description: 'What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and templates'
         title:
           type: string
         description:
@@ -4332,8 +4835,8 @@ components:
           nullable: true
         gateways:
           type: array
-          description: The gateways the key is limited to, by name. Empty means every gateway its owner can use. A
-            deleted gateway stays listed (exists false); a key whose gateways are all gone works nowhere.
+          description: The gateways the key is limited to, by name. Empty means every gateway its owner can use.
+            A deleted gateway stays listed (exists false); a key whose gateways are all gone works nowhere.
           items:
             $ref: '#/components/schemas/ApiKeyGateway'
     ApiKeyGateway:
@@ -4425,8 +4928,8 @@ components:
           format: date-time
         method:
           type: string
-          description: tools/list, tools/call, prompts/list, prompts/get, resources/list, resources/templates/list or
-            resources/read
+          description: tools/list, tools/call, prompts/list, prompts/get, resources/list, resources/templates/list
+            or resources/read
           example: tools/call
         exposedName:
           type: string
@@ -4444,8 +4947,8 @@ components:
           $ref: '#/components/schemas/McpCallOutcome'
         errorClass:
           type: string
-          description: 'Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key
-            is limited to other gateways), gateway_disabled or an unavailability reason'
+          description: Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API
+            key is limited to other gateways), gateway_disabled or an unavailability reason
         latencyMs:
           type: integer
           format: int32
@@ -4478,23 +4981,36 @@ components:
       type: object
       required:
       - kind
-      - userId
       - displayName
-      - email
       properties:
         kind:
           type: string
           enum:
           - api_key
-          description: Phase 4 adds oauth and service_account
+          - oauth
+          - service_account
+          description: 'api_key: a personal key; oauth: a connected MCP client acting for a person; service_account:
+            a team service account key'
         userId:
           type: string
           format: uuid
+          description: The person (api_key and oauth)
         displayName:
           type: string
+          description: The person's name, or the service account's name
         email:
           type: string
+          description: The person (api_key and oauth)
         apiKeyName:
+          type: string
+          description: The key used (api_key and service_account)
+        oauthClientName:
+          type: string
+          description: The connected client (oauth)
+        serviceAccountId:
+          type: string
+          format: uuid
+        serviceAccountTeamSlug:
           type: string
     McpCallPage:
       type: object
@@ -4508,3 +5024,302 @@ components:
         nextCursor:
           type: string
           nullable: true
+    OAuthClientInfo:
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      - host
+      - uri
+      - logoUrl
+      - trusted
+      properties:
+        id:
+          type: string
+          description: 'The client_id: an https URL (a Client ID Metadata Document) or a registered client''s id'
+        kind:
+          type: string
+          enum:
+          - metadata
+          - registered
+          description: 'metadata: its host vouches for it; registered: it registered itself, so its name is unverified'
+        name:
+          type: string
+        host:
+          type: string
+          description: The host that vouches for the client, or a registered client's own home page host (may be
+            empty)
+        uri:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        trusted:
+          type: boolean
+          description: On the trusted-client list (skips the consent screen)
+    OAuthConsent:
+      type: object
+      required:
+      - client
+      - gateway
+      - redirectUri
+      - redirectHost
+      - remembered
+      properties:
+        client:
+          $ref: '#/components/schemas/OAuthClientInfo'
+        gateway:
+          $ref: '#/components/schemas/MyGateway'
+        redirectUri:
+          type: string
+        redirectHost:
+          type: string
+          description: Where the browser goes back to, such as 127.0.0.1:53211
+        remembered:
+          type: boolean
+          description: The caller already allowed this client for this gateway
+    OAuthConsentDecision:
+      type: object
+      required:
+      - query
+      - decision
+      properties:
+        query:
+          type: string
+          maxLength: 8000
+          description: The authorization request's query string, as the consent page received it
+        decision:
+          type: string
+          enum:
+          - allow
+          - deny
+    OAuthGrant:
+      type: object
+      required:
+      - id
+      - client
+      - gateway
+      - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        client:
+          $ref: '#/components/schemas/OAuthClientInfo'
+        gateway:
+          $ref: '#/components/schemas/CallRef'
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+    TrustedClient:
+      type: object
+      required:
+      - clientId
+      properties:
+        clientId:
+          type: string
+          maxLength: 500
+          example: https://claude.ai/oauth/claude-code-client-metadata
+        label:
+          type: string
+          maxLength: 100
+          example: Claude Code
+    TrustedClients:
+      type: object
+      required:
+      - clients
+      - revision
+      - updatedAt
+      properties:
+        clients:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustedClient'
+        revision:
+          $ref: '#/components/schemas/Revision'
+        updatedAt:
+          type: string
+          format: date-time
+    TrustedClientsUpdate:
+      type: object
+      required:
+      - clients
+      properties:
+        clients:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/TrustedClient'
+    ServiceAccountRole:
+      type: string
+      enum:
+      - member
+      - editor
+      description: The team role used for capabilities' minimum roles (decision 22)
+    ServiceAccount:
+      type: object
+      required:
+      - id
+      - teamId
+      - teamSlug
+      - name
+      - description
+      - role
+      - enabled
+      - activeKeyCount
+      - revision
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        teamSlug:
+          type: string
+        name:
+          type: string
+          example: ci-release-bot
+        description:
+          type: string
+        role:
+          $ref: '#/components/schemas/ServiceAccountRole'
+        enabled:
+          type: boolean
+        activeKeyCount:
+          type: integer
+          format: int64
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdByName:
+          type: string
+          nullable: true
+        revision:
+          $ref: '#/components/schemas/Revision'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ServiceAccountCreate:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$
+          description: Lower-case letters, digits and dashes; unique within the team
+        description:
+          type: string
+          maxLength: 2000
+        role:
+          allOf:
+          - $ref: '#/components/schemas/ServiceAccountRole'
+          default: member
+        enabled:
+          type: boolean
+          default: true
+    ServiceAccountUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$
+        description:
+          type: string
+          maxLength: 2000
+        role:
+          $ref: '#/components/schemas/ServiceAccountRole'
+        enabled:
+          type: boolean
+    ServiceAccountKey:
+      type: object
+      required:
+      - id
+      - name
+      - prefix
+      - status
+      - createdAt
+      - expiresAt
+      - gateways
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        prefix:
+          type: string
+          description: The first characters of the key (omcp_sa_xxxxxxxx)
+        status:
+          type: string
+          enum:
+          - active
+          - expired
+          - revoked
+        createdAt:
+          type: string
+          format: date-time
+        createdByName:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        gateways:
+          type: array
+          description: The gateways the key is limited to (empty = every gateway the account can use)
+          items:
+            $ref: '#/components/schemas/ApiKeyGateway'
+    ServiceAccountKeyCreate:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        expiresInDays:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          default: 90
+        gatewayIds:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+    ServiceAccountKeyCreated:
+      type: object
+      required:
+      - key
+      - secret
+      properties:
+        key:
+          $ref: '#/components/schemas/ServiceAccountKey'
+        secret:
+          type: string
+          description: The full key, shown only now

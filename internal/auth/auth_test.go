@@ -14,15 +14,15 @@ import (
 
 func TestSafeNext(t *testing.T) {
 	cases := map[string]string{
-		"":                              "/",
-		"/admin/teams":                  "/admin/teams",
-		"/teams/a?tab=members":          "/teams/a?tab=members",
-		"//evil.example":                "/",
-		"/\\evil.example":               "/",
-		"https://evil.example":          "/",
-		"relative":                      "/",
-		"/x\r\nSet-Cookie: a":           "/",
-		"/" + strings.Repeat("a", 2048): "/",
+		"":                                 "/",
+		"/admin/teams":                     "/admin/teams",
+		"/teams/a?tab=members":             "/teams/a?tab=members",
+		"//evil.example":                   "/",
+		"/\\evil.example":                  "/",
+		"https://evil.example":             "/",
+		"relative":                         "/",
+		"/x\r\nSet-Cookie: a":              "/",
+		"/" + strings.Repeat("a", maxNext): "/",
 	}
 	for in, want := range cases {
 		if got := safeNext(in); got != want {

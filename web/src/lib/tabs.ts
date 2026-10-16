@@ -18,6 +18,10 @@ export type ServerTab = (typeof serverTabs)[number];
 export const gatewayTabs = ["overview", "capabilities", "access", "activity", "settings"] as const;
 export type GatewayTab = (typeof gatewayTabs)[number];
 
+/** A team's service account: Overview (role and access) · Keys · Settings. */
+export const serviceAccountTabs = ["overview", "keys", "settings"] as const;
+export type ServiceAccountTab = (typeof serviceAccountTabs)[number];
+
 /** Team settings: Members (with open invites) · Audit log · General. */
 export const teamSettingsTabs = ["members", "audit", "general"] as const;
 export type TeamSettingsTab = (typeof teamSettingsTabs)[number];

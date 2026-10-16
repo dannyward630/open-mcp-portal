@@ -1,7 +1,7 @@
 /* Pure gateway helpers: the clients' snippets, the refused-selection mapping (422) and the audit words. */
 import { ApiError } from "../api/client";
 import { actionLabel, areaOf, areaOptions, targetTypeLabel } from "../components/audit/labels";
-import { clientName, keyPlaceholder, snippet, snippetClients } from "../components/gateways/connect-snippets";
+import { authFor, clientName, keyPlaceholder, snippet, snippetClients } from "../components/gateways/connect-snippets";
 import { selectionProblem } from "../components/gateways/picker-errors";
 import { callErrorLabel, callErrorLabels, grantCountLabel } from "../components/gateways/labels";
 import { grantSummary } from "../components/gateways/overview-tab";
@@ -12,24 +12,39 @@ import { grant, gatewayOptions, user } from "./fixtures";
 const url = "https://mcp.example.com/mcp/support-tools";
 
 describe("connect snippets", () => {
-  it("hold the URL and a placeholder, never a key unless one is passed", () => {
+  it("default to OAuth sign-in for Claude Code, VS Code and Cursor: the URL only, no header and no secret", () => {
+    expect(snippet("claude", { name: "support-tools", url })).toBe(`claude mcp add --transport http support-tools ${url}`);
+    expect(JSON.parse(snippet("vscode", { name: "support-tools", url }))).toEqual({ servers: { "support-tools": { type: "http", url } } });
+    expect(JSON.parse(snippet("cursor", { name: "x", url }))).toEqual({ mcpServers: { x: { url } } });
+    // Even a secret passed by mistake never reaches an OAuth snippet.
+    for (const c of ["claude", "vscode", "cursor"] as const) {
+      const text = snippet(c, { name: "s", url, secret: "omcp_secret" });
+      expect(text, c).not.toMatch(/omcp_secret|Authorization|header/i);
+    }
+    expect(authFor("claude", "oauth")).toBe("oauth");
+    // curl can't open a browser: it always uses a key.
+    expect(authFor("curl", "oauth")).toBe("key");
+    expect(snippet("curl", { name: "s", url })).toContain(`-H "Authorization: Bearer ${keyPlaceholder}"`);
+  });
+
+  it("keep the API-key variants: the URL and a placeholder, never a key unless one is passed", () => {
     for (const c of snippetClients) {
-      const text = snippet(c.id, { name: "support-tools", url });
+      const text = snippet(c.id, { name: "support-tools", url, auth: "key" });
       expect(text, c.id).toContain(url);
       expect(text, c.id).not.toContain("omcp_");
     }
-    expect(snippet("claude", { name: "support-tools", url })).toBe(`claude mcp add --transport http support-tools ${url} --header "Authorization: Bearer ${keyPlaceholder}"`);
-    expect(snippet("cursor", { name: "s", url, secret: "omcp_secret" })).toContain('"Authorization": "Bearer omcp_secret"');
+    expect(snippet("claude", { name: "support-tools", url, auth: "key" })).toBe(`claude mcp add --transport http support-tools ${url} --header "Authorization: Bearer ${keyPlaceholder}"`);
+    expect(snippet("cursor", { name: "s", url, secret: "omcp_secret", auth: "key" })).toContain('"Authorization": "Bearer omcp_secret"');
     expect(snippet("curl", { name: "s", url, secret: "omcp_secret" })).toContain('-H "Authorization: Bearer omcp_secret"');
   });
 
   it("give VS Code a password prompt instead of the key, even when one is passed", () => {
-    const parsed = JSON.parse(snippet("vscode", { name: "support-tools", url, secret: "omcp_secret" }));
+    const parsed = JSON.parse(snippet("vscode", { name: "support-tools", url, secret: "omcp_secret", auth: "key" }));
     expect(parsed).toEqual({
       inputs: [{ type: "promptString", id: "omcp-key", description: "Open MCP Gateway API key", password: true }],
       servers: { "support-tools": { type: "http", url, headers: { Authorization: "Bearer ${input:omcp-key}" } } },
     });
-    expect(JSON.parse(snippet("cursor", { name: "x", url }))).toEqual({ mcpServers: { x: { url, headers: { Authorization: `Bearer ${keyPlaceholder}` } } } });
+    expect(JSON.parse(snippet("cursor", { name: "x", url, auth: "key" }))).toEqual({ mcpServers: { x: { url, headers: { Authorization: `Bearer ${keyPlaceholder}` } } } });
   });
 
   it("keep client names shell- and JSON-safe", () => {

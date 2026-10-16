@@ -1,7 +1,11 @@
 /*
- * The Connect section's snippets for each MCP client. They hold the
- * gateway's URL and a placeholder for the key; a real key goes in only when
- * the caller passes one (right after creating a key, if the person asks).
+ * The Connect section's snippets for each MCP client. By default the
+ * interactive clients (Claude Code, VS Code, Cursor) connect with OAuth
+ * sign-in: the snippet is just the gateway's URL, with no header and no
+ * secret, and the client opens the browser on first use. The API-key
+ * variants (for headless use) hold a placeholder for the key; a real key
+ * goes in only when the caller passes one (right after creating a key, if
+ * the person asks). curl has no browser, so it always uses a key.
  */
 
 /** What the snippets show instead of a key. */
@@ -12,12 +16,20 @@ export const vscodeInputId = "omcp-key";
 
 export type SnippetClient = "claude" | "vscode" | "cursor" | "curl";
 
-export const snippetClients: { id: SnippetClient; label: string; language: string; file?: string }[] = [
-  { id: "claude", label: "Claude Code", language: "bash" },
-  { id: "vscode", label: "VS Code", language: "json", file: ".vscode/mcp.json" },
-  { id: "cursor", label: "Cursor", language: "json", file: "~/.cursor/mcp.json" },
-  { id: "curl", label: "curl", language: "bash" },
+/** How the client proves who it is: OAuth sign-in in the browser, or an API key in a header. */
+export type SnippetAuth = "oauth" | "key";
+
+export const snippetClients: { id: SnippetClient; label: string; language: string; file?: string; oauth: boolean }[] = [
+  { id: "claude", label: "Claude Code", language: "bash", oauth: true },
+  { id: "vscode", label: "VS Code", language: "json", file: ".vscode/mcp.json", oauth: true },
+  { id: "cursor", label: "Cursor", language: "json", file: "~/.cursor/mcp.json", oauth: true },
+  { id: "curl", label: "curl", language: "bash", oauth: false },
 ];
+
+/** The way a client connects: OAuth unless the person chose a key, or the client can't sign in (curl). */
+export function authFor(client: SnippetClient, auth: SnippetAuth): SnippetAuth {
+  return snippetClients.find((c) => c.id === client)?.oauth ? auth : "key";
+}
 
 /** A name clients accept: letters, digits, hyphens and underscores ("Support tools!" → "Support-tools"). */
 export function clientName(name: string, fallback: string) {
@@ -29,26 +41,26 @@ export function clientName(name: string, fallback: string) {
   return clean || fallback;
 }
 
-type Input = { name: string; url: string; secret?: string };
+type Input = { name: string; url: string; secret?: string; auth?: SnippetAuth };
 
-/** One client's snippet. */
-export function snippet(client: SnippetClient, { name, url, secret }: Input): string {
+const json = (v: unknown) => JSON.stringify(v, null, 2);
+
+/** One client's snippet (OAuth by default; `auth: "key"` for the API-key variant). */
+export function snippet(client: SnippetClient, { name, url, secret, auth = "oauth" }: Input): string {
   const key = secret ?? keyPlaceholder;
+  const withKey = authFor(client, auth) === "key";
   switch (client) {
     case "claude":
-      return `claude mcp add --transport http ${name} ${url} --header "Authorization: Bearer ${key}"`;
+      return withKey ? `claude mcp add --transport http ${name} ${url} --header "Authorization: Bearer ${key}"` : `claude mcp add --transport http ${name} ${url}`;
     case "vscode":
+      if (!withKey) return json({ servers: { [name]: { type: "http", url } } });
       // VS Code asks for the key once and keeps it in its secret storage: never written into the file.
-      return JSON.stringify(
-        {
-          inputs: [{ type: "promptString", id: vscodeInputId, description: "Open MCP Gateway API key", password: true }],
-          servers: { [name]: { type: "http", url, headers: { Authorization: `Bearer \${input:${vscodeInputId}}` } } },
-        },
-        null,
-        2,
-      );
+      return json({
+        inputs: [{ type: "promptString", id: vscodeInputId, description: "Open MCP Gateway API key", password: true }],
+        servers: { [name]: { type: "http", url, headers: { Authorization: `Bearer \${input:${vscodeInputId}}` } } },
+      });
     case "cursor":
-      return JSON.stringify({ mcpServers: { [name]: { url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2);
+      return withKey ? json({ mcpServers: { [name]: { url, headers: { Authorization: `Bearer ${key}` } } } }) : json({ mcpServers: { [name]: { url } } });
     case "curl":
       return [
         `curl -X POST ${url} \\`,
