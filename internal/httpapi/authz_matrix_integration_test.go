@@ -33,6 +33,8 @@ type teamFix struct {
 	// server is a published, enabled MCP server with a changed capability
 	// (capability), for reads and refused writes.
 	server, capability string
+	// gateway is a team gateway.
+	gateway string
 }
 
 type matrixEnv struct {
@@ -46,7 +48,9 @@ type matrixEnv struct {
 	spareUser, spareTeam string
 	// fakeURL is a fake MCP server every fixture server points at.
 	fakeURL string
-	n       int
+	// platformGateway is granted to team B and to every platform caller.
+	platformGateway string
+	n               int
 }
 
 func (e *matrixEnv) next() int { e.n++; return e.n }
@@ -92,7 +96,26 @@ func (e *matrixEnv) newTeam(slug, name string) teamFix {
 		VALUES ('system', $1::uuid, 'team.create', 'team', $1::text) RETURNING id::text`, tf.id)
 	tf.server = e.newServer(tf, "published")
 	tf.capability = e.newChangedCapability(tf.server)
+	tf.gateway = e.newGateway(tf.id)
 	return tf
+}
+
+// newGateway inserts a gateway: a team gateway of teamID, or a platform
+// gateway for "".
+func (e *matrixEnv) newGateway(teamID string) string {
+	n := e.next()
+	kind := "team"
+	if teamID == "" {
+		kind = "platform"
+	}
+	return e.exec(`INSERT INTO gateways (slug, name, owner_kind, team_id) VALUES ($1, $2, $3, NULLIF($4, '')::uuid) RETURNING id::text`,
+		fmt.Sprintf("gw-%d", n), fmt.Sprintf("Gateway %d", n), kind, teamID)
+}
+
+// newGrant inserts a group grant of a fresh platform gateway.
+func (e *matrixEnv) newGrant() (gateway, grant string) {
+	gateway = e.newGateway("")
+	return gateway, e.exec(`INSERT INTO gateway_grants (gateway_id, subject_kind, group_name) VALUES ($1, 'group', 'g') RETURNING id::text`, gateway)
 }
 
 // newServer inserts a refreshed MCP server of the team in a publish state,
@@ -143,6 +166,11 @@ func newMatrixEnv(t *testing.T) *matrixEnv {
 		e.callers[c] = e.sessionFor(id)
 	}
 	e.callers[cAnon] = anonSession(t, e.app)
+	e.platformGateway = e.newGateway("")
+	e.exec(`INSERT INTO gateway_grants (gateway_id, subject_kind, team_id) VALUES ($1, 'team', $2) RETURNING id::text`, e.platformGateway, e.b.id)
+	for _, c := range []caller{cPlatformAdmin, cAuditor} {
+		e.exec(`INSERT INTO gateway_grants (gateway_id, subject_kind, user_id) VALUES ($1, 'user', $2) RETURNING id::text`, e.platformGateway, e.userIDs[c])
+	}
 	e.spareUser = e.newUser("spare@example.com", "none")
 	e.spareTeam = e.newTeam("spare", "Spare Team").slug
 	return e
@@ -189,6 +217,46 @@ func (c *mctx) changedCapability() (server, capability string) {
 		return srv, c.e.newChangedCapability(srv)
 	}
 	return c.tf.server, c.tf.capability
+}
+
+// gateway is a fresh gateway of the team when the call is expected to
+// succeed, else the team's fixture gateway.
+func (c *mctx) gateway() string {
+	if c.allowed {
+		return c.e.newGateway(c.tf.id)
+	}
+	return c.tf.gateway
+}
+
+// platformGateway is a fresh platform gateway when the call is expected
+// to succeed, else the fixture one.
+func (c *mctx) platformGateway() string {
+	if c.allowed {
+		return c.e.newGateway("")
+	}
+	return c.e.platformGateway
+}
+
+// grant is a platform gateway's grant: a fresh one when the call is
+// expected to succeed.
+func (c *mctx) grant() (gateway, grant string) {
+	if c.allowed {
+		return c.e.newGrant()
+	}
+	return c.e.platformGateway, c.e.exec(`SELECT id::text FROM gateway_grants WHERE gateway_id = $1 LIMIT 1`, c.e.platformGateway)
+}
+
+// apiKey is a fresh key of the caller when the call is expected to
+// succeed, else another person's key.
+func (c *mctx) apiKey() string {
+	owner := c.e.spareUser
+	if c.allowed {
+		owner = c.e.userIDs[c.who]
+	}
+	n := c.e.next()
+	return c.e.exec(`INSERT INTO api_keys (user_id, name, prefix, digest, expires_at)
+		VALUES ($1, 'k', 'omcp_matrix00', encode(sha256($2::bytea), 'hex'), now() + interval '1 day') RETURNING id::text`,
+		owner, fmt.Sprintf("matrix-%d", n))
 }
 
 func (c *mctx) user() string {

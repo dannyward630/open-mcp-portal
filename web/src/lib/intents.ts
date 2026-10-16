@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef } from "react";
 
-export type Intent = "add-member" | "create-team";
+export type Intent = "add-member" | "create-team" | "create-api-key";
 
 let pending: Intent | null = null;
 const listeners = new Set<(intent: Intent) => void>();

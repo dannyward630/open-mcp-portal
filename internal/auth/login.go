@@ -21,7 +21,9 @@ var errSuspended = errors.New("user suspended")
 type loginIdentity struct {
 	Issuer, Subject, Email, Name string
 	Claims                       json.RawMessage
-	Method                       string // "oidc" or "dev"
+	// Groups are the IdP groups of this sign-in (bounded; see Groups).
+	Groups []string
+	Method string // "oidc" or "dev"
 	// EmailVerified gates invite acceptance: an unverified address must
 	// never claim a team membership.
 	EmailVerified bool
@@ -49,6 +51,7 @@ func (s *Service) completeLogin(ctx context.Context, w http.ResponseWriter, r *h
 			Email:       li.Email,
 			DisplayName: li.Name,
 			Claims:      li.Claims,
+			Groups:      boundGroups(li.Groups),
 		})
 		if err != nil {
 			return err

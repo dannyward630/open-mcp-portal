@@ -6,7 +6,7 @@
  * up here when it's added there.
  */
 import { useNavigate } from "@tanstack/react-router";
-import { BadgeCheck, Boxes, FileClock, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Boxes, FileClock, KeyRound, Network, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
 import { useMemo } from "react";
 import { requestIntent } from "../../lib/intents";
 import { type TeamSettingsTab } from "../../lib/tabs";
@@ -37,6 +37,25 @@ function pageGroup(navigate: Navigate, me: Me, slug: string | undefined, mine: M
       hint: "Page",
       keywords: ["account", "me", "email", "name", "teams"],
       onSelect: () => void navigate({ to: "/settings/profile" }),
+    },
+    {
+      id: "api-keys",
+      label: terms.apiKeys,
+      icon: icon(KeyRound),
+      hint: "Page",
+      keywords: ["account", "key", "keys", "token", "secret", "bearer", "revoke", "connect"],
+      onSelect: () => void navigate({ to: "/settings/api-keys" }),
+    },
+    {
+      id: "create-api-key",
+      label: "Create API key",
+      icon: <Plus aria-hidden />,
+      hint: "Action",
+      keywords: ["new key", "token", "secret", "connect", "claude", "cursor", "vs code"],
+      onSelect: () => {
+        void navigate({ to: "/settings/api-keys" });
+        requestIntent("create-api-key");
+      },
     },
     ...themeCommands(mode),
   ];
@@ -108,6 +127,14 @@ function teamActionGroup(navigate: Navigate, slug: string, mine: Membership): Co
   }
   if (mine.status === "active" && (mine.role === "owner" || mine.role === "admin")) {
     actions.items.push({
+      id: "create-gateway",
+      label: "Create gateway",
+      icon: <Network aria-hidden />,
+      keywords: ["new gateway", "gateway", "endpoint", "curate", "tools", "mcp"],
+      // The list's create form is its URL (?form=new).
+      onSelect: () => void navigate({ to: "/teams/$team/gateways", params: { team: slug }, search: { form: "new" } }),
+    });
+    actions.items.push({
       id: "add-member",
       label: "Add member",
       icon: <UserPlus aria-hidden />,
@@ -154,6 +181,14 @@ function adminGroup(navigate: Navigate, platformAdmin: boolean): CommandGroup {
     onSelect: () => void navigate({ to: "/admin/servers", search: { publishState: "pending" } }),
   });
   if (platformAdmin) {
+    items.push({
+      id: "admin:create-gateway",
+      label: "Create platform gateway",
+      icon: <Network aria-hidden />,
+      hint: "Admin",
+      keywords: ["new gateway", "platform gateway", "grant", "share", "mcp"],
+      onSelect: () => void navigate({ to: "/admin/gateways", search: { form: "new" } }),
+    });
     items.push({
       id: "admin:create-team",
       label: "Create team",

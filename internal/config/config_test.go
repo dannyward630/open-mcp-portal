@@ -91,7 +91,7 @@ func TestValidate(t *testing.T) {
 	base := func() Config {
 		c := Defaults()
 		c.DatabaseURL = "postgres://x"
-		c.EncryptionKey = testKey
+		c.EncryptionKey, c.APIKeyPepper = testKey, testKey
 		return c
 	}
 	cases := []struct {
@@ -193,6 +193,7 @@ func TestInstanceSettings(t *testing.T) {
 func TestValidateInstance(t *testing.T) {
 	base := Defaults()
 	base.DatabaseURL, base.AppURL, base.DevAuth, base.EncryptionKey = "postgres://x", "http://localhost:8088", true, testKey
+	base.APIKeyPepper = testKey
 	cases := []struct {
 		name    string
 		mutate  func(*Instance)

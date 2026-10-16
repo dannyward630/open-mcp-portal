@@ -61,6 +61,11 @@ func (c Config) validateSecrets() []error {
 			errs = append(errs, fmt.Errorf("ENCRYPTION_KEY_PREVIOUS: %w", err))
 		}
 	}
+	if c.APIKeyPepper == "" {
+		errs = append(errs, errors.New("API_KEY_PEPPER is required (generate one with `openssl rand -base64 32`)"))
+	} else if _, err := secrets.ParseKey(c.APIKeyPepper); err != nil {
+		errs = append(errs, fmt.Errorf("API_KEY_PEPPER: %w (generate one with `openssl rand -base64 32`)", err))
+	}
 	if c.HealthCheckInterval != 0 && c.HealthCheckInterval < 30*time.Second {
 		errs = append(errs, errors.New("HEALTH_CHECK_INTERVAL must be 0 (off) or at least 30s"))
 	}

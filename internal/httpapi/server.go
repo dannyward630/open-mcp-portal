@@ -12,9 +12,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
 	"github.com/ncecere/open-mcp-gateway/internal/auth"
+	"github.com/ncecere/open-mcp-gateway/internal/calls"
 	"github.com/ncecere/open-mcp-gateway/internal/config"
+	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-gateway/internal/identity"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
@@ -29,6 +33,12 @@ type Deps struct {
 	Teams    *teams.Service
 	Platform *platform.Service
 	Registry *registry.Service
+	Gateways *gateways.Service
+	APIKeys  *apikeys.Service
+	Identity *identity.Service
+	Calls    *calls.Service
+	// MCP serves /mcp/{slug} (internal/mcpgw).
+	MCP http.Handler
 
 	// Web is the built single-page app; WebBuilt is false when only the
 	// placeholder is embedded.
@@ -66,7 +76,8 @@ func apiRoutes(d Deps) []route {
 		a.q = dbgen.New(d.Pool)
 	}
 	routes := opsRoutes(d)
-	for _, group := range [][]route{a.authRoutes(), a.teamRoutes(), a.platformAdminRoutes(), a.mcpServerRoutes(), a.mcpAdminRoutes()} {
+	for _, group := range [][]route{a.authRoutes(), a.teamRoutes(), a.platformAdminRoutes(), a.mcpServerRoutes(), a.mcpAdminRoutes(),
+		a.gatewayRoutes(), a.gatewayAdminRoutes(), a.meGatewayRoutes(), a.mcpRoutes()} {
 		routes = append(routes, group...)
 	}
 	return routes

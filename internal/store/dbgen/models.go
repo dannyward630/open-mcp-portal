@@ -11,6 +11,18 @@ import (
 	"github.com/google/uuid"
 )
 
+type ApiKey struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Name       string
+	Prefix     string
+	Digest     string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	RevokedAt  *time.Time
+	LastUsedAt *time.Time
+}
+
 type AuditLog struct {
 	ID          int64
 	OccurredAt  time.Time
@@ -27,6 +39,41 @@ type AuditLog struct {
 	ClientIP    string
 }
 
+type Gateway struct {
+	ID              uuid.UUID
+	Slug            string
+	Name            string
+	Description     string
+	OwnerKind       string
+	TeamID          uuid.NullUUID
+	Enabled         bool
+	CapturePayloads bool
+	Revision        int64
+	CreatedBy       uuid.NullUUID
+	CreatedAt       time.Time
+	UpdatedBy       uuid.NullUUID
+	UpdatedAt       time.Time
+}
+
+type GatewayCapability struct {
+	GatewayID    uuid.UUID
+	CapabilityID uuid.UUID
+	MinTeamRole  *string
+	AddedBy      uuid.NullUUID
+	AddedAt      time.Time
+}
+
+type GatewayGrant struct {
+	ID          uuid.UUID
+	GatewayID   uuid.UUID
+	SubjectKind string
+	TeamID      uuid.NullUUID
+	UserID      uuid.NullUUID
+	GroupName   *string
+	AddedBy     uuid.NullUUID
+	AddedAt     time.Time
+}
+
 type LoginState struct {
 	StateDigest string
 	Verifier    string
@@ -34,6 +81,32 @@ type LoginState struct {
 	NextPath    string
 	CreatedAt   time.Time
 	ExpiresAt   time.Time
+}
+
+type McpCall struct {
+	ID            int64
+	OccurredAt    time.Time
+	RequestID     string
+	Method        string
+	ExposedName   *string
+	GatewayID     uuid.UUID
+	GatewaySlug   string
+	GatewayName   string
+	GatewayTeamID uuid.NullUUID
+	ServerID      uuid.NullUUID
+	ServerSlug    *string
+	ServerName    *string
+	ServerTeamID  uuid.NullUUID
+	CapabilityID  uuid.NullUUID
+	PrincipalKind string
+	UserID        uuid.UUID
+	ApiKeyID      uuid.NullUUID
+	ClientName    *string
+	Outcome       string
+	ErrorClass    *string
+	LatencyMs     int32
+	RequestBytes  int64
+	ResponseBytes int64
 }
 
 type McpCapability struct {
@@ -122,6 +195,18 @@ type Session struct {
 	ExpiresAt   time.Time
 }
 
+type SigningKey struct {
+	Kid              string
+	Alg              string
+	PrivateKeyCipher []byte
+	PublicJwk        json.RawMessage
+	State            string
+	CreatedAt        time.Time
+	RotatedAt        *time.Time
+	RetireAfter      *time.Time
+	RetiredAt        *time.Time
+}
+
 type Team struct {
 	ID                    uuid.UUID
 	Slug                  string
@@ -172,4 +257,5 @@ type User struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	LastLoginAt  *time.Time
+	Groups       []string
 }

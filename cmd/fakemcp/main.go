@@ -13,9 +13,18 @@
 // tool's description, so a refresh sees a changed capability. Register it
 // with DEV_AUTH on a loopback APP_URL, which allows http and loopback
 // addresses.
+//
+// For gateways it also has the tools whoami (the identity token the gateway
+// sent, its claims and whether it verifies) and echo {text} (-gateway-tools,
+// on by default), and logs the identity of every tool call. With -jwks (for
+// example http://localhost:8088/.well-known/jwks.json) tokens are verified
+// for -audience, by default this server's URL:
+//
+//	go run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/jwks.json
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
@@ -35,6 +44,9 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8091", "listen address")
 	header := flag.String("header", "", "require this request header (for example Authorization)")
 	value := flag.String("value", "", "the header's value")
+	gatewayTools := flag.Bool("gateway-tools", true, "add the whoami and echo tools")
+	jwks := flag.String("jwks", "", "verify identity tokens against this JWKS URL")
+	audience := flag.String("audience", "", "the audience identity tokens must have (default: this server's URL)")
 	var describe descriptions
 	flag.Var(&describe, "describe", "tool=description: change a tool's description (repeatable)")
 	flag.Parse()
@@ -53,6 +65,20 @@ func main() {
 		}
 		f.SetDescription(tool, text)
 		log.Printf("tool %s: description changed", tool)
+	}
+	if *gatewayTools {
+		f.EnableGatewayTools()
+		aud := *audience
+		if aud == "" {
+			aud = "http://" + *addr + "/mcp"
+		}
+		f.SetJWKS(*jwks, aud)
+		f.OnToolCall = func(c testutil.ToolCall) {
+			header, _ := testutil.IdentityToken(c.Header)
+			who := testutil.Whoami(context.Background(), c.Header, *jwks, aud)
+			log.Printf("tool %s: identity in %q, sub=%v aud=%v gateway=%v tool=%v verified=%v %s", c.Tool, header,
+				who.Claims["sub"], who.Claims["aud"], who.Claims["gateway"], who.Claims["tool"], who.Verified, who.Error)
+		}
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", h)

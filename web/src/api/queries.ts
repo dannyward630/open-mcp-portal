@@ -74,3 +74,49 @@ export const adminTeamQuery = (team: string) =>
     queryKey: ["admin", "team", team],
     queryFn: async () => unwrap(await api.GET("/v1/admin/teams/{team}", { params: { path: { team } } })),
   });
+
+/* ---------------- gateways (the record pages and their breadcrumbs) ---------------- */
+
+/** The query key prefix of a team's gateways (lists, records, their capabilities and calls). */
+export const teamGatewaysKey = (team: string) => ["team", team, "gateways"];
+
+/** One of a team's gateways (members and platform staff). */
+export const teamGatewayQuery = (team: string, gatewayId: string) =>
+  queryOptions({
+    queryKey: [...teamGatewaysKey(team), gatewayId],
+    queryFn: async () => unwrap(await api.GET("/v1/teams/{team}/gateways/{gatewayId}", { params: { path: { team, gatewayId } } })),
+  });
+
+/** The query key prefix of every gateway in Admin. */
+export const adminGatewaysKey = ["admin", "gateways"];
+
+/** Any gateway (platform admins and auditors). */
+export const adminGatewayQuery = (gatewayId: string) =>
+  queryOptions({
+    queryKey: [...adminGatewaysKey, gatewayId],
+    queryFn: async () => unwrap(await api.GET("/v1/admin/gateways/{gatewayId}", { params: { path: { gatewayId } } })),
+  });
+
+/** The query key prefix of the gateways the person can use (My gateways). Not "me": that key is the session's. */
+export const myGatewaysKey = ["my", "gateways"];
+
+/** A gateway the person can use, with what it offers them now. */
+export const myGatewayQuery = (gatewayId: string) =>
+  queryOptions({
+    queryKey: [...myGatewaysKey, gatewayId],
+    queryFn: async () => unwrap(await api.GET("/v1/me/gateways/{gatewayId}", { params: { path: { gatewayId } } })),
+  });
+
+/** Every gateway the person can use, and why. */
+export const myGatewaysQuery = () =>
+  queryOptions({
+    queryKey: [...myGatewaysKey, "list"],
+    queryFn: async () => unwrap(await api.GET("/v1/me/gateways")),
+  });
+
+/** The person's API keys. */
+export const myApiKeysQuery = () =>
+  queryOptions({
+    queryKey: ["my", "api-keys"],
+    queryFn: async () => unwrap(await api.GET("/v1/me/api-keys")),
+  });

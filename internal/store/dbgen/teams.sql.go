@@ -285,7 +285,7 @@ func (q *Queries) InsertTeam(ctx context.Context, arg InsertTeamParams) (Team, e
 }
 
 const listMembers = `-- name: ListMembers :many
-SELECT m.team_id, m.user_id, m.role, m.added_by, m.revision, m.created_at, m.updated_at, u.id, u.oidc_issuer, u.oidc_subject, u.email, u.display_name, u.platform_role, u.status, u.claims, u.revision, u.created_at, u.updated_at, u.last_login_at
+SELECT m.team_id, m.user_id, m.role, m.added_by, m.revision, m.created_at, m.updated_at, u.id, u.oidc_issuer, u.oidc_subject, u.email, u.display_name, u.platform_role, u.status, u.claims, u.revision, u.created_at, u.updated_at, u.last_login_at, u.groups
 FROM team_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.team_id = $1
@@ -327,6 +327,7 @@ func (q *Queries) ListMembers(ctx context.Context, teamID uuid.UUID) ([]ListMemb
 			&i.User.CreatedAt,
 			&i.User.UpdatedAt,
 			&i.User.LastLoginAt,
+			&i.User.Groups,
 		); err != nil {
 			return nil, err
 		}

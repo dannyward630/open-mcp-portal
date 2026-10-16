@@ -49,7 +49,7 @@ func TestSafetyChecks(t *testing.T) {
 	base := func() Config {
 		c := Defaults()
 		c.DatabaseURL = "postgres://x"
-		c.EncryptionKey = testKey
+		c.EncryptionKey, c.APIKeyPepper = testKey, testKey
 		c.AppURL = "https://mcp.example.com"
 		c.OIDC.Issuer, c.OIDC.ClientID, c.OIDC.ClientSecret = "https://idp.example.com", "id", "secret"
 		return c
@@ -65,6 +65,9 @@ func TestSafetyChecks(t *testing.T) {
 			[]string{"ENCRYPTION_KEY is the public example value", "openssl rand -base64 32"}},
 		{"example key in another encoding", func(c *Config) { c.EncryptionKey = strings.TrimRight(ex["ENCRYPTION_KEY"], "=") }, "serve",
 			[]string{"ENCRYPTION_KEY is the public example value"}},
+		{"example api key pepper", func(c *Config) { c.APIKeyPepper = ex["API_KEY_PEPPER"] }, "serve",
+			[]string{"API_KEY_PEPPER is the public example value"}},
+		{"missing api key pepper", func(c *Config) { c.APIKeyPepper = "" }, "serve", []string{"API_KEY_PEPPER is required"}},
 		{"example key as previous is fine", func(c *Config) { c.EncryptionKeyPrevious = ex["ENCRYPTION_KEY"] }, "serve", nil},
 		{"migrate example key", func(c *Config) { c.EncryptionKey = ex["ENCRYPTION_KEY"] }, "migrate", []string{"ENCRYPTION_KEY"}},
 		{"example key on loopback", func(c *Config) {

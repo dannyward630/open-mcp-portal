@@ -17,6 +17,8 @@ function teamLink(team: string, e: AuditEntry): ReactElement | null {
     case "team_invite":
       // Open invites are listed under Team settings › Members.
       return <Link to="/teams/$team/settings" params={{ team }} />;
+    case "gateway":
+      return <Link to="/teams/$team/gateways/$gatewayId" params={{ team, gatewayId: e.targetId }} />;
     default:
       return null;
   }
@@ -34,6 +36,8 @@ function platformLink(e: AuditEntry): ReactElement | null {
     }
     case "user":
       return <Link to="/admin/users/$userId" params={{ userId: id }} />;
+    case "gateway":
+      return <Link to="/admin/gateways/$gatewayId" params={{ gatewayId: id }} />;
     default:
       return null;
   }

@@ -55,6 +55,9 @@ var reservedHeaders = map[string]bool{
 	"host": true, "content-type": true, "content-length": true, "accept": true, "connection": true,
 	"transfer-encoding": true, "mcp-protocol-version": true, "mcp-session-id": true, "mcp-method": true, "mcp-name": true,
 	"last-event-id": true, "user-agent": true, "cookie": true, "origin": true,
+	// Gateways send the caller's identity in this header when the static
+	// header is Authorization (docs/upstream-identity.md).
+	"mcp-gateway-identity": true,
 }
 
 // Service is the registry.
@@ -665,6 +668,13 @@ func (s *Service) Delete(ctx context.Context, a authz.Actor, ref string, id uuid
 		return audit.Record(ctx, q, e)
 	})
 }
+
+// Target is how to reach a server for a forwarded call (internal/mcpgw):
+// see target.
+func (s *Service) Target(sv dbgen.McpServer) (upstream.Target, error) { return s.target(sv) }
+
+// Client is the guarded client servers are reached with.
+func (s *Service) Client() *upstream.Client { return s.client }
 
 // target reads how to reach a server, decrypting its header value. The URL
 // is checked against the address rule again (it may have been saved under

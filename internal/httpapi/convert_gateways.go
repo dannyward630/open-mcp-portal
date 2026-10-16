@@ -1,0 +1,115 @@
+package httpapi
+
+import (
+	"time"
+
+	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
+	"github.com/ncecere/open-mcp-gateway/internal/gateways"
+	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+)
+
+// Conversions of gateways, API keys and call records to API types. An API
+// key's digest has no field here, and its secret is only ever returned by
+// create.
+
+func (a *api) toAPIGateway(v gateways.View) apitypes.Gateway {
+	g := v.Gateway
+	out := apitypes.Gateway{
+		Id: g.ID, Slug: g.Slug, Name: g.Name, Description: g.Description, OwnerKind: apitypes.GatewayOwnerKind(g.OwnerKind),
+		Enabled: g.Enabled, Url: a.Gateways.URL(g.Slug), CapabilityCount: v.CapabilityCount, UnavailableCount: v.UnavailableCount,
+		GrantCount: v.GrantCount, Revision: g.Revision, CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt,
+	}
+	if g.TeamID.Valid {
+		id := g.TeamID.UUID
+		out.TeamId, out.TeamSlug, out.TeamName = &id, nonEmpty(v.TeamSlug), nonEmpty(v.TeamName)
+	}
+	return out
+}
+
+func toAPIGatewayCapability(s gateways.Selected) apitypes.GatewayCapability {
+	out := apitypes.GatewayCapability{
+		CapabilityId: s.Capability.ID, ServerId: s.Server.ID, ServerSlug: s.Server.Slug, ServerName: s.Server.Name,
+		TeamSlug: s.TeamSlug, Kind: apitypes.GatewayCapabilityKind(s.Capability.Kind), Name: s.Capability.Name,
+		ExposedName: s.ExposedName, Title: s.Capability.Title, Description: s.Capability.Description, Available: s.Available,
+	}
+	if s.MinRole != nil {
+		r := apitypes.TeamRole(*s.MinRole)
+		out.MinRole = &r
+	}
+	if !s.Available {
+		r := apitypes.GatewayUnavailableReason(s.Reason)
+		out.UnavailableReason = &r
+	}
+	return out
+}
+
+func toAPISelection(s gateways.Selection) apitypes.GatewayCapabilities {
+	out := apitypes.GatewayCapabilities{Revision: s.Revision, Items: make([]apitypes.GatewayCapability, len(s.Items))}
+	for i, it := range s.Items {
+		out.Items[i] = toAPIGatewayCapability(it)
+	}
+	return out
+}
+
+func toAPIGatewayOption(o gateways.Option) apitypes.GatewayOption {
+	return apitypes.GatewayOption{
+		CapabilityId: o.ID, ServerId: o.ServerID, ServerSlug: o.ServerSlug, ServerName: o.ServerName, TeamSlug: o.TeamSlug,
+		TeamName: o.TeamName, Source: apitypes.GatewayOptionSource(o.Source), Kind: apitypes.GatewayCapabilityKind(o.Kind),
+		Name: o.Name, ExposedName: o.ExposedName, Title: o.Title, Description: o.Description,
+	}
+}
+
+func toAPIGrant(r dbgen.ListGatewayGrantsRow) apitypes.GatewayGrant {
+	g := r.GatewayGrant
+	out := apitypes.GatewayGrant{Id: g.ID, SubjectKind: apitypes.GatewayGrantSubjectKind(g.SubjectKind), CreatedAt: g.AddedAt,
+		AddedByName: nonEmpty(r.AddedByName)}
+	switch {
+	case g.TeamID.Valid:
+		out.Team = &apitypes.GrantTeam{Id: g.TeamID.UUID, Slug: r.TeamSlug, Name: r.TeamName}
+	case g.UserID.Valid:
+		out.User = &apitypes.MemberUser{Id: g.UserID.UUID, Email: r.UserEmail, DisplayName: r.UserDisplayName,
+			Status: apitypes.UserStatus(r.UserStatus)}
+	case g.GroupName != nil:
+		group := *g.GroupName
+		out.Group = &group
+	}
+	return out
+}
+
+func (a *api) toAPIMyGateway(m gateways.Mine) apitypes.MyGateway {
+	g := m.View.Gateway
+	out := apitypes.MyGateway{
+		Id: g.ID, Slug: g.Slug, Name: g.Name, Description: g.Description, OwnerKind: apitypes.GatewayOwnerKind(g.OwnerKind),
+		Url: a.Gateways.URL(g.Slug), Access: make([]apitypes.MyGatewayAccess, len(m.Access)), CapabilityCount: m.Offered,
+	}
+	for i, acc := range m.Access {
+		out.Access[i] = apitypes.MyGatewayAccess(acc)
+	}
+	if g.TeamID.Valid {
+		out.TeamSlug, out.TeamName = nonEmpty(m.View.TeamSlug), nonEmpty(m.View.TeamName)
+	}
+	return out
+}
+
+func toAPIKey(k dbgen.ApiKey, now time.Time) apitypes.ApiKey {
+	exp := k.ExpiresAt
+	return apitypes.ApiKey{
+		Id: k.ID, Name: k.Name, Prefix: k.Prefix, Status: apitypes.ApiKeyStatus(apikeys.Status(k, now)),
+		CreatedAt: k.CreatedAt, ExpiresAt: &exp, LastUsedAt: k.LastUsedAt, RevokedAt: k.RevokedAt,
+	}
+}
+
+func toAPICall(r dbgen.ListMCPCallsRow) apitypes.McpCall {
+	out := apitypes.McpCall{
+		Id: r.ID, OccurredAt: r.OccurredAt, Method: r.Method, ExposedName: r.ExposedName,
+		Gateway:    apitypes.CallRef{Id: r.GatewayID, Slug: r.GatewaySlug, Name: r.GatewayName, Exists: r.GatewayExists},
+		Principal:  apitypes.CallPrincipal{Kind: apitypes.CallPrincipalKind(r.PrincipalKind), UserId: r.UserID, DisplayName: r.UserDisplayName, Email: r.UserEmail, ApiKeyName: r.ApiKeyName},
+		ClientName: r.ClientName, Outcome: apitypes.McpCallOutcome(r.Outcome), ErrorClass: r.ErrorClass, LatencyMs: r.LatencyMs,
+		RequestBytes: r.RequestBytes, ResponseBytes: r.ResponseBytes, RequestId: r.RequestID,
+	}
+	if r.ServerID.Valid {
+		out.Server = &apitypes.CallRef{Id: r.ServerID.UUID, Slug: r.ServerSlug, Name: r.ServerName, Exists: r.ServerExists}
+	}
+	return out
+}

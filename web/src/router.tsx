@@ -2,7 +2,7 @@ import { Outlet, createRootRoute, createRoute, createRouter, lazyRouteComponent,
 import { type ReactNode } from "react";
 import { AppLayout } from "./components/layout/shell";
 import { NotFoundState } from "./components/not-found";
-import { adminTeamTabs, serverTabs, tabSearch, teamSettingsTabs } from "./lib/tabs";
+import { adminTeamTabs, gatewayTabs, serverTabs, tabSearch, teamSettingsTabs } from "./lib/tabs";
 import { InstanceSync, SignInPage, useCurrentUser, useMe } from "./session";
 import { useSessionUnavailable } from "./components/layout/session-unavailable";
 import { ColorModeSync } from "./components/layout/theme";
@@ -15,10 +15,10 @@ import styles from "./router.module.css";
  * routes.ts groups its pages into one); the shell (router, session, layout
  * and UI library) stays in the main bundle.
  *
- * Areas: the team's MCP servers under teams/$team, the Catalog at the top
- * level, MCP servers and Publishing under admin. Later phases add theirs
- * (gateways under teams/$team, Connect at the top level) here and in
- * components/layout/nav.tsx.
+ * Areas: the team's MCP servers and gateways under teams/$team, the Catalog
+ * and My gateways at the top level, API keys next to Profile, MCP servers,
+ * Publishing, Gateways and Calls under admin. Later phases add theirs here
+ * and in components/layout/nav.tsx.
  */
 const pages = {
   home: () => import("./pages/home"),
@@ -30,6 +30,9 @@ const pages = {
   teamServers: () => import("./pages/team/servers/routes"),
   catalog: () => import("./pages/catalog/routes"),
   adminServers: () => import("./pages/admin/servers/routes"),
+  teamGateways: () => import("./pages/team/gateways/routes"),
+  myGateways: () => import("./pages/gateways/routes"),
+  adminGateways: () => import("./pages/admin/gateways/routes"),
 };
 const lazy = lazyRouteComponent;
 type Page = ReturnType<typeof lazyRouteComponent>;
@@ -93,6 +96,24 @@ const appRoute = createRoute({
 
 const homeRoute = createRoute({ getParentRoute: () => appRoute, path: "/", component: lazy(pages.home, "HomePage") });
 const profileRoute = createRoute({ getParentRoute: () => appRoute, path: "settings/profile", component: lazy(pages.account, "ProfilePage") });
+/** The person's API keys; the status filter (?status=) passes through. */
+const apiKeysRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "settings/api-keys",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: lazy(pages.account, "ApiKeysPage"),
+});
+
+/* ---------------- my gateways (everyone signed in) ---------------- */
+
+/** Gateways the person can use; ?q= passes through. */
+const myGatewaysRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "gateways",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: lazy(pages.myGateways, "MyGatewaysPage"),
+});
+const myGatewayRoute = createRoute({ getParentRoute: () => appRoute, path: "gateways/$gatewayId", component: lazy(pages.myGateways, "MyGatewayPage") });
 
 /* ---------------- the catalog (everyone signed in) ---------------- */
 
@@ -131,6 +152,21 @@ const teamServerRoute = createRoute({
   component: lazy(pages.teamServers, "TeamServerPage"),
 });
 
+/** The team's gateways; ?q= and the create form (?form=new) pass through. */
+const teamGatewaysRoute = createRoute({
+  getParentRoute: () => teamRoute,
+  path: "gateways",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: lazy(pages.teamGateways, "TeamGatewaysPage"),
+});
+/** A gateway: Overview · Capabilities · Activity · Settings; the activity's filters pass through. */
+const teamGatewayRoute = createRoute({
+  getParentRoute: () => teamRoute,
+  path: "gateways/$gatewayId",
+  validateSearch: tabSearch(gatewayTabs, { passthrough: true }),
+  component: lazy(pages.teamGateways, "TeamGatewayPage"),
+});
+
 /* ---------------- admin ---------------- */
 
 const adminRoute = createRoute({ getParentRoute: () => appRoute, path: "admin", component: AdminGate });
@@ -152,9 +188,12 @@ const adminTabs = <P extends string, T extends string>(path: P, tabs: readonly T
 const appTree = appRoute.addChildren([
   homeRoute,
   profileRoute,
+  apiKeysRoute,
   catalogRoute,
   catalogServerRoute,
-  teamRoute.addChildren([teamIndexRoute, teamSettingsRoute, teamServersRoute, teamServerRoute]),
+  myGatewaysRoute,
+  myGatewayRoute,
+  teamRoute.addChildren([teamIndexRoute, teamSettingsRoute, teamServersRoute, teamServerRoute, teamGatewaysRoute, teamGatewayRoute]),
   adminRoute.addChildren([
     adminIndexRoute,
     adminList("users", lazy(pages.people, "AdminUsersPage")),
@@ -164,6 +203,9 @@ const appTree = appRoute.addChildren([
     adminList("servers", lazy(pages.adminServers, "AdminServersPage")),
     adminTabs("servers/$serverId", serverTabs, lazy(pages.adminServers, "AdminServerPage")),
     adminList("publishing", lazy(pages.adminServers, "AdminPublishingPage")),
+    adminList("gateways", lazy(pages.adminGateways, "AdminGatewaysPage")),
+    adminTabs("gateways/$gatewayId", gatewayTabs, lazy(pages.adminGateways, "AdminGatewayPage")),
+    adminList("calls", lazy(pages.adminGateways, "AdminCallsPage")),
     adminList("audit", lazy(pages.adminAudit, "AdminAuditPage")),
   ]),
 ]);

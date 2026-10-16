@@ -11,6 +11,13 @@ export type AdminTeamTab = (typeof adminTeamTabs)[number];
 export const serverTabs = ["overview", "capabilities", "health", "settings"] as const;
 export type ServerTab = (typeof serverTabs)[number];
 
+/**
+ * A gateway's record (the team's and the admin's): Overview · Capabilities · Access · Activity · Settings. Access
+ * (grants) shows only for platform gateways in Admin.
+ */
+export const gatewayTabs = ["overview", "capabilities", "access", "activity", "settings"] as const;
+export type GatewayTab = (typeof gatewayTabs)[number];
+
 /** Team settings: Members (with open invites) · Audit log · General. */
 export const teamSettingsTabs = ["members", "audit", "general"] as const;
 export type TeamSettingsTab = (typeof teamSettingsTabs)[number];

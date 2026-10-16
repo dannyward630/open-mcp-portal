@@ -28,6 +28,17 @@ var devAccounts = []apitypes.DevAccount{
 	{Id: "casey", Name: "Casey Dev", Email: "casey@localhost", PlatformRole: RoleNone},
 }
 
+// devGroups are the development personas' sample IdP groups, so gateway
+// group grants can be tried locally.
+var devGroups = map[string][]string{
+	"admin":   {"everyone", "platform-admins"},
+	"auditor": {"everyone", "auditors"},
+	"user":    {"everyone", "engineering"},
+	"alex":    {"everyone", "engineering"},
+	"blair":   {"everyone", "support"},
+	"casey":   {"everyone", "support"},
+}
+
 // devPersonas are the development accounts as the dev data has them: an
 // account that exists keeps its current name and email, so the sign-in list
 // and the signed-in person agree, and signing in doesn't reset them.
@@ -94,8 +105,10 @@ func (s *Service) DevLogin(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "unknown_account", "Unknown development account")
 		return
 	}
-	claims, _ := json.Marshal(map[string]any{"sub": acct.Id, "email": acct.Email, "name": acct.Name, "email_verified": true})
-	li := loginIdentity{Issuer: DevIssuer, Subject: acct.Id, Email: acct.Email, Name: acct.Name, Claims: claims, Method: "dev", EmailVerified: true}
+	claims, _ := json.Marshal(map[string]any{"sub": acct.Id, "email": acct.Email, "name": acct.Name, "email_verified": true,
+		"groups": devGroups[acct.Id]})
+	li := loginIdentity{Issuer: DevIssuer, Subject: acct.Id, Email: acct.Email, Name: acct.Name, Claims: claims, Method: "dev",
+		EmailVerified: true, Groups: devGroups[acct.Id]}
 	if acct.PlatformRole != RoleNone {
 		li.BootstrapRole = string(acct.PlatformRole)
 	}

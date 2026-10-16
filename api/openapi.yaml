@@ -21,6 +21,10 @@ tags:
   description: Team-owned MCP servers, discovery, health and publishing to the company catalog
 - name: catalog
   description: Published MCP servers any signed-in person can browse
+- name: gateways
+  description: Curated sets of MCP capabilities served at /mcp/{slug}, their access and their call records
+- name: api-keys
+  description: Personal API keys for MCP clients and scripts
 paths:
   /healthz:
     get:
@@ -1436,6 +1440,746 @@ paths:
           $ref: '#/components/responses/ErrorReply'
         '428':
           $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/gateways:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - gateways
+      operationId: listTeamGateways
+      summary: The team's gateways (members and above; platform staff read any team)
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of gateways ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayPage'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - gateways
+      operationId: createTeamGateway
+      summary: Create a team gateway (team owners and admins)
+      description: 409 slug_taken when any gateway uses the slug. 409 team_archived.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayCreate'
+      responses:
+        '201':
+          description: Created
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Gateway'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/gateways/{gatewayId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/GatewayIdParam'
+    get:
+      tags:
+      - gateways
+      operationId: getTeamGateway
+      summary: One of the team's gateways
+      responses:
+        '200':
+          description: Gateway
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Gateway'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - gateways
+      operationId: updateTeamGateway
+      summary: Change a team gateway's name, description or switch (team owners and admins); the slug never changes
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayUpdate'
+      responses:
+        '200':
+          description: Updated gateway
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Gateway'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - gateways
+      operationId: deleteTeamGateway
+      summary: Delete a team gateway (team owners and admins); its call records are kept
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/gateways/{gatewayId}/capabilities:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/GatewayIdParam'
+    get:
+      tags:
+      - gateways
+      operationId: listTeamGatewayCapabilities
+      summary: The gateway's selected capabilities, with whether each is available now
+      responses:
+        '200':
+          description: Selection
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayCapabilities'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    put:
+      tags:
+      - gateways
+      operationId: setTeamGatewayCapabilities
+      summary: Replace the gateway's selection (team owners and admins); If-Match is the gateway's revision
+      description: 422 capability_not_selectable (details.capabilityIds) when a capability is not offered by gateway-options
+        (another team's private server, unapproved, gone, or a resource). 422 too_many (at most 200). 422 name_clash
+        (details.exposedName) when two selected capabilities expose the same name.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayCapabilitiesUpdate'
+      responses:
+        '200':
+          description: The new selection
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayCapabilities'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/gateway-options:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - gateways
+      operationId: listTeamGatewayOptions
+      summary: Capabilities a team gateway may select (team owners and admins)
+      description: Tools and prompts of the team's own enabled servers (any publish state, listed), plus approved,
+        listed tools and prompts of published, enabled servers of other teams.
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - name: kind
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/GatewayCapabilityKind'
+      responses:
+        '200':
+          description: Options ordered by server and name (at most 1000)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GatewayOption'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/calls:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - gateways
+      operationId: listTeamCalls
+      summary: Calls through the team's gateways or to the team's servers (team owners and admins; platform staff)
+      parameters:
+      - $ref: '#/components/parameters/CallGatewayParam'
+      - $ref: '#/components/parameters/CallServerParam'
+      - $ref: '#/components/parameters/CallOutcomeParam'
+      - $ref: '#/components/parameters/CallUserParam'
+      - $ref: '#/components/parameters/AuditFromParam'
+      - $ref: '#/components/parameters/AuditToParam'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/McpCallPageReply'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/gateways:
+    get:
+      tags:
+      - admin
+      operationId: adminListGateways
+      summary: Every gateway, team and platform (platform admins and auditors)
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - name: ownerKind
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/GatewayOwnerKind'
+      - name: team
+        in: query
+        required: false
+        description: Team slug or ID (team gateways of that team)
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of gateways ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayPage'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - admin
+      operationId: adminCreateGateway
+      summary: Create a platform gateway (platform admins)
+      description: 409 slug_taken.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayCreate'
+      responses:
+        '201':
+          description: Created
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Gateway'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/gateways/{gatewayId}:
+    parameters:
+    - $ref: '#/components/parameters/GatewayIdParam'
+    get:
+      tags:
+      - admin
+      operationId: adminGetGateway
+      summary: Any gateway
+      responses:
+        '200':
+          description: Gateway
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Gateway'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - admin
+      operationId: adminUpdateGateway
+      summary: Change a platform gateway (platform admins); a team gateway can only be switched off here
+      description: 403 team_gateway when changing anything but enabled on a team gateway.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayUpdate'
+      responses:
+        '200':
+          description: Updated gateway
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Gateway'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - admin
+      operationId: adminDeleteGateway
+      summary: Delete a platform gateway (platform admins); team gateways are deleted by their team
+      description: 403 team_gateway for a team gateway.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/gateways/{gatewayId}/capabilities:
+    parameters:
+    - $ref: '#/components/parameters/GatewayIdParam'
+    get:
+      tags:
+      - admin
+      operationId: adminListGatewayCapabilities
+      summary: Any gateway's selection
+      responses:
+        '200':
+          description: Selection
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayCapabilities'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    put:
+      tags:
+      - admin
+      operationId: adminSetGatewayCapabilities
+      summary: Replace a platform gateway's selection (platform admins); If-Match is the gateway's revision
+      description: Platform gateways may select approved, listed tools and prompts of published, enabled servers
+        only, and minRole must be absent. Same 422 codes as the team operation; 403 team_gateway for a team gateway.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayCapabilitiesUpdate'
+      responses:
+        '200':
+          description: The new selection
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayCapabilities'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/gateway-options:
+    get:
+      tags:
+      - admin
+      operationId: adminListGatewayOptions
+      summary: Capabilities a platform gateway may select (platform admins and auditors)
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - name: kind
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/GatewayCapabilityKind'
+      responses:
+        '200':
+          description: Options ordered by server and name (at most 1000)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GatewayOption'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/gateways/{gatewayId}/grants:
+    parameters:
+    - $ref: '#/components/parameters/GatewayIdParam'
+    get:
+      tags:
+      - admin
+      operationId: adminListGatewayGrants
+      summary: Who may use a platform gateway (platform admins and auditors)
+      responses:
+        '200':
+          description: Grants
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GatewayGrant'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - admin
+      operationId: adminAddGatewayGrant
+      summary: Grant a platform gateway to a team, a user or an SSO group (platform admins)
+      description: 403 team_gateway for a team gateway. 409 grant_exists. 404 subject_not_found for an unknown team
+        or user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayGrantCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayGrant'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/gateways/{gatewayId}/grants/{grantId}:
+    parameters:
+    - $ref: '#/components/parameters/GatewayIdParam'
+    - name: grantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    delete:
+      tags:
+      - admin
+      operationId: adminRemoveGatewayGrant
+      summary: Remove a grant (platform admins); takes effect on the next call
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/calls:
+    get:
+      tags:
+      - admin
+      operationId: adminListCalls
+      summary: Every call through every gateway (platform admins and auditors)
+      parameters:
+      - $ref: '#/components/parameters/CallGatewayParam'
+      - $ref: '#/components/parameters/CallServerParam'
+      - $ref: '#/components/parameters/CallOutcomeParam'
+      - $ref: '#/components/parameters/CallUserParam'
+      - name: team
+        in: query
+        required: false
+        description: Team slug or ID (calls through its gateways or to its servers)
+        schema:
+          type: string
+      - $ref: '#/components/parameters/AuditFromParam'
+      - $ref: '#/components/parameters/AuditToParam'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/McpCallPageReply'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/gateways:
+    get:
+      tags:
+      - me
+      operationId: listMyGateways
+      summary: Gateways the caller can connect to, and why
+      responses:
+        '200':
+          description: Gateways ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MyGateway'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/gateways/{gatewayId}:
+    parameters:
+    - $ref: '#/components/parameters/GatewayIdParam'
+    get:
+      tags:
+      - me
+      operationId: getMyGateway
+      summary: A gateway the caller can use, with the capabilities it offers them now
+      responses:
+        '200':
+          description: Gateway
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MyGatewayDetail'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/api-keys:
+    get:
+      tags:
+      - api-keys
+      operationId: listMyApiKeys
+      summary: The caller's API keys, including revoked and expired ones from the last 30 days
+      responses:
+        '200':
+          description: Keys, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - api-keys
+      operationId: createMyApiKey
+      summary: Create a personal API key (browser session only); the secret is shown once
+      description: 409 too_many_keys (at most 20 active keys per person). An API key can't create keys.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ApiKeyCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/api-keys/{keyId}:
+    parameters:
+    - name: keyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    delete:
+      tags:
+      - api-keys
+      operationId: revokeMyApiKey
+      summary: Revoke one of the caller's keys; takes effect on the next request
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
 components:
   headers:
     ETag:
@@ -1573,6 +2317,43 @@ components:
       required: false
       schema:
         $ref: '#/components/schemas/CapabilityKind'
+    GatewayIdParam:
+      name: gatewayId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CallGatewayParam:
+      name: gateway
+      in: query
+      required: false
+      description: Gateway ID
+      schema:
+        type: string
+        format: uuid
+    CallServerParam:
+      name: server
+      in: query
+      required: false
+      description: MCP server ID
+      schema:
+        type: string
+        format: uuid
+    CallOutcomeParam:
+      name: outcome
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/McpCallOutcome'
+    CallUserParam:
+      name: user
+      in: query
+      required: false
+      description: Only calls made by this person (any credential)
+      schema:
+        type: string
+        format: uuid
   responses:
     AuditPageReply:
       description: A page of audit entries, newest first
@@ -1613,6 +2394,17 @@ components:
             properties:
               data:
                 $ref: '#/components/schemas/Ok'
+    McpCallPageReply:
+      description: A page of calls, newest first
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - data
+            properties:
+              data:
+                $ref: '#/components/schemas/McpCallPage'
   schemas:
     AuditActor:
       type: object
@@ -2810,3 +3602,565 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CatalogCapability'
+    GatewayOwnerKind:
+      type: string
+      enum:
+      - team
+      - platform
+    GatewayCapabilityKind:
+      type: string
+      enum:
+      - tool
+      - prompt
+      description: Phase 3 serves tools and prompts; resources come later
+    Gateway:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - description
+      - ownerKind
+      - enabled
+      - url
+      - capabilityCount
+      - unavailableCount
+      - grantCount
+      - revision
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: Immutable; the gateway's endpoint is /mcp/{slug}
+          example: support-tools
+        name:
+          type: string
+          example: Support tools
+        description:
+          type: string
+        ownerKind:
+          $ref: '#/components/schemas/GatewayOwnerKind'
+        teamId:
+          type: string
+          format: uuid
+          description: Team gateways only
+        teamSlug:
+          type: string
+        teamName:
+          type: string
+        enabled:
+          type: boolean
+          description: Turned off, the endpoint answers 404 to everyone
+        url:
+          type: string
+          description: The full MCP endpoint, APP_URL + /mcp/{slug}
+          example: https://mcp.example.com/mcp/support-tools
+        capabilityCount:
+          type: integer
+          format: int64
+          description: Selected capabilities
+        unavailableCount:
+          type: integer
+          format: int64
+          description: Selected capabilities not served right now (see GatewayCapability.unavailableReason)
+        grantCount:
+          type: integer
+          format: int64
+          description: Platform gateways' grants (0 for team gateways)
+        revision:
+          $ref: '#/components/schemas/Revision'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    GatewayPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Gateway'
+        nextCursor:
+          type: string
+          nullable: true
+    GatewayCreate:
+      type: object
+      required:
+      - slug
+      - name
+      properties:
+        slug:
+          type: string
+          pattern: ^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$
+          description: Unique across the platform, immutable
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 2000
+        enabled:
+          type: boolean
+          default: true
+    GatewayUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 2000
+        enabled:
+          type: boolean
+    GatewayUnavailableReason:
+      type: string
+      enum:
+      - server_disabled
+      - not_published
+      - not_approved
+      - changed
+      - gone
+      description: 'server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved
+        / changed: the current definition isn''t approved. gone: the server no longer lists it.'
+    GatewayCapability:
+      type: object
+      required:
+      - capabilityId
+      - serverId
+      - serverSlug
+      - serverName
+      - teamSlug
+      - kind
+      - name
+      - exposedName
+      - title
+      - description
+      - available
+      properties:
+        capabilityId:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          format: uuid
+        serverSlug:
+          type: string
+        serverName:
+          type: string
+        teamSlug:
+          type: string
+          description: The server's team
+        kind:
+          $ref: '#/components/schemas/GatewayCapabilityKind'
+        name:
+          type: string
+          description: The name the server uses
+        exposedName:
+          type: string
+          description: The name clients see, {serverSlug}__{name}
+          example: service-status__check_outage
+        title:
+          type: string
+        description:
+          type: string
+        minRole:
+          allOf:
+          - $ref: '#/components/schemas/TeamRole'
+          nullable: true
+          description: Team gateways only; the lowest team role that may use it (null = every member)
+        available:
+          type: boolean
+        unavailableReason:
+          $ref: '#/components/schemas/GatewayUnavailableReason'
+    GatewayCapabilities:
+      type: object
+      required:
+      - revision
+      - items
+      properties:
+        revision:
+          allOf:
+          - $ref: '#/components/schemas/Revision'
+          description: The gateway's revision
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayCapability'
+    GatewayCapabilitySelection:
+      type: object
+      required:
+      - capabilityId
+      properties:
+        capabilityId:
+          type: string
+          format: uuid
+        minRole:
+          $ref: '#/components/schemas/TeamRole'
+    GatewayCapabilitiesUpdate:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/GatewayCapabilitySelection'
+    GatewayOption:
+      type: object
+      required:
+      - capabilityId
+      - serverId
+      - serverSlug
+      - serverName
+      - teamSlug
+      - teamName
+      - source
+      - kind
+      - name
+      - exposedName
+      - title
+      - description
+      properties:
+        capabilityId:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          format: uuid
+        serverSlug:
+          type: string
+        serverName:
+          type: string
+        teamSlug:
+          type: string
+        teamName:
+          type: string
+        source:
+          type: string
+          enum:
+          - team
+          - catalog
+          description: 'team: the gateway team''s own server; catalog: a published server'
+        kind:
+          $ref: '#/components/schemas/GatewayCapabilityKind'
+        name:
+          type: string
+        exposedName:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+    GatewayGrantSubjectKind:
+      type: string
+      enum:
+      - team
+      - user
+      - group
+    GatewayGrant:
+      type: object
+      required:
+      - id
+      - subjectKind
+      - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        subjectKind:
+          $ref: '#/components/schemas/GatewayGrantSubjectKind'
+        team:
+          $ref: '#/components/schemas/GrantTeam'
+        user:
+          $ref: '#/components/schemas/MemberUser'
+        group:
+          type: string
+          description: The IdP group name, as in the groups claim
+        createdAt:
+          type: string
+          format: date-time
+        addedByName:
+          type: string
+          nullable: true
+    GrantTeam:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+    GatewayGrantCreate:
+      type: object
+      required:
+      - subjectKind
+      description: Exactly one of team, userEmail or group, matching subjectKind
+      properties:
+        subjectKind:
+          $ref: '#/components/schemas/GatewayGrantSubjectKind'
+        team:
+          type: string
+          description: Team slug or ID
+        userEmail:
+          type: string
+          description: An existing user's email
+        group:
+          type: string
+          minLength: 1
+          maxLength: 256
+    MyGatewayAccess:
+      type: string
+      enum:
+      - team_member
+      - team_grant
+      - user_grant
+      - group_grant
+    MyGateway:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - description
+      - ownerKind
+      - url
+      - access
+      - capabilityCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        ownerKind:
+          $ref: '#/components/schemas/GatewayOwnerKind'
+        teamSlug:
+          type: string
+        teamName:
+          type: string
+        url:
+          type: string
+        access:
+          type: array
+          description: Why the caller may use it (at least one)
+          items:
+            $ref: '#/components/schemas/MyGatewayAccess'
+        capabilityCount:
+          type: integer
+          format: int64
+          description: Capabilities it offers the caller right now
+    MyGatewayDetail:
+      type: object
+      required:
+      - gateway
+      - capabilities
+      properties:
+        gateway:
+          $ref: '#/components/schemas/MyGateway'
+        capabilities:
+          type: array
+          description: Available to the caller now (role and availability applied)
+          items:
+            $ref: '#/components/schemas/GatewayCapability'
+    ApiKey:
+      type: object
+      required:
+      - id
+      - name
+      - prefix
+      - createdAt
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        prefix:
+          type: string
+          description: The first characters of the key, to recognise it (omcp_xxxxxxxx)
+        status:
+          type: string
+          enum:
+          - active
+          - expired
+          - revoked
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ApiKeyCreate:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Claude Code on my laptop
+        expiresInDays:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          default: 90
+          description: Keys always expire
+    ApiKeyCreated:
+      type: object
+      required:
+      - key
+      - secret
+      properties:
+        key:
+          $ref: '#/components/schemas/ApiKey'
+        secret:
+          type: string
+          description: The full key, shown only now. Send it as Authorization Bearer to /mcp/{slug}.
+    McpCallOutcome:
+      type: string
+      enum:
+      - ok
+      - tool_error
+      - denied
+      - upstream_error
+      - timeout
+      - too_large
+      - bad_request
+      description: 'ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the
+        client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client''s request
+        was invalid.'
+    McpCall:
+      type: object
+      required:
+      - id
+      - occurredAt
+      - method
+      - outcome
+      - latencyMs
+      - requestBytes
+      - responseBytes
+      - requestId
+      - gateway
+      - principal
+      properties:
+        id:
+          type: integer
+          format: int64
+        occurredAt:
+          type: string
+          format: date-time
+        method:
+          type: string
+          example: tools/call
+        exposedName:
+          type: string
+          description: The tool or prompt name the client used (absent for list calls)
+        gateway:
+          $ref: '#/components/schemas/CallRef'
+        server:
+          $ref: '#/components/schemas/CallRef'
+        principal:
+          $ref: '#/components/schemas/CallPrincipal'
+        clientName:
+          type: string
+          description: clientInfo.name from initialize, when sent
+        outcome:
+          $ref: '#/components/schemas/McpCallOutcome'
+        errorClass:
+          type: string
+        latencyMs:
+          type: integer
+          format: int32
+        requestBytes:
+          type: integer
+          format: int64
+        responseBytes:
+          type: integer
+          format: int64
+        requestId:
+          type: string
+    CallRef:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - exists
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        exists:
+          type: boolean
+    CallPrincipal:
+      type: object
+      required:
+      - kind
+      - userId
+      - displayName
+      - email
+      properties:
+        kind:
+          type: string
+          enum:
+          - api_key
+          description: Phase 4 adds oauth and service_account
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+        apiKeyName:
+          type: string
+    McpCallPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpCall'
+        nextCursor:
+          type: string
+          nullable: true

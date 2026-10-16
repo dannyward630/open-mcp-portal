@@ -20,6 +20,7 @@ import (
 // .env.example.
 var exampleKeyHashes = map[string]string{
 	"ENCRYPTION_KEY": "676263bb216f72864f4ebdbeb8eded2b3faf4a4c8ee36fc072a3b6802ad4ca96",
+	"API_KEY_PEPPER": "0d81980627611d0f44efd90756c9704a023e58b69683a2a577f78fc3944b63c0",
 }
 
 // isExampleKey reports whether value decodes to the example key of setting.
@@ -65,6 +66,10 @@ func (c Config) SafetyErrors(mode string) []error {
 		errs = append(errs, errors.New("ENCRYPTION_KEY is the public example value from .env.example, so stored secrets are not protected. "+
 			"Generate a new key with `openssl rand -base64 32`; if secrets were already stored, "+
 			"set ENCRYPTION_KEY_PREVIOUS to the old value until they are re-entered"))
+	}
+	if isExampleKey("API_KEY_PEPPER", c.APIKeyPepper) {
+		errs = append(errs, errors.New("API_KEY_PEPPER is the public example value from .env.example, so stored API key digests "+
+			"could be checked offline. Generate a new one with `openssl rand -base64 32` (changing it invalidates existing API keys)"))
 	}
 	if c.DevAuth {
 		errs = append(errs, errors.New("DEV_AUTH requires a loopback APP_URL: it lets anyone sign in as a development persona. "+

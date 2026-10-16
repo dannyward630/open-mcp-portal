@@ -72,6 +72,10 @@ func (c *Client) log() *slog.Logger {
 type Target struct {
 	URL                     string
 	HeaderName, HeaderValue string
+	// IdentityHeader and IdentityValue carry the caller's signed identity
+	// on forwarded calls (empty for discovery and health checks). The
+	// gateway never forwards a client's own credential.
+	IdentityHeader, IdentityValue string
 	// Timeout bounds the whole exchange (connect and every list page).
 	Timeout time.Duration
 }
@@ -335,6 +339,9 @@ type Error struct {
 	Class      string
 	HTTPStatus int
 	Message    string
+	// RPCCode is the server's JSON-RPC error code when it answered with an
+	// error (0 otherwise).
+	RPCCode int64
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -366,20 +373,29 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 	case status >= 400:
 		return &Error{Class: ClassUnavailable, HTTPStatus: status, Message: fmt.Sprintf("The server answered HTTP %d.", status)}
 	case errors.As(err, &netErr):
-		c.log().InfoContext(ctx, "mcp server unreachable", "err", SafeMessage(err.Error(), t.HeaderValue))
+		c.log().InfoContext(ctx, "mcp server unreachable", "err", t.safe(err.Error()))
 		return &Error{Class: ClassUnavailable, Message: unreachableMessage(err)}
 	case errors.As(err, &rpc):
 		class := ClassBadResponse
 		if rpc.Code == jsonrpc.CodeInvalidParams || rpc.Code == jsonrpc.CodeInvalidRequest {
 			class = ClassBadRequest
 		}
-		return &Error{Class: class, Message: "The server returned an error: " + SafeMessage(rpc.Message, t.HeaderValue)}
+		return &Error{Class: class, RPCCode: rpc.Code, Message: "The server returned an error: " + t.safe(rpc.Message)}
 	case errors.Is(err, io.ErrUnexpectedEOF):
 		return &Error{Class: ClassBadResponse, Message: "The server's response was cut off."}
 	}
 	// Logged without the header value, should an error ever quote it.
-	c.log().WarnContext(ctx, "mcp server exchange failed", "err", SafeMessage(err.Error(), t.HeaderValue))
+	c.log().WarnContext(ctx, "mcp server exchange failed", "err", t.safe(err.Error()))
 	return &Error{Class: ClassUnavailable, Message: unreachableMessage(err)}
+}
+
+// safe is SafeMessage with both the header value and the identity token
+// redacted.
+func (t Target) safe(msg string) string {
+	if t.IdentityValue != "" {
+		msg = strings.ReplaceAll(msg, t.IdentityValue, "[redacted]")
+	}
+	return SafeMessage(msg, t.HeaderValue)
 }
 
 // MaxMessage bounds a stored or returned message (in characters).

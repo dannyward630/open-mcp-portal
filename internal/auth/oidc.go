@@ -172,6 +172,7 @@ func (s *Service) verifyCode(ctx context.Context, c *oidcClient, code string, sa
 	li = loginIdentity{
 		Issuer: idToken.Issuer, Subject: idToken.Subject, Email: email, Name: name,
 		Claims: boundedClaims(claims), Method: "oidc", EmailVerified: truthy(claims["email_verified"]),
+		Groups: Groups(claims, s.cfg.OIDC.GroupsClaim),
 	}
 	if s.cfg.OIDC.BootstrapAdminSubject != "" && idToken.Subject == s.cfg.OIDC.BootstrapAdminSubject {
 		li.BootstrapRole = RolePlatformAdmin

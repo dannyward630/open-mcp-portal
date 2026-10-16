@@ -4,17 +4,17 @@
  * and the ⌘K palette all read these lists, so a page added here shows up in
  * all three.
  *
- * Adding a section (later phases: Gateways, Connect):
+ * Adding a section:
  *   1. add its route in router.tsx (the `to` paths below are typed against
  *      the route tree, so an item can't point at a page that doesn't exist);
- *   2. add an item to `workspaceNav` (pages for everyone: Catalog, Connect),
- *      `teamNav` (the team's own pages: MCP servers, Gateways, with an
- *      `access` rule) or a group of `adminSections` (catalog approvals,
- *      platform gateways);
+ *   2. add an item to `workspaceNav` (pages for everyone: Catalog, My
+ *      gateways), `teamNav` (the team's own pages: MCP servers, Gateways,
+ *      with an `access` rule) or a group of `adminSections` (catalog
+ *      approvals, platform gateways, calls);
  *   3. add its breadcrumb in breadcrumbs.tsx.
  * Only list pages that exist: no placeholders or "coming soon" links.
  */
-import { BadgeCheck, FileClock, Home, LayoutDashboard, Library, Server, Settings, Users, UsersRound } from "lucide-react";
+import { Activity, BadgeCheck, FileClock, Home, LayoutDashboard, Library, Network, Server, Settings, Users, UsersRound } from "lucide-react";
 import { type ReactNode } from "react";
 import { terms } from "../../lib/terms";
 import { type Me } from "../../session";
@@ -23,7 +23,7 @@ export const icon = (C: typeof Home) => <C aria-hidden />;
 
 /* ---------------- workspace ---------------- */
 
-export type WorkspacePath = "/" | "/catalog";
+export type WorkspacePath = "/" | "/catalog" | "/gateways";
 
 export type WorkspaceNavItem = { to: WorkspacePath; label: string; icon: ReactNode; exact?: boolean; keywords?: string[] };
 
@@ -31,6 +31,7 @@ export type WorkspaceNavItem = { to: WorkspacePath; label: string; icon: ReactNo
 export const workspaceNav: WorkspaceNavItem[] = [
   { to: "/", label: terms.home, icon: icon(Home), exact: true, keywords: ["start", "welcome", "teams"] },
   { to: "/catalog", label: terms.catalog, icon: icon(Library), keywords: ["mcp", "servers", "published", "tools", "resources", "prompts", "browse"] },
+  { to: "/gateways", label: terms.myGateways, icon: icon(Network), keywords: ["gateway", "connect", "mcp", "url", "claude", "vs code", "cursor", "tools", "access"] },
 ];
 
 /* ---------------- team ---------------- */
@@ -45,7 +46,7 @@ export type TeamAccess = {
   canEdit: boolean;
   /** An active team's admins and owners. */
   isManager: boolean;
-  /** A platform admin or auditor (may view any team's overview, settings and MCP servers). */
+  /** A platform admin or auditor (may view any team's overview, settings, MCP servers and gateways). */
   staff: boolean;
 };
 
@@ -61,14 +62,14 @@ export function teamAccess(me: Me, mine: Membership | undefined): TeamAccess {
   };
 }
 
-export type TeamPath = "/teams/$team" | "/teams/$team/servers" | "/teams/$team/settings";
+export type TeamPath = "/teams/$team" | "/teams/$team/servers" | "/teams/$team/gateways" | "/teams/$team/settings";
 
 export type TeamNavItem = {
   to: TeamPath;
   label: string;
   icon: ReactNode;
   exact?: boolean;
-  /** Who gets the item. Platform staff who aren't members get the overview, the MCP servers and settings. */
+  /** Who gets the item. Platform staff who aren't members get the overview, the MCP servers, the gateways and settings. */
   access: (a: TeamAccess) => boolean;
   /** Extra command-palette search words. */
   keywords?: string[];
@@ -76,13 +77,20 @@ export type TeamNavItem = {
 
 const teamNav: TeamNavItem[] = [
   { to: "/teams/$team", label: "Overview", icon: icon(LayoutDashboard), exact: true, access: (a) => a.member || a.staff, keywords: ["team", "dashboard"] },
-  // Platform staff read any team's servers (the API allows it). Later team pages (Gateways) are members only.
+  // Platform staff read any team's servers and gateways (the API allows it).
   {
     to: "/teams/$team/servers",
     label: terms.mcpServers,
     icon: icon(Server),
     access: (a) => a.member || a.staff,
     keywords: ["mcp", "server", "servers", "register", "tools", "capabilities", "publish", "health"],
+  },
+  {
+    to: "/teams/$team/gateways",
+    label: terms.gateways,
+    icon: icon(Network),
+    access: (a) => a.member || a.staff,
+    keywords: ["gateway", "gateways", "endpoint", "url", "curate", "tools", "prompts", "connect", "calls", "activity"],
   },
   {
     to: "/teams/$team/settings",
@@ -104,13 +112,12 @@ export function teamNavFor(me: Me, slug: string): TeamNavItem[] {
 
 /* ---------------- admin ---------------- */
 
-export type AdminPath = "/admin/users" | "/admin/teams" | "/admin/servers" | "/admin/publishing" | "/admin/audit";
+export type AdminPath = "/admin/users" | "/admin/teams" | "/admin/servers" | "/admin/publishing" | "/admin/gateways" | "/admin/audit" | "/admin/calls";
 
 export type AdminNavItem = { to: AdminPath; label: string; icon: ReactNode; exact?: boolean };
 
 /**
- * Admin sidebar groups. Later phases add groups here (Gateways: platform gateways; Settings), each with
- * the pages it holds.
+ * Admin sidebar groups. Later phases add groups here (Settings), each with the pages it holds.
  */
 export const adminSections: { label?: string; items: AdminNavItem[] }[] = [
   {
@@ -128,8 +135,15 @@ export const adminSections: { label?: string; items: AdminNavItem[] }[] = [
     ],
   },
   {
+    label: "Access",
+    items: [{ to: "/admin/gateways", label: terms.gateways, icon: icon(Network) }],
+  },
+  {
     label: "Records",
-    items: [{ to: "/admin/audit", label: terms.auditLog, icon: icon(FileClock) }],
+    items: [
+      { to: "/admin/audit", label: terms.auditLog, icon: icon(FileClock) },
+      { to: "/admin/calls", label: terms.calls, icon: icon(Activity) },
+    ],
   },
 ];
 
@@ -147,5 +161,7 @@ export const adminKeywords: Partial<Record<AdminPath, string[]>> = {
   "/admin/teams": ["team", "create team", "archive", "owner", "assign owner"],
   "/admin/servers": ["mcp", "servers", "review", "approve", "reject", "pending", "catalog", "capabilities", "changes"],
   "/admin/publishing": ["policy", "approval required", "self publish", "default", "catalog"],
+  "/admin/gateways": ["gateway", "platform gateway", "grant", "grants", "access", "sso group", "team gateway", "disable"],
   "/admin/audit": ["audit log", "history", "changes", "who changed", "sign-ins", "export", "csv"],
+  "/admin/calls": ["calls", "call log", "tool calls", "usage", "activity", "denied", "errors", "latency"],
 };

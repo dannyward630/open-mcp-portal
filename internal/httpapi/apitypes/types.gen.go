@@ -9,6 +9,27 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ApiKeyStatus.
+const (
+	ApiKeyStatusActive  ApiKeyStatus = "active"
+	ApiKeyStatusExpired ApiKeyStatus = "expired"
+	ApiKeyStatusRevoked ApiKeyStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the ApiKeyStatus enum.
+func (e ApiKeyStatus) Valid() bool {
+	switch e {
+	case ApiKeyStatusActive:
+		return true
+	case ApiKeyStatusExpired:
+		return true
+	case ApiKeyStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuditActorKind.
 const (
 	AuditActorKindApiKey AuditActorKind = "api_key"
@@ -72,24 +93,141 @@ func (e AuditViaKind) Valid() bool {
 	}
 }
 
+// Defines values for CallPrincipalKind.
+const (
+	CallPrincipalKindApiKey CallPrincipalKind = "api_key"
+)
+
+// Valid indicates whether the value is a known member of the CallPrincipalKind enum.
+func (e CallPrincipalKind) Valid() bool {
+	switch e {
+	case CallPrincipalKindApiKey:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CapabilityKind.
 const (
-	Prompt           CapabilityKind = "prompt"
-	Resource         CapabilityKind = "resource"
-	ResourceTemplate CapabilityKind = "resource_template"
-	Tool             CapabilityKind = "tool"
+	CapabilityKindPrompt           CapabilityKind = "prompt"
+	CapabilityKindResource         CapabilityKind = "resource"
+	CapabilityKindResourceTemplate CapabilityKind = "resource_template"
+	CapabilityKindTool             CapabilityKind = "tool"
 )
 
 // Valid indicates whether the value is a known member of the CapabilityKind enum.
 func (e CapabilityKind) Valid() bool {
 	switch e {
-	case Prompt:
+	case CapabilityKindPrompt:
 		return true
-	case Resource:
+	case CapabilityKindResource:
 		return true
-	case ResourceTemplate:
+	case CapabilityKindResourceTemplate:
 		return true
-	case Tool:
+	case CapabilityKindTool:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GatewayCapabilityKind.
+const (
+	GatewayCapabilityKindPrompt GatewayCapabilityKind = "prompt"
+	GatewayCapabilityKindTool   GatewayCapabilityKind = "tool"
+)
+
+// Valid indicates whether the value is a known member of the GatewayCapabilityKind enum.
+func (e GatewayCapabilityKind) Valid() bool {
+	switch e {
+	case GatewayCapabilityKindPrompt:
+		return true
+	case GatewayCapabilityKindTool:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GatewayGrantSubjectKind.
+const (
+	GatewayGrantSubjectKindGroup GatewayGrantSubjectKind = "group"
+	GatewayGrantSubjectKindTeam  GatewayGrantSubjectKind = "team"
+	GatewayGrantSubjectKindUser  GatewayGrantSubjectKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the GatewayGrantSubjectKind enum.
+func (e GatewayGrantSubjectKind) Valid() bool {
+	switch e {
+	case GatewayGrantSubjectKindGroup:
+		return true
+	case GatewayGrantSubjectKindTeam:
+		return true
+	case GatewayGrantSubjectKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GatewayOptionSource.
+const (
+	GatewayOptionSourceCatalog GatewayOptionSource = "catalog"
+	GatewayOptionSourceTeam    GatewayOptionSource = "team"
+)
+
+// Valid indicates whether the value is a known member of the GatewayOptionSource enum.
+func (e GatewayOptionSource) Valid() bool {
+	switch e {
+	case GatewayOptionSourceCatalog:
+		return true
+	case GatewayOptionSourceTeam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GatewayOwnerKind.
+const (
+	GatewayOwnerKindPlatform GatewayOwnerKind = "platform"
+	GatewayOwnerKindTeam     GatewayOwnerKind = "team"
+)
+
+// Valid indicates whether the value is a known member of the GatewayOwnerKind enum.
+func (e GatewayOwnerKind) Valid() bool {
+	switch e {
+	case GatewayOwnerKindPlatform:
+		return true
+	case GatewayOwnerKindTeam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GatewayUnavailableReason.
+const (
+	Changed        GatewayUnavailableReason = "changed"
+	Gone           GatewayUnavailableReason = "gone"
+	NotApproved    GatewayUnavailableReason = "not_approved"
+	NotPublished   GatewayUnavailableReason = "not_published"
+	ServerDisabled GatewayUnavailableReason = "server_disabled"
+)
+
+// Valid indicates whether the value is a known member of the GatewayUnavailableReason enum.
+func (e GatewayUnavailableReason) Valid() bool {
+	switch e {
+	case Changed:
+		return true
+	case Gone:
+		return true
+	case NotApproved:
+		return true
+	case NotPublished:
+		return true
+	case ServerDisabled:
 		return true
 	default:
 		return false
@@ -126,6 +264,39 @@ const (
 func (e InstanceInfoTheme) Valid() bool {
 	switch e {
 	case Neutral:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpCallOutcome.
+const (
+	McpCallOutcomeBadRequest    McpCallOutcome = "bad_request"
+	McpCallOutcomeDenied        McpCallOutcome = "denied"
+	McpCallOutcomeOk            McpCallOutcome = "ok"
+	McpCallOutcomeTimeout       McpCallOutcome = "timeout"
+	McpCallOutcomeTooLarge      McpCallOutcome = "too_large"
+	McpCallOutcomeToolError     McpCallOutcome = "tool_error"
+	McpCallOutcomeUpstreamError McpCallOutcome = "upstream_error"
+)
+
+// Valid indicates whether the value is a known member of the McpCallOutcome enum.
+func (e McpCallOutcome) Valid() bool {
+	switch e {
+	case McpCallOutcomeBadRequest:
+		return true
+	case McpCallOutcomeDenied:
+		return true
+	case McpCallOutcomeOk:
+		return true
+	case McpCallOutcomeTimeout:
+		return true
+	case McpCallOutcomeTooLarge:
+		return true
+	case McpCallOutcomeToolError:
+		return true
+	case McpCallOutcomeUpstreamError:
 		return true
 	default:
 		return false
@@ -237,6 +408,30 @@ func (e MemberAddResultStatus) Valid() bool {
 	case Added:
 		return true
 	case Invited:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MyGatewayAccess.
+const (
+	GroupGrant MyGatewayAccess = "group_grant"
+	TeamGrant  MyGatewayAccess = "team_grant"
+	TeamMember MyGatewayAccess = "team_member"
+	UserGrant  MyGatewayAccess = "user_grant"
+)
+
+// Valid indicates whether the value is a known member of the MyGatewayAccess enum.
+func (e MyGatewayAccess) Valid() bool {
+	switch e {
+	case GroupGrant:
+		return true
+	case TeamGrant:
+		return true
+	case TeamMember:
+		return true
+	case UserGrant:
 		return true
 	default:
 		return false
@@ -432,6 +627,40 @@ func (e ListTeamAuditParamsActorKind) Valid() bool {
 	}
 }
 
+// ApiKey defines model for ApiKey.
+type ApiKey struct {
+	CreatedAt  time.Time          `json:"createdAt"`
+	ExpiresAt  *time.Time         `json:"expiresAt,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
+	Name       string             `json:"name"`
+
+	// Prefix The first characters of the key, to recognise it (omcp_xxxxxxxx)
+	Prefix    string       `json:"prefix"`
+	RevokedAt *time.Time   `json:"revokedAt,omitempty"`
+	Status    ApiKeyStatus `json:"status"`
+}
+
+// ApiKeyStatus defines model for ApiKey.Status.
+type ApiKeyStatus string
+
+// ApiKeyCreate defines model for ApiKeyCreate.
+type ApiKeyCreate struct {
+	// ExpiresInDays Keys always expire
+	ExpiresInDays *int32 `json:"expiresInDays,omitempty"`
+
+	// Name Example: Claude Code on my laptop
+	Name string `json:"name"`
+}
+
+// ApiKeyCreated defines model for ApiKeyCreated.
+type ApiKeyCreated struct {
+	Key ApiKey `json:"key"`
+
+	// Secret The full key, shown only now. Send it as Authorization Bearer to /mcp/{slug}.
+	Secret string `json:"secret"`
+}
+
 // AuditActor Who made the change, resolved when the log is read
 type AuditActor struct {
 	// ApiKeyName The API key used (api_key actors)
@@ -522,6 +751,28 @@ type AuthConfig struct {
 	TeamRequestUrl *string `json:"teamRequestUrl,omitempty"`
 }
 
+// CallPrincipal defines model for CallPrincipal.
+type CallPrincipal struct {
+	ApiKeyName  *string `json:"apiKeyName,omitempty"`
+	DisplayName string  `json:"displayName"`
+	Email       string  `json:"email"`
+
+	// Kind Phase 4 adds oauth and service_account
+	Kind   CallPrincipalKind  `json:"kind"`
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// CallPrincipalKind Phase 4 adds oauth and service_account
+type CallPrincipalKind string
+
+// CallRef defines model for CallRef.
+type CallRef struct {
+	Exists bool               `json:"exists"`
+	Id     openapi_types.UUID `json:"id"`
+	Name   string             `json:"name"`
+	Slug   string             `json:"slug"`
+}
+
 // Capabilities defines model for Capabilities.
 type Capabilities struct {
 	PlatformAdmin   bool `json:"platformAdmin"`
@@ -604,6 +855,187 @@ type ErrorResponse struct {
 	} `json:"error"`
 }
 
+// Gateway defines model for Gateway.
+type Gateway struct {
+	// CapabilityCount Selected capabilities
+	CapabilityCount int64     `json:"capabilityCount"`
+	CreatedAt       time.Time `json:"createdAt"`
+	Description     string    `json:"description"`
+
+	// Enabled Turned off, the endpoint answers 404 to everyone
+	Enabled bool `json:"enabled"`
+
+	// GrantCount Platform gateways' grants (0 for team gateways)
+	GrantCount int64              `json:"grantCount"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Name Example: Support tools
+	Name      string           `json:"name"`
+	OwnerKind GatewayOwnerKind `json:"ownerKind"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision Revision `json:"revision"`
+
+	// Slug Immutable; the gateway's endpoint is /mcp/{slug}
+	//
+	// Example: support-tools
+	Slug string `json:"slug"`
+
+	// TeamId Team gateways only
+	TeamId   *openapi_types.UUID `json:"teamId,omitempty"`
+	TeamName *string             `json:"teamName,omitempty"`
+	TeamSlug *string             `json:"teamSlug,omitempty"`
+
+	// UnavailableCount Selected capabilities not served right now (see GatewayCapability.unavailableReason)
+	UnavailableCount int64     `json:"unavailableCount"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+
+	// Url The full MCP endpoint, APP_URL + /mcp/{slug}
+	//
+	// Example: https://mcp.example.com/mcp/support-tools
+	Url string `json:"url"`
+}
+
+// GatewayCapabilities defines model for GatewayCapabilities.
+type GatewayCapabilities struct {
+	Items []GatewayCapability `json:"items"`
+
+	// Revision The gateway's revision
+	Revision Revision `json:"revision"`
+}
+
+// GatewayCapabilitiesUpdate defines model for GatewayCapabilitiesUpdate.
+type GatewayCapabilitiesUpdate struct {
+	Items []GatewayCapabilitySelection `json:"items"`
+}
+
+// GatewayCapability defines model for GatewayCapability.
+type GatewayCapability struct {
+	Available    bool               `json:"available"`
+	CapabilityId openapi_types.UUID `json:"capabilityId"`
+	Description  string             `json:"description"`
+
+	// ExposedName The name clients see, {serverSlug}__{name}
+	//
+	// Example: service-status__check_outage
+	ExposedName string `json:"exposedName"`
+
+	// Kind Phase 3 serves tools and prompts; resources come later
+	Kind GatewayCapabilityKind `json:"kind"`
+
+	// MinRole Team gateways only; the lowest team role that may use it (null = every member)
+	MinRole *TeamRole `json:"minRole,omitempty"`
+
+	// Name The name the server uses
+	Name       string             `json:"name"`
+	ServerId   openapi_types.UUID `json:"serverId"`
+	ServerName string             `json:"serverName"`
+	ServerSlug string             `json:"serverSlug"`
+
+	// TeamSlug The server's team
+	TeamSlug string `json:"teamSlug"`
+	Title    string `json:"title"`
+
+	// UnavailableReason server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it.
+	UnavailableReason *GatewayUnavailableReason `json:"unavailableReason,omitempty"`
+}
+
+// GatewayCapabilityKind Phase 3 serves tools and prompts; resources come later
+type GatewayCapabilityKind string
+
+// GatewayCapabilitySelection defines model for GatewayCapabilitySelection.
+type GatewayCapabilitySelection struct {
+	CapabilityId openapi_types.UUID `json:"capabilityId"`
+	MinRole      *TeamRole          `json:"minRole,omitempty"`
+}
+
+// GatewayCreate defines model for GatewayCreate.
+type GatewayCreate struct {
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Name        string  `json:"name"`
+
+	// Slug Unique across the platform, immutable
+	Slug string `json:"slug"`
+}
+
+// GatewayGrant defines model for GatewayGrant.
+type GatewayGrant struct {
+	AddedByName *string   `json:"addedByName,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+
+	// Group The IdP group name, as in the groups claim
+	Group       *string                 `json:"group,omitempty"`
+	Id          openapi_types.UUID      `json:"id"`
+	SubjectKind GatewayGrantSubjectKind `json:"subjectKind"`
+	Team        *GrantTeam              `json:"team,omitempty"`
+	User        *MemberUser             `json:"user,omitempty"`
+}
+
+// GatewayGrantCreate Exactly one of team, userEmail or group, matching subjectKind
+type GatewayGrantCreate struct {
+	Group       *string                 `json:"group,omitempty"`
+	SubjectKind GatewayGrantSubjectKind `json:"subjectKind"`
+
+	// Team Team slug or ID
+	Team *string `json:"team,omitempty"`
+
+	// UserEmail An existing user's email
+	UserEmail *string `json:"userEmail,omitempty"`
+}
+
+// GatewayGrantSubjectKind defines model for GatewayGrantSubjectKind.
+type GatewayGrantSubjectKind string
+
+// GatewayOption defines model for GatewayOption.
+type GatewayOption struct {
+	CapabilityId openapi_types.UUID `json:"capabilityId"`
+	Description  string             `json:"description"`
+	ExposedName  string             `json:"exposedName"`
+
+	// Kind Phase 3 serves tools and prompts; resources come later
+	Kind       GatewayCapabilityKind `json:"kind"`
+	Name       string                `json:"name"`
+	ServerId   openapi_types.UUID    `json:"serverId"`
+	ServerName string                `json:"serverName"`
+	ServerSlug string                `json:"serverSlug"`
+
+	// Source team: the gateway team's own server; catalog: a published server
+	Source   GatewayOptionSource `json:"source"`
+	TeamName string              `json:"teamName"`
+	TeamSlug string              `json:"teamSlug"`
+	Title    string              `json:"title"`
+}
+
+// GatewayOptionSource team: the gateway team's own server; catalog: a published server
+type GatewayOptionSource string
+
+// GatewayOwnerKind defines model for GatewayOwnerKind.
+type GatewayOwnerKind string
+
+// GatewayPage defines model for GatewayPage.
+type GatewayPage struct {
+	Items      []Gateway `json:"items"`
+	NextCursor *string   `json:"nextCursor,omitempty"`
+}
+
+// GatewayUnavailableReason server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it.
+type GatewayUnavailableReason string
+
+// GatewayUpdate defines model for GatewayUpdate.
+type GatewayUpdate struct {
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Name        *string `json:"name,omitempty"`
+}
+
+// GrantTeam defines model for GrantTeam.
+type GrantTeam struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+	Slug string             `json:"slug"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Checks map[string]string `json:"checks"`
@@ -650,6 +1082,40 @@ type Invite struct {
 	Id        openapi_types.UUID  `json:"id"`
 	InvitedBy *openapi_types.UUID `json:"invitedBy,omitempty"`
 	Role      TeamRole            `json:"role"`
+}
+
+// McpCall defines model for McpCall.
+type McpCall struct {
+	// ClientName clientInfo.name from initialize, when sent
+	ClientName *string `json:"clientName,omitempty"`
+	ErrorClass *string `json:"errorClass,omitempty"`
+
+	// ExposedName The tool or prompt name the client used (absent for list calls)
+	ExposedName *string `json:"exposedName,omitempty"`
+	Gateway     CallRef `json:"gateway"`
+	Id          int64   `json:"id"`
+	LatencyMs   int32   `json:"latencyMs"`
+
+	// Method Example: tools/call
+	Method     string    `json:"method"`
+	OccurredAt time.Time `json:"occurredAt"`
+
+	// Outcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
+	Outcome       McpCallOutcome `json:"outcome"`
+	Principal     CallPrincipal  `json:"principal"`
+	RequestBytes  int64          `json:"requestBytes"`
+	RequestId     string         `json:"requestId"`
+	ResponseBytes int64          `json:"responseBytes"`
+	Server        *CallRef       `json:"server,omitempty"`
+}
+
+// McpCallOutcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
+type McpCallOutcome string
+
+// McpCallPage defines model for McpCallPage.
+type McpCallPage struct {
+	Items      []McpCall `json:"items"`
+	NextCursor *string   `json:"nextCursor,omitempty"`
 }
 
 // McpCapability A tool, resource, resource template or prompt as the server listed it. Descriptions and schemas are untrusted text a model will read: review them before approving.
@@ -905,6 +1371,33 @@ type MemberUser struct {
 	Status      UserStatus         `json:"status"`
 }
 
+// MyGateway defines model for MyGateway.
+type MyGateway struct {
+	// Access Why the caller may use it (at least one)
+	Access []MyGatewayAccess `json:"access"`
+
+	// CapabilityCount Capabilities it offers the caller right now
+	CapabilityCount int64              `json:"capabilityCount"`
+	Description     string             `json:"description"`
+	Id              openapi_types.UUID `json:"id"`
+	Name            string             `json:"name"`
+	OwnerKind       GatewayOwnerKind   `json:"ownerKind"`
+	Slug            string             `json:"slug"`
+	TeamName        *string            `json:"teamName,omitempty"`
+	TeamSlug        *string            `json:"teamSlug,omitempty"`
+	Url             string             `json:"url"`
+}
+
+// MyGatewayAccess defines model for MyGatewayAccess.
+type MyGatewayAccess string
+
+// MyGatewayDetail defines model for MyGatewayDetail.
+type MyGatewayDetail struct {
+	// Capabilities Available to the caller now (role and availability applied)
+	Capabilities []GatewayCapability `json:"capabilities"`
+	Gateway      MyGateway           `json:"gateway"`
+}
+
 // MyTeam defines model for MyTeam.
 type MyTeam struct {
 	Id     openapi_types.UUID `json:"id"`
@@ -1117,6 +1610,18 @@ type AuditTargetTypeParam = string
 // AuditToParam defines model for AuditToParam.
 type AuditToParam = time.Time
 
+// CallGatewayParam defines model for CallGatewayParam.
+type CallGatewayParam = openapi_types.UUID
+
+// CallOutcomeParam ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
+type CallOutcomeParam = McpCallOutcome
+
+// CallServerParam defines model for CallServerParam.
+type CallServerParam = openapi_types.UUID
+
+// CallUserParam defines model for CallUserParam.
+type CallUserParam = openapi_types.UUID
+
 // CapabilityIdParam defines model for CapabilityIdParam.
 type CapabilityIdParam = openapi_types.UUID
 
@@ -1125,6 +1630,9 @@ type CapabilityKindParam = CapabilityKind
 
 // CursorParam defines model for CursorParam.
 type CursorParam = string
+
+// GatewayIdParam defines model for GatewayIdParam.
+type GatewayIdParam = openapi_types.UUID
 
 // IfMatchHeader defines model for IfMatchHeader.
 type IfMatchHeader = string
@@ -1155,6 +1663,11 @@ type ErrorReply = ErrorResponse
 // HealthReply defines model for HealthReply.
 type HealthReply struct {
 	Data Health `json:"data"`
+}
+
+// McpCallPageReply defines model for McpCallPageReply.
+type McpCallPageReply struct {
+	Data McpCallPage `json:"data"`
 }
 
 // OkReply defines model for OkReply.
@@ -1196,6 +1709,65 @@ type AdminListAuditParams struct {
 
 // AdminListAuditParamsActorKind defines parameters for AdminListAudit.
 type AdminListAuditParamsActorKind string
+
+// AdminListCallsParams defines parameters for AdminListCalls.
+type AdminListCallsParams struct {
+	// Gateway Gateway ID
+	Gateway *CallGatewayParam `form:"gateway,omitempty" json:"gateway,omitempty"`
+
+	// Server MCP server ID
+	Server  *CallServerParam  `form:"server,omitempty" json:"server,omitempty"`
+	Outcome *CallOutcomeParam `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// User Only calls made by this person (any credential)
+	User *CallUserParam `form:"user,omitempty" json:"user,omitempty"`
+
+	// Team Team slug or ID (calls through its gateways or to its servers)
+	Team *string `form:"team,omitempty" json:"team,omitempty"`
+
+	// From Entries at or after this time
+	From *AuditFromParam `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Entries before this time (exclusive)
+	To *AuditToParam `form:"to,omitempty" json:"to,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminListGatewayOptionsParams defines parameters for AdminListGatewayOptions.
+type AdminListGatewayOptionsParams struct {
+	// Q Case-insensitive substring match
+	Q    *SearchParam           `form:"q,omitempty" json:"q,omitempty"`
+	Kind *GatewayCapabilityKind `form:"kind,omitempty" json:"kind,omitempty"`
+}
+
+// AdminListGatewaysParams defines parameters for AdminListGateways.
+type AdminListGatewaysParams struct {
+	// Q Case-insensitive substring match
+	Q         *SearchParam      `form:"q,omitempty" json:"q,omitempty"`
+	OwnerKind *GatewayOwnerKind `form:"ownerKind,omitempty" json:"ownerKind,omitempty"`
+
+	// Team Team slug or ID (team gateways of that team)
+	Team *string `form:"team,omitempty" json:"team,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminUpdateGatewayParams defines parameters for AdminUpdateGateway.
+type AdminUpdateGatewayParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
+// AdminSetGatewayCapabilitiesParams defines parameters for AdminSetGatewayCapabilities.
+type AdminSetGatewayCapabilitiesParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
 
 // AdminListMcpServersParams defines parameters for AdminListMcpServers.
 type AdminListMcpServersParams struct {
@@ -1311,6 +1883,58 @@ type ListTeamAuditParams struct {
 // ListTeamAuditParamsActorKind defines parameters for ListTeamAudit.
 type ListTeamAuditParamsActorKind string
 
+// ListTeamCallsParams defines parameters for ListTeamCalls.
+type ListTeamCallsParams struct {
+	// Gateway Gateway ID
+	Gateway *CallGatewayParam `form:"gateway,omitempty" json:"gateway,omitempty"`
+
+	// Server MCP server ID
+	Server  *CallServerParam  `form:"server,omitempty" json:"server,omitempty"`
+	Outcome *CallOutcomeParam `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// User Only calls made by this person (any credential)
+	User *CallUserParam `form:"user,omitempty" json:"user,omitempty"`
+
+	// From Entries at or after this time
+	From *AuditFromParam `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Entries before this time (exclusive)
+	To *AuditToParam `form:"to,omitempty" json:"to,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTeamGatewayOptionsParams defines parameters for ListTeamGatewayOptions.
+type ListTeamGatewayOptionsParams struct {
+	// Q Case-insensitive substring match
+	Q    *SearchParam           `form:"q,omitempty" json:"q,omitempty"`
+	Kind *GatewayCapabilityKind `form:"kind,omitempty" json:"kind,omitempty"`
+}
+
+// ListTeamGatewaysParams defines parameters for ListTeamGateways.
+type ListTeamGatewaysParams struct {
+	// Q Case-insensitive substring match
+	Q *SearchParam `form:"q,omitempty" json:"q,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// UpdateTeamGatewayParams defines parameters for UpdateTeamGateway.
+type UpdateTeamGatewayParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
+// SetTeamGatewayCapabilitiesParams defines parameters for SetTeamGatewayCapabilities.
+type SetTeamGatewayCapabilitiesParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // ListTeamMcpServersParams defines parameters for ListTeamMcpServers.
 type ListTeamMcpServersParams struct {
 	// Q Case-insensitive substring match
@@ -1341,6 +1965,18 @@ type UpdateMemberParams struct {
 // DevLoginJSONRequestBody defines body for DevLogin for application/json ContentType.
 type DevLoginJSONRequestBody = DevLoginRequest
 
+// AdminCreateGatewayJSONRequestBody defines body for AdminCreateGateway for application/json ContentType.
+type AdminCreateGatewayJSONRequestBody = GatewayCreate
+
+// AdminUpdateGatewayJSONRequestBody defines body for AdminUpdateGateway for application/json ContentType.
+type AdminUpdateGatewayJSONRequestBody = GatewayUpdate
+
+// AdminSetGatewayCapabilitiesJSONRequestBody defines body for AdminSetGatewayCapabilities for application/json ContentType.
+type AdminSetGatewayCapabilitiesJSONRequestBody = GatewayCapabilitiesUpdate
+
+// AdminAddGatewayGrantJSONRequestBody defines body for AdminAddGatewayGrant for application/json ContentType.
+type AdminAddGatewayGrantJSONRequestBody = GatewayGrantCreate
+
 // AdminReviewMcpServerJSONRequestBody defines body for AdminReviewMcpServer for application/json ContentType.
 type AdminReviewMcpServerJSONRequestBody = McpPublishReview
 
@@ -1361,6 +1997,18 @@ type AdminUpdateTeamPublishingJSONRequestBody = TeamPublishingUpdate
 
 // AdminUpdateUserJSONRequestBody defines body for AdminUpdateUser for application/json ContentType.
 type AdminUpdateUserJSONRequestBody = UserUpdate
+
+// CreateMyApiKeyJSONRequestBody defines body for CreateMyApiKey for application/json ContentType.
+type CreateMyApiKeyJSONRequestBody = ApiKeyCreate
+
+// CreateTeamGatewayJSONRequestBody defines body for CreateTeamGateway for application/json ContentType.
+type CreateTeamGatewayJSONRequestBody = GatewayCreate
+
+// UpdateTeamGatewayJSONRequestBody defines body for UpdateTeamGateway for application/json ContentType.
+type UpdateTeamGatewayJSONRequestBody = GatewayUpdate
+
+// SetTeamGatewayCapabilitiesJSONRequestBody defines body for SetTeamGatewayCapabilities for application/json ContentType.
+type SetTeamGatewayCapabilitiesJSONRequestBody = GatewayCapabilitiesUpdate
 
 // CreateTeamMcpServerJSONRequestBody defines body for CreateTeamMcpServer for application/json ContentType.
 type CreateTeamMcpServerJSONRequestBody = McpServerCreate

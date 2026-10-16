@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "@tanstack/react-router";
-import { Boxes, Home, Library, Shield, User } from "lucide-react";
-import { adminServerQuery, adminTeamQuery, adminUserQuery, catalogServerQuery, teamQuery, teamServerQuery } from "../../api/queries";
+import { Boxes, Home, KeyRound, Library, Network, Shield, User } from "lucide-react";
+import { adminGatewayQuery, adminServerQuery, adminTeamQuery, adminUserQuery, catalogServerQuery, myGatewayQuery, teamGatewayQuery, teamQuery, teamServerQuery } from "../../api/queries";
 import { terms } from "../../lib/terms";
 import { type BreadcrumbItem } from "@/components/ui/breadcrumbs/breadcrumbs";
 import { VisuallyHidden } from "@/components/ui/visually-hidden/visually-hidden";
@@ -62,10 +62,23 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
   const teamServer = useQuery({ ...teamServerQuery(slug ?? "", serverId ?? ""), enabled: !!slug && !!serverId });
   const adminServer = useQuery({ ...adminServerQuery(serverId ?? ""), enabled: canAdmin && !!serverId && routeId === "/app/admin/servers/$serverId" });
   const catalogServer = useQuery({ ...catalogServerQuery(serverId ?? ""), enabled: !!serverId && routeId === "/app/catalog/$serverId" });
+  // A gateway's name, likewise.
+  const gatewayId = routeId.endsWith("/gateways/$gatewayId") ? params.gatewayId : undefined;
+  const teamGateway = useQuery({ ...teamGatewayQuery(slug ?? "", gatewayId ?? ""), enabled: !!slug && !!gatewayId });
+  const adminGateway = useQuery({ ...adminGatewayQuery(gatewayId ?? ""), enabled: canAdmin && !!gatewayId && routeId === "/app/admin/gateways/$gatewayId" });
+  const myGateway = useQuery({ ...myGatewayQuery(gatewayId ?? ""), enabled: !!gatewayId && routeId === "/app/gateways/$gatewayId" });
 
   if (routeId === "/app/") return [{ label: terms.home, icon: icon(Home) }];
   // From the account menu: the page itself, not "Home".
   if (routeId === "/app/settings/profile") return [{ label: "Profile", icon: icon(User) }];
+  if (routeId === "/app/settings/api-keys") return [{ label: terms.apiKeys, icon: icon(KeyRound) }];
+  if (routeId === "/app/gateways") return [{ label: terms.myGateways, icon: icon(Network) }];
+  if (routeId === "/app/gateways/$gatewayId") {
+    return [
+      { label: terms.myGateways, icon: icon(Network), render: <Link to="/gateways" /> },
+      ...(isNotFound(myGateway.error) ? [] : [{ label: myGateway.data?.gateway.name ?? <VisuallyHidden>Gateway</VisuallyHidden> }]),
+    ];
+  }
   if (routeId === "/app/catalog") return [{ label: terms.catalog, icon: icon(Library) }];
   if (routeId === "/app/catalog/$serverId") {
     return [
@@ -86,6 +99,11 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
       if (!isNotFound(teamServer.error)) crumbs.push({ label: teamServer.data?.name ?? <VisuallyHidden>Server</VisuallyHidden> });
       return crumbs;
     }
+    if (sub === "/gateways/$gatewayId") {
+      crumbs.push({ label: terms.gateways, render: <Link to="/teams/$team/gateways" params={{ team: slug }} /> });
+      if (!isNotFound(teamGateway.error)) crumbs.push({ label: teamGateway.data?.name ?? <VisuallyHidden>Gateway</VisuallyHidden> });
+      return crumbs;
+    }
     // The team page's own label from the navigation ("Overview", "Team settings"); an unknown page adds nothing (the not-found tail follows).
     const page = teamNavFor(me, slug).find((n) => n.to.slice("/teams/$team".length) === (sub === "/" ? "" : sub));
     if (page) crumbs.push({ label: page.label });
@@ -102,6 +120,11 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
       crumbs.push(
         { label: terms.mcpServers, render: <Link to="/admin/servers" /> },
         ...(isNotFound(adminServer.error) ? [] : [{ label: adminServer.data?.name ?? <VisuallyHidden>Server</VisuallyHidden> }]),
+      );
+    } else if (routeId === "/app/admin/gateways/$gatewayId") {
+      crumbs.push(
+        { label: terms.gateways, render: <Link to="/admin/gateways" /> },
+        ...(isNotFound(adminGateway.error) ? [] : [{ label: adminGateway.data?.name ?? <VisuallyHidden>Gateway</VisuallyHidden> }]),
       );
     } else if (adminTeamSlug) {
       crumbs.push({ label: "Teams", render: <Link to="/admin/teams" /> }, ...(isNotFound(adminTeam.error) ? [] : [{ label: adminTeam.data?.team.name ?? adminTeamSlug }]));

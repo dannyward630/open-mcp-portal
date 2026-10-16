@@ -85,7 +85,7 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, userID uuid.UUID) erro
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
-SELECT sessions.id, sessions.user_id, sessions.token_digest, sessions.csrf_token, sessions.user_agent, sessions.client_ip, sessions.created_at, sessions.expires_at, users.id, users.oidc_issuer, users.oidc_subject, users.email, users.display_name, users.platform_role, users.status, users.claims, users.revision, users.created_at, users.updated_at, users.last_login_at
+SELECT sessions.id, sessions.user_id, sessions.token_digest, sessions.csrf_token, sessions.user_agent, sessions.client_ip, sessions.created_at, sessions.expires_at, users.id, users.oidc_issuer, users.oidc_subject, users.email, users.display_name, users.platform_role, users.status, users.claims, users.revision, users.created_at, users.updated_at, users.last_login_at, users.groups
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.token_digest = $1
@@ -121,12 +121,13 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenDigest string) (GetSe
 		&i.User.CreatedAt,
 		&i.User.UpdatedAt,
 		&i.User.LastLoginAt,
+		&i.User.Groups,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, oidc_issuer, oidc_subject, email, display_name, platform_role, status, claims, revision, created_at, updated_at, last_login_at FROM users WHERE id = $1
+SELECT id, oidc_issuer, oidc_subject, email, display_name, platform_role, status, claims, revision, created_at, updated_at, last_login_at, groups FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
@@ -145,6 +146,7 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastLoginAt,
+		&i.Groups,
 	)
 	return i, err
 }
@@ -227,7 +229,7 @@ const setPlatformRole = `-- name: SetPlatformRole :one
 UPDATE users
 SET platform_role = $1, revision = revision + 1, updated_at = now()
 WHERE id = $2
-RETURNING id, oidc_issuer, oidc_subject, email, display_name, platform_role, status, claims, revision, created_at, updated_at, last_login_at
+RETURNING id, oidc_issuer, oidc_subject, email, display_name, platform_role, status, claims, revision, created_at, updated_at, last_login_at, groups
 `
 
 type SetPlatformRoleParams struct {
@@ -251,6 +253,7 @@ func (q *Queries) SetPlatformRole(ctx context.Context, arg SetPlatformRoleParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastLoginAt,
+		&i.Groups,
 	)
 	return i, err
 }
@@ -277,15 +280,16 @@ func (q *Queries) TakeLoginState(ctx context.Context, stateDigest string) (Login
 }
 
 const upsertLoginUser = `-- name: UpsertLoginUser :one
-INSERT INTO users (oidc_issuer, oidc_subject, email, display_name, claims, last_login_at)
-VALUES ($1, $2, $3, $4, $5, now())
+INSERT INTO users (oidc_issuer, oidc_subject, email, display_name, claims, groups, last_login_at)
+VALUES ($1, $2, $3, $4, $5, $6::text[], now())
 ON CONFLICT (oidc_issuer, oidc_subject) DO UPDATE
 SET email         = EXCLUDED.email,
     display_name  = EXCLUDED.display_name,
     claims        = EXCLUDED.claims,
+    groups        = EXCLUDED.groups,
     last_login_at = now(),
     updated_at    = now()
-RETURNING id, oidc_issuer, oidc_subject, email, display_name, platform_role, status, claims, revision, created_at, updated_at, last_login_at
+RETURNING id, oidc_issuer, oidc_subject, email, display_name, platform_role, status, claims, revision, created_at, updated_at, last_login_at, groups
 `
 
 type UpsertLoginUserParams struct {
@@ -294,8 +298,10 @@ type UpsertLoginUserParams struct {
 	Email       string
 	DisplayName string
 	Claims      json.RawMessage
+	Groups      []string
 }
 
+// groups are the IdP groups of this sign-in (for gateway group grants).
 func (q *Queries) UpsertLoginUser(ctx context.Context, arg UpsertLoginUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, upsertLoginUser,
 		arg.OIDCIssuer,
@@ -303,6 +309,7 @@ func (q *Queries) UpsertLoginUser(ctx context.Context, arg UpsertLoginUserParams
 		arg.Email,
 		arg.DisplayName,
 		arg.Claims,
+		arg.Groups,
 	)
 	var i User
 	err := row.Scan(
@@ -318,6 +325,7 @@ func (q *Queries) UpsertLoginUser(ctx context.Context, arg UpsertLoginUserParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastLoginAt,
+		&i.Groups,
 	)
 	return i, err
 }

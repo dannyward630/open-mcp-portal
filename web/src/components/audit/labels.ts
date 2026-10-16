@@ -42,6 +42,14 @@ const actionLabels: Record<string, string> = {
   "mcp_server.unpublish": "Unpublished MCP server",
   "mcp_capability.approve": "Approved capability",
   "settings.publishing_update": "Changed default publishing policy",
+  "gateway.create": "Created gateway",
+  "gateway.update": "Changed gateway",
+  "gateway.delete": "Deleted gateway",
+  "gateway.capabilities_set": "Changed gateway capabilities",
+  "gateway.grant_add": "Granted gateway access",
+  "gateway.grant_remove": "Removed gateway access",
+  "api_key.create": "Created API key",
+  "api_key.revoke": "Revoked API key",
 };
 
 /** "Added member" for team.member_add; unknown actions are spelled out ("foo.bar_baz" → "Foo: bar baz"). */
@@ -54,13 +62,14 @@ export function actionLabel(action: string, _entry?: Partial<Pick<AuditEntry, "a
 }
 
 /**
- * Action groups for the filter; `platform` groups are only offered in the platform log. Later phases add theirs
- * (servers, catalog, gateways, keys).
+ * Action groups for the filter; `platform` groups are only offered in the platform log. Later phases add theirs.
  */
 export const actionGroups: { prefix: string; label: string; platform?: boolean }[] = [
   { prefix: "team.", label: "Team and members" },
   { prefix: "mcp_server.", label: "MCP servers" },
   { prefix: "mcp_capability.", label: "Capability approvals" },
+  { prefix: "gateway.", label: "Gateways" },
+  { prefix: "api_key.", label: "API keys", platform: true },
   { prefix: "settings.", label: "Platform settings", platform: true },
   { prefix: "platform.", label: "Platform and users", platform: true },
   { prefix: "auth.", label: "Sign-in", platform: true },
@@ -129,6 +138,9 @@ export const targetTypeLabels: Record<string, string> = {
   user: "User",
   mcp_server: "MCP server",
   mcp_capability: "Capability",
+  gateway: "Gateway",
+  gateway_grant: "Gateway grant",
+  api_key: "API key",
   platform_settings: "Platform settings",
 };
 

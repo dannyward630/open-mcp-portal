@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -24,7 +25,9 @@ import (
 //
 // RequireHeader makes it answer 401 to requests without a header;
 // SetDescription, Hide and AddTool change what tools/list returns (change
-// detection); SetPageSize makes every list paginate.
+// detection); SetPageSize makes every list paginate. EnableGatewayTools adds
+// whoami (the identity the gateway sent) and echo, and records every tool
+// call (ToolCalls) for gateway tests.
 type FakeMCP struct {
 	*httptest.Server
 
@@ -36,6 +39,23 @@ type FakeMCP struct {
 	extra        []string
 	pageSize     int
 	requests     int
+
+	gatewayTools bool
+	jwksURL      string
+	audience     string
+	toolCalls    []ToolCall
+	// OnToolCall, when set, sees every tool call (cmd/fakemcp logs them).
+	OnToolCall func(ToolCall)
+}
+
+// ToolCall is what the fake received with one tool call.
+type ToolCall struct {
+	Tool string
+	// Authorization and Identity are the Authorization and
+	// MCP-Gateway-Identity headers as received.
+	Authorization, Identity string
+	// Header is every request header.
+	Header http.Header
 }
 
 // FakeMCPTools is how many tools the fake lists by default; with the
@@ -118,6 +138,48 @@ func (f *FakeMCP) SetPageSize(n int) {
 	f.pageSize = n
 }
 
+// EnableGatewayTools adds the tools whoami and echo {text}. whoami returns
+// the identity token it received as JSON: which header carried it, its
+// claims and, with SetJWKS, whether it verifies.
+func (f *FakeMCP) EnableGatewayTools() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gatewayTools = true
+}
+
+// SetJWKS makes whoami verify the token against the key set at url, for
+// audience.
+func (f *FakeMCP) SetJWKS(url, audience string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.jwksURL, f.audience = url, audience
+}
+
+// ToolCalls are the tool calls received so far.
+func (f *FakeMCP) ToolCalls() []ToolCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ToolCall(nil), f.toolCalls...)
+}
+
+func (f *FakeMCP) sawCall(tool string, h http.Header) {
+	c := ToolCall{Tool: tool, Authorization: h.Get("Authorization"), Identity: h.Get("MCP-Gateway-Identity"), Header: h.Clone()}
+	f.mu.Lock()
+	f.toolCalls = append(f.toolCalls, c)
+	hook := f.OnToolCall
+	f.mu.Unlock()
+	if hook != nil {
+		hook(c)
+	}
+}
+
+func headerOf(req *mcp.CallToolRequest) http.Header {
+	if req.Extra == nil || req.Extra.Header == nil {
+		return http.Header{}
+	}
+	return req.Extra.Header
+}
+
 // Requests counts every HTTP request.
 func (f *FakeMCP) Requests() int {
 	f.mu.Lock()
@@ -160,8 +222,34 @@ func (f *FakeMCP) server() *mcp.Server {
 		}
 		name := t.Name
 		s.AddTool(t, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			f.sawCall(name, headerOf(req))
 			return fakeText(fmt.Sprintf("%s: ok", name)), nil
 		})
+	}
+	if f.gatewayTools {
+		jwksURL, audience := f.jwksURL, f.audience
+		describe := func(name, d string) string {
+			if v, ok := f.descriptions[name]; ok {
+				return v
+			}
+			return d
+		}
+		s.AddTool(&mcp.Tool{Name: "whoami", Title: "Who am I", Description: describe("whoami", "Shows the identity the gateway sent with this call."),
+			InputSchema: map[string]any{"type": "object"}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			h := headerOf(req)
+			f.sawCall("whoami", h)
+			out, _ := json.Marshal(Whoami(ctx, h, jwksURL, audience))
+			return fakeText(string(out)), nil
+		})
+		s.AddTool(&mcp.Tool{Name: "echo", Title: "Echo", Description: describe("echo", "Returns its text."), InputSchema: stringArg("text", "Any text")},
+			func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				f.sawCall("echo", headerOf(req))
+				var args struct {
+					Text string `json:"text"`
+				}
+				_ = json.Unmarshal(req.Params.Arguments, &args)
+				return fakeText(args.Text), nil
+			})
 	}
 	if !f.hidden["status://services"] {
 		s.AddResource(&mcp.Resource{URI: "status://services", Name: "services", Title: "Services", Description: "Every monitored service.",

@@ -1,10 +1,12 @@
 -- name: UpsertLoginUser :one
-INSERT INTO users (oidc_issuer, oidc_subject, email, display_name, claims, last_login_at)
-VALUES (@oidc_issuer, @oidc_subject, @email, @display_name, @claims, now())
+-- groups are the IdP groups of this sign-in (for gateway group grants).
+INSERT INTO users (oidc_issuer, oidc_subject, email, display_name, claims, groups, last_login_at)
+VALUES (@oidc_issuer, @oidc_subject, @email, @display_name, @claims, @groups::text[], now())
 ON CONFLICT (oidc_issuer, oidc_subject) DO UPDATE
 SET email         = EXCLUDED.email,
     display_name  = EXCLUDED.display_name,
     claims        = EXCLUDED.claims,
+    groups        = EXCLUDED.groups,
     last_login_at = now(),
     updated_at    = now()
 RETURNING *;

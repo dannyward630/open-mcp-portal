@@ -45,6 +45,10 @@ type Config struct {
 	EncryptionKey         string
 	EncryptionKeyPrevious string
 
+	// APIKeyPepper (32 bytes, base64) keys the HMAC under which personal
+	// API keys are stored; the keys themselves never are.
+	APIKeyPepper string
+
 	// HealthCheckInterval is how often enabled MCP servers are re-tested
 	// (0: never; one replica at a time).
 	HealthCheckInterval time.Duration
@@ -79,11 +83,14 @@ type Instance struct {
 const DefaultInstanceName = "Open MCP Gateway"
 
 type OIDC struct {
-	Issuer                string
-	ClientID              string
-	ClientSecret          string
-	Scopes                []string
-	EmailClaim            string
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+	Scopes       []string
+	EmailClaim   string
+	// GroupsClaim names the claim holding the person's IdP groups (for
+	// gateway group grants); "" stores none.
+	GroupsClaim           string
 	RequireVerifiedEmail  bool
 	AllowedEmailDomains   []string
 	BootstrapAdminSubject string
@@ -105,6 +112,7 @@ func Defaults() Config {
 		OIDC: OIDC{
 			Scopes:               []string{"openid", "profile", "email"},
 			EmailClaim:           "email",
+			GroupsClaim:          "groups",
 			RequireVerifiedEmail: true,
 		},
 		SessionTTL:             12 * time.Hour,

@@ -13,7 +13,9 @@ describe("the role badge", () => {
     expect(badge).toHaveTextContent("Your role: Editor");
     await userEvent.click(badge);
     const dialog = await screen.findByRole("dialog", { name: "What an editor can do" });
-    expect(within(dialog).getByText("Register and edit the team's MCP servers and gateways")).toBeInTheDocument();
+    expect(within(dialog).getByText("Register and edit the team's MCP servers")).toBeInTheDocument();
+    // Decision 16: owners and admins edit gateways, not editors.
+    expect(within(dialog).getByText("Create or change gateways")).toBeInTheDocument();
     expect(within(dialog).getByText("Manage members or invites")).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });

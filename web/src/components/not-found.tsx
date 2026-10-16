@@ -33,6 +33,7 @@ const titles = {
   user: { title: "User not found", body: "There's no user at this address, or the link is wrong." },
   object: { title: "Not found", body: "It may have been deleted, or the link is wrong." },
   server: { title: "Server not found", body: "There's no MCP server at this address: it may have been deleted, or the link is wrong." },
+  gateway: { title: "Gateway not found", body: "There's no gateway at this address that you can use: it may have been deleted, or the link is wrong." },
   /** A signed-in user without the platform role on an admin page (no admin data is requested). */
   forbidden: { title: "No access", body: "The admin portal is for platform admins and auditors." },
 };

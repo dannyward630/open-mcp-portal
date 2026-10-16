@@ -73,7 +73,7 @@ The loop runs at start-up and then every `HEALTH_CHECK_INTERVAL` (default `5m`, 
 
 ## Local fake server
 
-`make fake-mcp` starts `cmd/fakemcp` on `http://127.0.0.1:8091/mcp`. It has tools `check_outage`, `search_tickets` and `create_ticket`, the resource `status://services`, the template `status://services/{service}` and the prompt `incident_summary`. `-header`/`-value` make it require a header. `-describe tool=text` (or `FAKEMCP_DESCRIBE`, with entries separated by `;`) changes a tool's description, so the next refresh sees a change.
+`make fake-mcp` starts `cmd/fakemcp` on `http://127.0.0.1:8091/mcp`. It has tools `check_outage`, `search_tickets`, `create_ticket`, and for gateways `whoami` and `echo` (see [upstream-identity.md](upstream-identity.md); `-gateway-tools=false` leaves them out), the resource `status://services`, the template `status://services/{service}` and the prompt `incident_summary`. `-header`/`-value` make it require a header. `-describe tool=text` (or `FAKEMCP_DESCRIBE`, with entries separated by `;`) changes a tool's description, so the next refresh sees a change.
 
 ## API
 

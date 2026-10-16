@@ -842,6 +842,345 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/teams/{team}/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /** The team's gateways (members and above; platform staff read any team) */
+        get: operations["listTeamGateways"];
+        put?: never;
+        /**
+         * Create a team gateway (team owners and admins)
+         * @description 409 slug_taken when any gateway uses the slug. 409 team_archived.
+         */
+        post: operations["createTeamGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/gateways/{gatewayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        /** One of the team's gateways */
+        get: operations["getTeamGateway"];
+        put?: never;
+        post?: never;
+        /** Delete a team gateway (team owners and admins); its call records are kept */
+        delete: operations["deleteTeamGateway"];
+        options?: never;
+        head?: never;
+        /** Change a team gateway's name, description or switch (team owners and admins); the slug never changes */
+        patch: operations["updateTeamGateway"];
+        trace?: never;
+    };
+    "/v1/teams/{team}/gateways/{gatewayId}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        /** The gateway's selected capabilities, with whether each is available now */
+        get: operations["listTeamGatewayCapabilities"];
+        /**
+         * Replace the gateway's selection (team owners and admins); If-Match is the gateway's revision
+         * @description 422 capability_not_selectable (details.capabilityIds) when a capability is not offered by gateway-options (another team's private server, unapproved, gone, or a resource). 422 too_many (at most 200). 422 name_clash (details.exposedName) when two selected capabilities expose the same name.
+         */
+        put: operations["setTeamGatewayCapabilities"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/gateway-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Capabilities a team gateway may select (team owners and admins)
+         * @description Tools and prompts of the team's own enabled servers (any publish state, listed), plus approved, listed tools and prompts of published, enabled servers of other teams.
+         */
+        get: operations["listTeamGatewayOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /** Calls through the team's gateways or to the team's servers (team owners and admins; platform staff) */
+        get: operations["listTeamCalls"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every gateway, team and platform (platform admins and auditors) */
+        get: operations["adminListGateways"];
+        put?: never;
+        /**
+         * Create a platform gateway (platform admins)
+         * @description 409 slug_taken.
+         */
+        post: operations["adminCreateGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        /** Any gateway */
+        get: operations["adminGetGateway"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a platform gateway (platform admins); team gateways are deleted by their team
+         * @description 403 team_gateway for a team gateway.
+         */
+        delete: operations["adminDeleteGateway"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a platform gateway (platform admins); a team gateway can only be switched off here
+         * @description 403 team_gateway when changing anything but enabled on a team gateway.
+         */
+        patch: operations["adminUpdateGateway"];
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        /** Any gateway's selection */
+        get: operations["adminListGatewayCapabilities"];
+        /**
+         * Replace a platform gateway's selection (platform admins); If-Match is the gateway's revision
+         * @description Platform gateways may select approved, listed tools and prompts of published, enabled servers only, and minRole must be absent. Same 422 codes as the team operation; 403 team_gateway for a team gateway.
+         */
+        put: operations["adminSetGatewayCapabilities"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateway-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities a platform gateway may select (platform admins and auditors) */
+        get: operations["adminListGatewayOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        /** Who may use a platform gateway (platform admins and auditors) */
+        get: operations["adminListGatewayGrants"];
+        put?: never;
+        /**
+         * Grant a platform gateway to a team, a user or an SSO group (platform admins)
+         * @description 403 team_gateway for a team gateway. 409 grant_exists. 404 subject_not_found for an unknown team or user.
+         */
+        post: operations["adminAddGatewayGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}/grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a grant (platform admins); takes effect on the next call */
+        delete: operations["adminRemoveGatewayGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every call through every gateway (platform admins and auditors) */
+        get: operations["adminListCalls"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gateways the caller can connect to, and why */
+        get: operations["listMyGateways"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/gateways/{gatewayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        /** A gateway the caller can use, with the capabilities it offers them now */
+        get: operations["getMyGateway"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's API keys, including revoked and expired ones from the last 30 days */
+        get: operations["listMyApiKeys"];
+        put?: never;
+        /**
+         * Create a personal API key (browser session only); the secret is shown once
+         * @description 409 too_many_keys (at most 20 active keys per person). An API key can't create keys.
+         */
+        post: operations["createMyApiKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/api-keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke one of the caller's keys; takes effect on the next request */
+        delete: operations["revokeMyApiKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1406,6 +1745,277 @@ export interface components {
             server: components["schemas"]["CatalogServer"];
             capabilities: components["schemas"]["CatalogCapability"][];
         };
+        /** @enum {string} */
+        GatewayOwnerKind: "team" | "platform";
+        /**
+         * @description Phase 3 serves tools and prompts; resources come later
+         * @enum {string}
+         */
+        GatewayCapabilityKind: "tool" | "prompt";
+        Gateway: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Immutable; the gateway's endpoint is /mcp/{slug}
+             * @example support-tools
+             */
+            slug: string;
+            /** @example Support tools */
+            name: string;
+            description: string;
+            ownerKind: components["schemas"]["GatewayOwnerKind"];
+            /**
+             * Format: uuid
+             * @description Team gateways only
+             */
+            teamId?: string;
+            teamSlug?: string;
+            teamName?: string;
+            /** @description Turned off, the endpoint answers 404 to everyone */
+            enabled: boolean;
+            /**
+             * @description The full MCP endpoint, APP_URL + /mcp/{slug}
+             * @example https://mcp.example.com/mcp/support-tools
+             */
+            url: string;
+            /**
+             * Format: int64
+             * @description Selected capabilities
+             */
+            capabilityCount: number;
+            /**
+             * Format: int64
+             * @description Selected capabilities not served right now (see GatewayCapability.unavailableReason)
+             */
+            unavailableCount: number;
+            /**
+             * Format: int64
+             * @description Platform gateways' grants (0 for team gateways)
+             */
+            grantCount: number;
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        GatewayPage: {
+            items: components["schemas"]["Gateway"][];
+            nextCursor?: string | null;
+        };
+        GatewayCreate: {
+            /** @description Unique across the platform, immutable */
+            slug: string;
+            name: string;
+            description?: string;
+            /** @default true */
+            enabled: boolean;
+        };
+        GatewayUpdate: {
+            name?: string;
+            description?: string;
+            enabled?: boolean;
+        };
+        /**
+         * @description server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it.
+         * @enum {string}
+         */
+        GatewayUnavailableReason: "server_disabled" | "not_published" | "not_approved" | "changed" | "gone";
+        GatewayCapability: {
+            /** Format: uuid */
+            capabilityId: string;
+            /** Format: uuid */
+            serverId: string;
+            serverSlug: string;
+            serverName: string;
+            /** @description The server's team */
+            teamSlug: string;
+            kind: components["schemas"]["GatewayCapabilityKind"];
+            /** @description The name the server uses */
+            name: string;
+            /**
+             * @description The name clients see, {serverSlug}__{name}
+             * @example service-status__check_outage
+             */
+            exposedName: string;
+            title: string;
+            description: string;
+            /** @description Team gateways only; the lowest team role that may use it (null = every member) */
+            minRole?: components["schemas"]["TeamRole"] | null;
+            available: boolean;
+            unavailableReason?: components["schemas"]["GatewayUnavailableReason"];
+        };
+        GatewayCapabilities: {
+            /** @description The gateway's revision */
+            revision: components["schemas"]["Revision"];
+            items: components["schemas"]["GatewayCapability"][];
+        };
+        GatewayCapabilitySelection: {
+            /** Format: uuid */
+            capabilityId: string;
+            minRole?: components["schemas"]["TeamRole"];
+        };
+        GatewayCapabilitiesUpdate: {
+            items: components["schemas"]["GatewayCapabilitySelection"][];
+        };
+        GatewayOption: {
+            /** Format: uuid */
+            capabilityId: string;
+            /** Format: uuid */
+            serverId: string;
+            serverSlug: string;
+            serverName: string;
+            teamSlug: string;
+            teamName: string;
+            /**
+             * @description team: the gateway team's own server; catalog: a published server
+             * @enum {string}
+             */
+            source: "team" | "catalog";
+            kind: components["schemas"]["GatewayCapabilityKind"];
+            name: string;
+            exposedName: string;
+            title: string;
+            description: string;
+        };
+        /** @enum {string} */
+        GatewayGrantSubjectKind: "team" | "user" | "group";
+        GatewayGrant: {
+            /** Format: uuid */
+            id: string;
+            subjectKind: components["schemas"]["GatewayGrantSubjectKind"];
+            team?: components["schemas"]["GrantTeam"];
+            user?: components["schemas"]["MemberUser"];
+            /** @description The IdP group name, as in the groups claim */
+            group?: string;
+            /** Format: date-time */
+            createdAt: string;
+            addedByName?: string | null;
+        };
+        GrantTeam: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+        };
+        /** @description Exactly one of team, userEmail or group, matching subjectKind */
+        GatewayGrantCreate: {
+            subjectKind: components["schemas"]["GatewayGrantSubjectKind"];
+            /** @description Team slug or ID */
+            team?: string;
+            /** @description An existing user's email */
+            userEmail?: string;
+            group?: string;
+        };
+        /** @enum {string} */
+        MyGatewayAccess: "team_member" | "team_grant" | "user_grant" | "group_grant";
+        MyGateway: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            description: string;
+            ownerKind: components["schemas"]["GatewayOwnerKind"];
+            teamSlug?: string;
+            teamName?: string;
+            url: string;
+            /** @description Why the caller may use it (at least one) */
+            access: components["schemas"]["MyGatewayAccess"][];
+            /**
+             * Format: int64
+             * @description Capabilities it offers the caller right now
+             */
+            capabilityCount: number;
+        };
+        MyGatewayDetail: {
+            gateway: components["schemas"]["MyGateway"];
+            /** @description Available to the caller now (role and availability applied) */
+            capabilities: components["schemas"]["GatewayCapability"][];
+        };
+        ApiKey: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description The first characters of the key, to recognise it (omcp_xxxxxxxx) */
+            prefix: string;
+            /** @enum {string} */
+            status: "active" | "expired" | "revoked";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt?: string | null;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+            /** Format: date-time */
+            revokedAt?: string | null;
+        };
+        ApiKeyCreate: {
+            /** @example Claude Code on my laptop */
+            name: string;
+            /**
+             * Format: int32
+             * @description Keys always expire
+             * @default 90
+             */
+            expiresInDays: number;
+        };
+        ApiKeyCreated: {
+            key: components["schemas"]["ApiKey"];
+            /** @description The full key, shown only now. Send it as Authorization Bearer to /mcp/{slug}. */
+            secret: string;
+        };
+        /**
+         * @description ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
+         * @enum {string}
+         */
+        McpCallOutcome: "ok" | "tool_error" | "denied" | "upstream_error" | "timeout" | "too_large" | "bad_request";
+        McpCall: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            occurredAt: string;
+            /** @example tools/call */
+            method: string;
+            /** @description The tool or prompt name the client used (absent for list calls) */
+            exposedName?: string;
+            gateway: components["schemas"]["CallRef"];
+            server?: components["schemas"]["CallRef"];
+            principal: components["schemas"]["CallPrincipal"];
+            /** @description clientInfo.name from initialize, when sent */
+            clientName?: string;
+            outcome: components["schemas"]["McpCallOutcome"];
+            errorClass?: string;
+            /** Format: int32 */
+            latencyMs: number;
+            /** Format: int64 */
+            requestBytes: number;
+            /** Format: int64 */
+            responseBytes: number;
+            requestId: string;
+        };
+        CallRef: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            exists: boolean;
+        };
+        CallPrincipal: {
+            /**
+             * @description Phase 4 adds oauth and service_account
+             * @enum {string}
+             */
+            kind: "api_key";
+            /** Format: uuid */
+            userId: string;
+            displayName: string;
+            email: string;
+            apiKeyName?: string;
+        };
+        McpCallPage: {
+            items: components["schemas"]["McpCall"][];
+            nextCursor?: string | null;
+        };
     };
     responses: {
         /** @description A page of audit entries, newest first */
@@ -1450,6 +2060,17 @@ export interface components {
                 };
             };
         };
+        /** @description A page of calls, newest first */
+        McpCallPageReply: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["McpCallPage"];
+                };
+            };
+        };
     };
     parameters: {
         /** @description An exact action (team.member_add), or a prefix ending in a dot (team.) for every action in that group. */
@@ -1478,6 +2099,14 @@ export interface components {
         ServerIdParam: string;
         CapabilityIdParam: string;
         CapabilityKindParam: components["schemas"]["CapabilityKind"];
+        GatewayIdParam: string;
+        /** @description Gateway ID */
+        CallGatewayParam: string;
+        /** @description MCP server ID */
+        CallServerParam: string;
+        CallOutcomeParam: components["schemas"]["McpCallOutcome"];
+        /** @description Only calls made by this person (any credential) */
+        CallUserParam: string;
     };
     requestBodies: never;
     headers: {
@@ -2938,6 +3567,747 @@ export interface operations {
             404: components["responses"]["ErrorReply"];
             412: components["responses"]["ErrorReply"];
             428: components["responses"]["ErrorReply"];
+        };
+    };
+    listTeamGateways: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring match */
+                q?: components["parameters"]["SearchParam"];
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of gateways ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayPage"];
+                    };
+                };
+            };
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    createTeamGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Gateway"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Gateway"];
+                    };
+                };
+            };
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    deleteTeamGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    updateTeamGateway: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated gateway */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Gateway"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    listTeamGatewayCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Selection */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayCapabilities"];
+                    };
+                };
+            };
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    setTeamGatewayCapabilities: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayCapabilitiesUpdate"];
+            };
+        };
+        responses: {
+            /** @description The new selection */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayCapabilities"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    listTeamGatewayOptions: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring match */
+                q?: components["parameters"]["SearchParam"];
+                kind?: components["schemas"]["GatewayCapabilityKind"];
+            };
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Options ordered by server and name (at most 1000) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayOption"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    listTeamCalls: {
+        parameters: {
+            query?: {
+                /** @description Gateway ID */
+                gateway?: components["parameters"]["CallGatewayParam"];
+                /** @description MCP server ID */
+                server?: components["parameters"]["CallServerParam"];
+                outcome?: components["parameters"]["CallOutcomeParam"];
+                /** @description Only calls made by this person (any credential) */
+                user?: components["parameters"]["CallUserParam"];
+                /** @description Entries at or after this time */
+                from?: components["parameters"]["AuditFromParam"];
+                /** @description Entries before this time (exclusive) */
+                to?: components["parameters"]["AuditToParam"];
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["McpCallPageReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListGateways: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring match */
+                q?: components["parameters"]["SearchParam"];
+                ownerKind?: components["schemas"]["GatewayOwnerKind"];
+                /** @description Team slug or ID (team gateways of that team) */
+                team?: string;
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of gateways ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayPage"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminCreateGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Gateway"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Gateway"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminDeleteGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateGateway: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated gateway */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Gateway"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListGatewayCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Selection */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayCapabilities"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminSetGatewayCapabilities: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayCapabilitiesUpdate"];
+            };
+        };
+        responses: {
+            /** @description The new selection */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayCapabilities"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListGatewayOptions: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring match */
+                q?: components["parameters"]["SearchParam"];
+                kind?: components["schemas"]["GatewayCapabilityKind"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Options ordered by server and name (at most 1000) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayOption"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListGatewayGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grants */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayGrant"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminAddGatewayGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayGrantCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GatewayGrant"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    adminRemoveGatewayGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListCalls: {
+        parameters: {
+            query?: {
+                /** @description Gateway ID */
+                gateway?: components["parameters"]["CallGatewayParam"];
+                /** @description MCP server ID */
+                server?: components["parameters"]["CallServerParam"];
+                outcome?: components["parameters"]["CallOutcomeParam"];
+                /** @description Only calls made by this person (any credential) */
+                user?: components["parameters"]["CallUserParam"];
+                /** @description Team slug or ID (calls through its gateways or to its servers) */
+                team?: string;
+                /** @description Entries at or after this time */
+                from?: components["parameters"]["AuditFromParam"];
+                /** @description Entries before this time (exclusive) */
+                to?: components["parameters"]["AuditToParam"];
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["McpCallPageReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    listMyGateways: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateways ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MyGateway"][];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    getMyGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MyGatewayDetail"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    listMyApiKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Keys, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApiKey"][];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    createMyApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApiKeyCreated"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            401: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    revokeMyApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
         };
     };
 }

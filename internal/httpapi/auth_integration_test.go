@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -37,6 +38,12 @@ var testWeb = fstest.MapFS{
 // sign-in on (the test server's URL is loopback).
 func newTestApp(t *testing.T, mutate func(*config.Config)) *testApp {
 	t.Helper()
+	return newTestAppLog(t, mutate, testutil.Logger())
+}
+
+// newTestAppLog is newTestApp logging to log.
+func newTestAppLog(t *testing.T, mutate func(*config.Config), log *slog.Logger) *testApp {
+	t.Helper()
 	pool, _ := testutil.NewDB(t)
 	var handler http.Handler
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
@@ -45,7 +52,7 @@ func newTestApp(t *testing.T, mutate func(*config.Config)) *testApp {
 	cfg := config.Defaults()
 	cfg.AppURL, cfg.DevAuth = srv.URL, true
 	cfg.DatabaseURL = "unused"
-	cfg.EncryptionKey = testEncryptionKey
+	cfg.EncryptionKey, cfg.APIKeyPepper = testEncryptionKey, testEncryptionKey
 	cfg.RequestsPerMinute, cfg.LoginAttemptsPerMinute = 100_000, 100_000
 	if mutate != nil {
 		mutate(&cfg)
@@ -53,7 +60,7 @@ func newTestApp(t *testing.T, mutate func(*config.Config)) *testApp {
 	if err := cfg.Validate("serve"); err != nil {
 		t.Fatal(err)
 	}
-	deps, err := app.NewDeps(cfg, pool, testutil.Logger())
+	deps, err := app.NewDeps(cfg, pool, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +276,7 @@ func TestOIDCLoginFlow(t *testing.T) {
 	p.SetClaims(map[string]any{
 		"sub": "boss-sub", "email": "Boss@EXAMPLE.com", "email_verified": true,
 		"given_name": "Robin", "family_name": "Morgan", "department": []string{"platform"},
+		"groups": []any{"sre", "everyone", "", "sre", 7},
 	})
 	res, err := app.Client.Get(app.URL + "/auth/login?next=/admin/teams")
 	if err != nil {
@@ -287,6 +295,12 @@ func TestOIDCLoginFlow(t *testing.T) {
 		"SELECT claims->'department'->>0 FROM users WHERE email = 'boss@example.com'").Scan(&dept)
 	if err != nil || dept != "platform" {
 		t.Fatalf("claims not stored: %q %v", dept, err)
+	}
+	// The groups claim is stored (valid, distinct entries) for group grants.
+	var groups string
+	if err := app.Pool.QueryRow(context.Background(),
+		"SELECT array_to_string(groups, ',') FROM users WHERE email = 'boss@example.com'").Scan(&groups); err != nil || groups != "everyone,sre" {
+		t.Fatalf("groups = %q %v", groups, err)
 	}
 	// The sign-in state is single-use.
 	var pending int

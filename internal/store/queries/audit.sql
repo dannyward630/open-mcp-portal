@@ -50,6 +50,12 @@ CROSS JOIN LATERAL (
         WHEN 'mcp_server' THEN (SELECT s.name FROM mcp_servers s WHERE s.id = ids.target_uuid)
         WHEN 'mcp_capability' THEN (SELECT s.name || ' · ' || c.name FROM mcp_capabilities c JOIN mcp_servers s ON s.id = c.server_id
                                     WHERE c.id = ids.target_uuid)
+        WHEN 'gateway' THEN (SELECT g.name FROM gateways g WHERE g.id = ids.target_uuid)
+        WHEN 'gateway_grant' THEN (SELECT g.name || ' · ' || COALESCE(t.slug, u.email::text, gg.group_name)
+                                   FROM gateway_grants gg JOIN gateways g ON g.id = gg.gateway_id
+                                   LEFT JOIN teams t ON t.id = gg.team_id LEFT JOIN users u ON u.id = gg.user_id
+                                   WHERE gg.id = ids.target_uuid)
+        WHEN 'api_key' THEN (SELECT k.name FROM api_keys k WHERE k.id = ids.target_uuid)
         WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' END)
     END)::text AS label
 ) live

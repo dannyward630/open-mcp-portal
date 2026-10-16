@@ -20,6 +20,10 @@ export const terms = {
   mcpServers: "MCP servers",
   catalog: "Catalog",
   publishing: "Publishing",
+  gateways: "Gateways",
+  myGateways: "My gateways",
+  apiKeys: "API keys",
+  calls: "Calls",
 } as const;
 
 /** A switchable object's state. */

@@ -43,7 +43,7 @@ migrate: ## Apply migrations using .env
 	set -a && . ./.env && set +a && $(GO) run ./cmd/open-mcp-gateway migrate
 
 fake-mcp: ## Run a fake MCP server on http://127.0.0.1:8091/mcp (FAKEMCP_DESCRIBE='tool=text' changes a description)
-	$(GO) run ./cmd/fakemcp
+	$(GO) run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/jwks.json
 
 test: ## All Go tests; integration tests skip when Postgres is unreachable
 	$(GO) test -count=1 ./...

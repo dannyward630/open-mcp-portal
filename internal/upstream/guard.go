@@ -260,17 +260,26 @@ var ErrResponseTooLarge = errors.New("upstream: response too large")
 // headerTransport adds the static header, records error statuses and caps
 // response bodies.
 type headerTransport struct {
-	next        http.RoundTripper
-	header      string
-	value       string
-	maxResponse int64
-	ex          *exchange
+	next          http.RoundTripper
+	header        string
+	value         string
+	identity      string
+	identityValue string
+	maxResponse   int64
+	ex            *exchange
 }
 
 func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.header != "" {
+	if t.header != "" || t.identity != "" {
 		req = req.Clone(req.Context())
+	}
+	if t.header != "" {
 		req.Header.Set(t.header, t.value)
+	}
+	// The identity never replaces the server's own header: the caller picks
+	// a different header name when the static one is Authorization.
+	if t.identity != "" && !strings.EqualFold(t.identity, t.header) {
+		req.Header.Set(t.identity, t.identityValue)
 	}
 	res, err := t.next.RoundTrip(req)
 	if err != nil {
@@ -317,7 +326,8 @@ func (c *Client) httpClient(t Target, ex *exchange) (client *http.Client, done f
 		IdleConnTimeout:       30 * time.Second,
 	}
 	return &http.Client{
-		Transport: &headerTransport{next: tr, header: t.HeaderName, value: t.HeaderValue, maxResponse: c.maxResponse(), ex: ex},
+		Transport: &headerTransport{next: tr, header: t.HeaderName, value: t.HeaderValue, identity: t.IdentityHeader,
+			identityValue: t.IdentityValue, maxResponse: c.maxResponse(), ex: ex},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return fmt.Errorf("%w: MCP servers may not redirect", ErrBlockedAddress)
 		},

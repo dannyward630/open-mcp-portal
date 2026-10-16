@@ -23,12 +23,12 @@ export const roleAbilities: Record<TeamRole, { can: string[]; cannot: string[] }
     cannot: ["Create, rename or archive teams (platform admins do)"],
   },
   admin: {
-    can: ["Everything an editor can", "Add, change and remove members (not owners)", "Invite people who haven't signed in yet", "Manage the team's settings"],
+    can: ["Everything an editor can", "Create, edit and delete the team's gateways", "Add, change and remove members (not owners)", "Invite people who haven't signed in yet", "Manage the team's settings"],
     cannot: ["Manage owners"],
   },
   editor: {
-    can: ["Register and edit the team's MCP servers and gateways", "Read the team's audit log"],
-    cannot: ["Manage members or invites"],
+    can: ["Register and edit the team's MCP servers", "Read the team's audit log"],
+    cannot: ["Create or change gateways", "Manage members or invites"],
   },
   member: {
     can: ["Use the gateways granted to them", "See the team's members"],

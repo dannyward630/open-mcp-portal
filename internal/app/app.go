@@ -12,10 +12,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
 	"github.com/ncecere/open-mcp-gateway/internal/auth"
 	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
+	"github.com/ncecere/open-mcp-gateway/internal/calls"
 	"github.com/ncecere/open-mcp-gateway/internal/config"
+	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
+	"github.com/ncecere/open-mcp-gateway/internal/identity"
+	"github.com/ncecere/open-mcp-gateway/internal/mcpgw"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/secrets"
@@ -91,6 +96,7 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	defer stopLoops()
 	go cleanupLoop(loopCtx, deps.Auth, log)
 	go deps.Registry.HealthLoop(loopCtx, cfg.HealthCheckInterval, log)
+	go deps.Identity.RotationLoop(loopCtx, log)
 	if err := serve(ctx, srv, log); err != nil {
 		return err
 	}
@@ -108,6 +114,14 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	// The development allowance for MCP server addresses (DEV_AUTH on a
 	// loopback APP_URL); there is no setting for it in production.
 	client := &upstream.Client{AllowPrivate: cfg.AllowPrivateUpstreams(), Log: log}
+	pepper, err := secrets.ParseKey(cfg.APIKeyPepper)
+	if err != nil {
+		return httpapi.Deps{}, fmt.Errorf("API_KEY_PEPPER: %w", err)
+	}
+	reg := registry.New(pool, box, client, log)
+	gws := gateways.New(pool, cfg.AppURL, log)
+	keys := apikeys.New(pool, pepper)
+	ids := identity.New(pool, box, cfg.AppURL, log)
 	return httpapi.Deps{
 		Config:   cfg,
 		Pool:     pool,
@@ -115,7 +129,13 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 		Auth:     auth.NewService(cfg, pool, log),
 		Teams:    teams.NewService(pool),
 		Platform: platform.NewService(pool),
-		Registry: registry.New(pool, box, client, log),
+		Registry: reg,
+		Gateways: gws,
+		APIKeys:  keys,
+		Identity: ids,
+		Calls:    calls.New(pool),
+		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, Identity: ids, Registry: reg, Pool: pool,
+			AppURL: cfg.AppURL, Log: log},
 	}, nil
 }
 
