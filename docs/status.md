@@ -50,7 +50,7 @@ make test && make web-test
 
 ## Next steps
 
-1. First git commit (nothing is committed yet).
+1. Phase 3 (gateways). Phases 1–2 committed as f518e6b.
 2. Quick browser re-check of the Phase 2 fixes at 390px.
 3. `make docker`; Kubernetes manifests later (Phase 6).
 4. Phase 3: gateways, `/mcp/{slug}`, identity JWT + JWKS, call metadata. Needs SSO group claims back for
