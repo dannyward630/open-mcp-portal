@@ -50,7 +50,8 @@ make test && make web-test
 
 ## Next steps
 
-1. Phase 3 (gateways). Phases 1–2 committed as f518e6b.
+1. Phase 3 (gateways): design drafted in [phase3-gateways.md](phase3-gateways.md); **answer its 5 open questions**,
+   then add the contract to `api/openapi.yaml` and build. Phases 1–2 committed as f518e6b.
 2. Quick browser re-check of the Phase 2 fixes at 390px.
 3. `make docker`; Kubernetes manifests later (Phase 6).
 4. Phase 3: gateways, `/mcp/{slug}`, identity JWT + JWKS, call metadata. Needs SSO group claims back for
