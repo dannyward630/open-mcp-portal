@@ -1,0 +1,148 @@
+package auth
+
+import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ncecere/open-mcp-gateway/internal/config"
+)
+
+func TestSafeNext(t *testing.T) {
+	cases := map[string]string{
+		"":                              "/",
+		"/admin/teams":                  "/admin/teams",
+		"/teams/a?tab=members":          "/teams/a?tab=members",
+		"//evil.example":                "/",
+		"/\\evil.example":               "/",
+		"https://evil.example":          "/",
+		"relative":                      "/",
+		"/x\r\nSet-Cookie: a":           "/",
+		"/" + strings.Repeat("a", 2048): "/",
+	}
+	for in, want := range cases {
+		if got := safeNext(in); got != want {
+			t.Errorf("safeNext(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTruthyAndClaims(t *testing.T) {
+	if !truthy(true) || !truthy("TRUE") || truthy("yes") || truthy(1) || truthy(nil) {
+		t.Error("truthy wrong")
+	}
+	big := map[string]any{"sub": "x", "blob": strings.Repeat("a", maxClaimsSize)}
+	if got := string(boundedClaims(big)); !strings.Contains(got, `"_truncated":true`) || strings.Contains(got, "blob") {
+		t.Errorf("oversized claims kept: %.80s", got)
+	}
+}
+
+func newTestService(cfg config.Config) *Service {
+	return NewService(cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func TestOriginAllowed(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.AppURL, cfg.DevAuth = "http://localhost:8088", true
+	s := newTestService(cfg)
+	for origin, want := range map[string]bool{
+		"":                                   true, // non-browser client: the CSRF token still applies
+		"http://localhost:8088":              true,
+		"http://localhost:" + ViteDevPort:    true,
+		"http://127.0.0.1:" + ViteDevPort:    true,
+		"http://localhost:5173":              false,
+		"https://evil.example":               false,
+		"http://localhost:8088.evil.example": false,
+	} {
+		r := httptest.NewRequest("POST", "/auth/logout", nil)
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if got := s.originAllowed(r); got != want {
+			t.Errorf("origin %q allowed=%v want %v", origin, got, want)
+		}
+	}
+	// The Vite origin is a development convenience only.
+	cfg.AppURL, cfg.DevAuth = "https://mcp.example.com", false
+	s = newTestService(cfg)
+	r := httptest.NewRequest("POST", "/auth/logout", nil)
+	r.Header.Set("Origin", "http://localhost:"+ViteDevPort)
+	if s.originAllowed(r) {
+		t.Error("Vite origin allowed in production")
+	}
+}
+
+func TestSessionCookieName(t *testing.T) {
+	if SessionCookieName(true) != "__Host-omg_session" || SessionCookieName(false) != "omg_session" {
+		t.Error("cookie names changed")
+	}
+	cfg := config.Defaults()
+	cfg.AppURL = "https://mcp.example.com"
+	s := newTestService(cfg)
+	w := httptest.NewRecorder()
+	s.setSessionCookie(w, "secret")
+	c := w.Result().Cookies()[0]
+	if c.Name != "__Host-omg_session" || !c.Secure || !c.HttpOnly || c.Path != "/" || c.SameSite != http.SameSiteLaxMode || c.Domain != "" {
+		t.Errorf("cookie = %+v", c)
+	}
+}
+
+func TestDevLoginRefusals(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.AppURL, cfg.DevAuth = "http://localhost:8088", true
+	s := newTestService(cfg)
+	cases := []struct {
+		name, host, origin string
+		code               int
+	}{
+		{"other host", "evil.example", "", http.StatusForbidden},
+		{"cross-site origin", "localhost:8088", "https://evil.example", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		r := httptest.NewRequest("POST", "/auth/dev", strings.NewReader(`{"account":"admin"}`))
+		r.Host = tc.host
+		if tc.origin != "" {
+			r.Header.Set("Origin", tc.origin)
+		}
+		w := httptest.NewRecorder()
+		s.DevLogin(w, r)
+		if w.Code != tc.code {
+			t.Errorf("%s: %d %s", tc.name, w.Code, w.Body)
+		}
+	}
+	cfg.DevAuth = false
+	w := httptest.NewRecorder()
+	newTestService(cfg).DevLogin(w, httptest.NewRequest("POST", "/auth/dev", strings.NewReader(`{}`)))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("without DEV_AUTH: %d", w.Code)
+	}
+}
+
+func TestLimiter(t *testing.T) {
+	l := newLimiter()
+	now := time.Unix(1_000, 0)
+	l.now = func() time.Time { return now }
+	for i := range 3 {
+		if ok, _ := l.allow("k", 3, time.Minute); !ok {
+			t.Fatalf("event %d refused", i)
+		}
+	}
+	ok, wait := l.allow("k", 3, time.Minute)
+	if ok || wait != time.Minute {
+		t.Fatalf("4th event: ok=%v wait=%s", ok, wait)
+	}
+	if ok, _ := l.allow("other", 3, time.Minute); !ok {
+		t.Fatal("keys share a window")
+	}
+	now = now.Add(time.Minute)
+	if ok, _ := l.allow("k", 3, time.Minute); !ok {
+		t.Fatal("window did not reset")
+	}
+	if retryAfter(1500*time.Millisecond) != "2" || retryAfter(0) != "1" {
+		t.Error("retryAfter rounding")
+	}
+}

@@ -1,0 +1,2812 @@
+openapi: 3.0.3
+info:
+  title: Open MCP Gateway API
+  version: 0.1.0
+  description: 'Management API. Browser sessions authenticate with a cookie; writes need the session''s `X-CSRF-Token`
+    (from `GET /v1/me`) and a same-origin `Origin`. Success responses are `{"data": ...}` and errors `{"error":
+    {"code": "...", "message": "..."}}`.
+
+
+    Every route served by the application must be listed here; a test enforces it. MCP endpoints (`/mcp/{slug}`),
+    OAuth protocol endpoints and `/.well-known/*` are documented in docs/.
+
+    '
+tags:
+- name: operations
+- name: auth
+- name: me
+- name: teams
+- name: admin
+- name: mcp-servers
+  description: Team-owned MCP servers, discovery, health and publishing to the company catalog
+- name: catalog
+  description: Published MCP servers any signed-in person can browse
+paths:
+  /healthz:
+    get:
+      tags:
+      - operations
+      operationId: getHealthz
+      summary: Liveness probe
+      responses:
+        '200':
+          $ref: '#/components/responses/HealthReply'
+  /readyz:
+    get:
+      tags:
+      - operations
+      operationId: getReadyz
+      summary: Readiness probe (dependencies reachable and not draining)
+      responses:
+        '200':
+          $ref: '#/components/responses/HealthReply'
+        '503':
+          $ref: '#/components/responses/HealthReply'
+  /auth/login:
+    get:
+      tags:
+      - auth
+      operationId: startLogin
+      summary: Start single sign-on (redirects to the identity provider)
+      parameters:
+      - name: next
+        in: query
+        required: false
+        description: Same-origin path to return to after sign-in.
+        schema:
+          type: string
+      responses:
+        '302':
+          description: Redirect to the identity provider
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '429':
+          $ref: '#/components/responses/ErrorReply'
+        '503':
+          $ref: '#/components/responses/ErrorReply'
+  /auth/callback:
+    get:
+      tags:
+      - auth
+      operationId: completeLogin
+      summary: OIDC redirect target
+      responses:
+        '303':
+          description: Signed in; redirect into the app
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /auth/dev:
+    post:
+      tags:
+      - auth
+      operationId: devLogin
+      summary: Development sign-in (only when DEV_AUTH=true on a loopback APP_URL)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevLoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /auth/logout:
+    post:
+      tags:
+      - auth
+      operationId: logout
+      summary: End the current browser session
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/auth/config:
+    get:
+      tags:
+      - auth
+      operationId: getAuthConfig
+      summary: Sign-in methods and instance identity for the web UI
+      responses:
+        '200':
+          description: Sign-in configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthConfig'
+  /v1/me:
+    get:
+      tags:
+      - me
+      operationId: getMe
+      summary: The signed-in user, CSRF token and capabilities
+      parameters:
+      - name: optional
+        in: query
+        required: false
+        description: With true, a request without a session cookie gets data null (200) instead of a 401, for pages
+          that work signed out. An expired session is still a 401 (and clears the cookie).
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Current user (null only with optional=true and no session cookie)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    nullable: true
+                    allOf:
+                    - $ref: '#/components/schemas/Me'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams:
+    get:
+      tags:
+      - teams
+      operationId: listMyTeams
+      summary: Teams the caller belongs to
+      responses:
+        '200':
+          description: Memberships
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MyTeam'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - teams
+      operationId: getTeam
+      summary: A team the caller belongs to (platform admins and auditors see any team)
+      responses:
+        '200':
+          description: Team
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamView'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/members:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - teams
+      operationId: listMembers
+      summary: Team members
+      responses:
+        '200':
+          description: Members, owners first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Member'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - teams
+      operationId: addMember
+      summary: Add a member by email, or invite them if they have never signed in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberAdd'
+      responses:
+        '201':
+          description: Added or invited
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MemberAddResult'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/members/{userId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/UserIdParam'
+    patch:
+      tags:
+      - teams
+      operationId: updateMember
+      summary: Change a member's role
+      description: 409 last_owner for the team's only owner.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberUpdate'
+      responses:
+        '200':
+          description: Updated member
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Member'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - teams
+      operationId: removeMember
+      summary: Remove a member, or leave the team (your own user ID)
+      description: 409 last_owner for the team's only owner.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/invites:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - teams
+      operationId: listInvites
+      summary: Open email invites
+      responses:
+        '200':
+          description: Invites
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invite'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/invites/{inviteId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - name: inviteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    delete:
+      tags:
+      - teams
+      operationId: revokeInvite
+      summary: Revoke an open invite
+      description: Team owners and admins (within their role's reach), and platform admins for any open invite,
+        such as an owner invite sent from Admin -> Teams.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/audit:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - teams
+      operationId: listTeamAudit
+      summary: The team's audit log (owners, admins and editors)
+      parameters:
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - $ref: '#/components/parameters/AuditActionParam'
+      - $ref: '#/components/parameters/AuditExcludeActionParam'
+      - $ref: '#/components/parameters/AuditActorParam'
+      - $ref: '#/components/parameters/AuditActorKindParam'
+      - $ref: '#/components/parameters/AuditTargetTypeParam'
+      - $ref: '#/components/parameters/AuditFromParam'
+      - $ref: '#/components/parameters/AuditToParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/AuditPageReply'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/audit/{entryId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - name: entryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - teams
+      operationId: getTeamAuditEntry
+      summary: One entry of the team's audit log, for a linked entry (owners, admins and editors)
+      responses:
+        '200':
+          description: The entry
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuditEntry'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/users:
+    get:
+      tags:
+      - admin
+      operationId: adminListUsers
+      summary: All users (platform admins and auditors), with how many teams each belongs to
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - name: role
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/PlatformRole'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/UserStatus'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of users ordered by email
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserPage'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/users/{userId}:
+    parameters:
+    - $ref: '#/components/parameters/UserIdParam'
+    get:
+      tags:
+      - admin
+      operationId: adminGetUser
+      summary: A user and their team memberships
+      responses:
+        '200':
+          description: User
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserDetail'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - admin
+      operationId: adminUpdateUser
+      summary: Change a user's platform role or suspend/reactivate them
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Updated user
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/teams:
+    get:
+      tags:
+      - admin
+      operationId: adminListTeams
+      summary: All teams (platform admins and auditors)
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/TeamStatus'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of teams ordered by slug
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamPage'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - admin
+      operationId: adminCreateTeam
+      summary: Create a team and assign its first owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/teams/{team}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - admin
+      operationId: adminGetTeam
+      summary: A team with membership counts
+      responses:
+        '200':
+          description: Team
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamSummary'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - admin
+      operationId: adminUpdateTeam
+      summary: Change team details, or archive/unarchive it
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamUpdate'
+      responses:
+        '200':
+          description: Updated team
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamSummary'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/teams/{team}/owners:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    post:
+      tags:
+      - admin
+      operationId: adminAssignOwner
+      summary: Make someone an owner of a team (promotes, adds or invites)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerAssign'
+      responses:
+        '200':
+          description: Assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MemberAddResult'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/audit:
+    get:
+      tags:
+      - admin
+      operationId: adminListAudit
+      summary: The platform-wide audit log (platform admins and auditors)
+      parameters:
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - $ref: '#/components/parameters/AuditActionParam'
+      - $ref: '#/components/parameters/AuditExcludeActionParam'
+      - $ref: '#/components/parameters/AuditActorParam'
+      - $ref: '#/components/parameters/AuditActorKindParam'
+      - $ref: '#/components/parameters/AuditTargetTypeParam'
+      - $ref: '#/components/parameters/AuditFromParam'
+      - $ref: '#/components/parameters/AuditToParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/AuditPageReply'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/audit/{entryId}:
+    parameters:
+    - name: entryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - admin
+      operationId: adminGetAuditEntry
+      summary: One entry of the platform-wide audit log, for a linked entry (platform admins and auditors)
+      responses:
+        '200':
+          description: The entry
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuditEntry'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - mcp-servers
+      operationId: listTeamMcpServers
+      summary: The team's MCP servers (members and above; platform staff read any team)
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of servers ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServerPage'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - mcp-servers
+      operationId: createTeamMcpServer
+      summary: Register a remote MCP server (editors and above); reads its capabilities at once
+      description: 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused
+        (details.reason). The server is created even when discovery fails; refresh then says why.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpServerCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServerCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    get:
+      tags:
+      - mcp-servers
+      operationId: getTeamMcpServer
+      summary: One of the team's servers
+      responses:
+        '200':
+          description: Server
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServer'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - mcp-servers
+      operationId: updateTeamMcpServer
+      summary: Change a server's settings (editors and above); the slug never changes
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpServerUpdate'
+      responses:
+        '200':
+          description: Updated server
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServer'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - mcp-servers
+      operationId: deleteTeamMcpServer
+      summary: Delete a server and its capabilities (team owners and admins)
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/test:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    post:
+      tags:
+      - mcp-servers
+      operationId: testTeamMcpServer
+      summary: Connect and list capabilities without saving them (editors and above); stored as a health check
+      responses:
+        '200':
+          description: The test result (ok false is still 200)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpTestResult'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/refresh:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    post:
+      tags:
+      - mcp-servers
+      operationId: refreshTeamMcpServer
+      summary: Read the server's tools, resources, resource templates and prompts again (editors and above)
+      description: 502 discovery_failed (details is an McpTestResult) when the server can't be read.
+      responses:
+        '200':
+          description: What changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpRefreshResult'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '502':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/capabilities:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    get:
+      tags:
+      - mcp-servers
+      operationId: listTeamMcpCapabilities
+      summary: Everything the server listed at its last refresh, including gone capabilities
+      parameters:
+      - $ref: '#/components/parameters/CapabilityKindParam'
+      responses:
+        '200':
+          description: Capabilities ordered by kind and name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/McpCapability'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/capabilities/{capabilityId}/approval:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    - $ref: '#/components/parameters/CapabilityIdParam'
+    put:
+      tags:
+      - mcp-servers
+      operationId: approveTeamMcpCapability
+      summary: Approve a published server's changed capability (team owners and admins, only under self_publish)
+      description: 403 approval_required when the team's effective policy is approval_required (a platform admin
+        approves instead). 409 not_changed when the capability has no unapproved change; 409 capability_gone.
+      responses:
+        '200':
+          description: Approved capability
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpCapability'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/health-checks:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    get:
+      tags:
+      - mcp-servers
+      operationId: listTeamMcpHealthChecks
+      summary: The server's recent health checks, newest first (at most 50)
+      responses:
+        '200':
+          description: Health checks
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/McpHealthCheck'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/publish:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    post:
+      tags:
+      - mcp-servers
+      operationId: publishTeamMcpServer
+      summary: Publish to the company catalog (team owners and admins)
+      description: Under approval_required the server becomes pending until a platform admin reviews it; under self_publish
+        it is published at once and its current capabilities are approved. 409 not_refreshed when the server has
+        never been read; 409 already_published; 409 disabled.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpPublishRequest'
+      responses:
+        '200':
+          description: The server with its new publish state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServer'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/unpublish:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    post:
+      tags:
+      - mcp-servers
+      operationId: unpublishTeamMcpServer
+      summary: Withdraw a pending request or remove a published server from the catalog (team owners and admins)
+      responses:
+        '200':
+          description: The server, now private
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServer'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/publishing:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - mcp-servers
+      operationId: getTeamPublishing
+      summary: How this team's servers reach the company catalog
+      responses:
+        '200':
+          description: The team's publishing policy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamPublishing'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/catalog/servers:
+    get:
+      tags:
+      - catalog
+      operationId: listCatalogServers
+      summary: Published servers (any signed-in person)
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of published servers ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CatalogServerPage'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/catalog/servers/{serverId}:
+    parameters:
+    - $ref: '#/components/parameters/ServerIdParam'
+    get:
+      tags:
+      - catalog
+      operationId: getCatalogServer
+      summary: A published server and its approved, listed capabilities
+      responses:
+        '200':
+          description: Server
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CatalogServerDetail'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/mcp-servers:
+    get:
+      tags:
+      - admin
+      operationId: adminListMcpServers
+      summary: Every team's MCP servers (platform admins and auditors)
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - name: publishState
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/PublishState'
+      - name: changes
+        in: query
+        required: false
+        description: With true, only published servers with capabilities waiting for approval
+        schema:
+          type: boolean
+      - name: team
+        in: query
+        required: false
+        description: Team slug or ID
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of servers ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServerPage'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/mcp-servers/{serverId}:
+    parameters:
+    - $ref: '#/components/parameters/ServerIdParam'
+    get:
+      tags:
+      - admin
+      operationId: adminGetMcpServer
+      summary: Any team's server
+      responses:
+        '200':
+          description: Server
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServer'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/mcp-servers/{serverId}/capabilities:
+    parameters:
+    - $ref: '#/components/parameters/ServerIdParam'
+    get:
+      tags:
+      - admin
+      operationId: adminListMcpCapabilities
+      summary: Any server's capabilities
+      parameters:
+      - $ref: '#/components/parameters/CapabilityKindParam'
+      responses:
+        '200':
+          description: Capabilities ordered by kind and name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/McpCapability'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/mcp-servers/{serverId}/review:
+    parameters:
+    - $ref: '#/components/parameters/ServerIdParam'
+    post:
+      tags:
+      - admin
+      operationId: adminReviewMcpServer
+      summary: Approve or reject a pending server, or remove a published one from the catalog (platform admins)
+      description: approve (pending only) publishes it and approves its current capabilities. reject on a pending
+        server sets rejected; on a published server it removes it from the catalog (rejected). 409 invalid_state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpPublishReview'
+      responses:
+        '200':
+          description: The reviewed server
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpServer'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/mcp-servers/{serverId}/capabilities/{capabilityId}/approval:
+    parameters:
+    - $ref: '#/components/parameters/ServerIdParam'
+    - $ref: '#/components/parameters/CapabilityIdParam'
+    put:
+      tags:
+      - admin
+      operationId: adminApproveMcpCapability
+      summary: Approve a published server's changed capability (platform admins)
+      description: 409 not_changed when the capability has no unapproved change; 409 capability_gone.
+      responses:
+        '200':
+          description: Approved capability
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpCapability'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/settings/publishing:
+    get:
+      tags:
+      - admin
+      operationId: adminGetPublishingSettings
+      summary: The platform's default publishing policy (platform admins and auditors)
+      responses:
+        '200':
+          description: Settings
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PublishingSettings'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    put:
+      tags:
+      - admin
+      operationId: adminUpdatePublishingSettings
+      summary: Change the default publishing policy (platform admins)
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishingSettingsUpdate'
+      responses:
+        '200':
+          description: Updated settings
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PublishingSettings'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/teams/{team}/publishing:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - admin
+      operationId: adminGetTeamPublishing
+      summary: A team's publishing override (platform admins and auditors)
+      responses:
+        '200':
+          description: The team's publishing policy
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamPublishing'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    put:
+      tags:
+      - admin
+      operationId: adminUpdateTeamPublishing
+      summary: Set or clear a team's publishing override (platform admins); If-Match is the team's revision
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamPublishingUpdate'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamPublishing'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+components:
+  headers:
+    ETag:
+      description: Quoted revision, for If-Match on the next update
+      schema:
+        type: string
+  parameters:
+    AuditActionParam:
+      name: action
+      in: query
+      required: false
+      description: An exact action (team.member_add), or a prefix ending in a dot (team.) for every action in that
+        group.
+      schema:
+        type: string
+        maxLength: 100
+        pattern: ^[a-z][a-z_]*\.[a-z_]*$
+        example: team.
+    AuditActorKindParam:
+      name: actorKind
+      in: query
+      required: false
+      description: Only entries by the system
+      schema:
+        type: string
+        enum:
+        - system
+    AuditActorParam:
+      name: actorUserId
+      in: query
+      required: false
+      description: Only entries by this person (including their API keys)
+      schema:
+        type: string
+        format: uuid
+    AuditExcludeActionParam:
+      name: excludeAction
+      in: query
+      required: false
+      description: 'Action groups (prefixes ending in a dot, comma-separated) to leave out: auth. hides sign-ins
+        and sign-outs.'
+      schema:
+        type: string
+        maxLength: 100
+        pattern: ^[a-z][a-z_]*\.(,[a-z][a-z_]*\.)*$
+        example: auth.
+    AuditFromParam:
+      name: from
+      in: query
+      required: false
+      description: Entries at or after this time
+      schema:
+        type: string
+        format: date-time
+    AuditTargetTypeParam:
+      name: targetType
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 64
+        pattern: ^[a-z_]+$
+        example: team
+    AuditToParam:
+      name: to
+      in: query
+      required: false
+      description: Entries before this time (exclusive)
+      schema:
+        type: string
+        format: date-time
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      description: nextCursor from the previous page
+      schema:
+        type: string
+    IfMatchHeader:
+      name: If-Match
+      in: header
+      required: true
+      description: The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns
+        412.
+      schema:
+        type: string
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    SearchParam:
+      name: q
+      in: query
+      required: false
+      description: Case-insensitive substring match
+      schema:
+        type: string
+        maxLength: 200
+    TeamParam:
+      name: team
+      in: path
+      required: true
+      description: Team slug or ID
+      schema:
+        type: string
+    UserIdParam:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ServerIdParam:
+      name: serverId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CapabilityIdParam:
+      name: capabilityId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CapabilityKindParam:
+      name: kind
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/CapabilityKind'
+  responses:
+    AuditPageReply:
+      description: A page of audit entries, newest first
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - data
+            properties:
+              data:
+                $ref: '#/components/schemas/AuditPage'
+    ErrorReply:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    HealthReply:
+      description: Health status
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - data
+            properties:
+              data:
+                $ref: '#/components/schemas/Health'
+    OkReply:
+      description: Success
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - data
+            properties:
+              data:
+                $ref: '#/components/schemas/Ok'
+  schemas:
+    AuditActor:
+      type: object
+      description: Who made the change, resolved when the log is read
+      required:
+      - kind
+      properties:
+        kind:
+          type: string
+          enum:
+          - user
+          - api_key
+          - system
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+        apiKeyName:
+          type: string
+          description: The API key used (api_key actors)
+    AuditEntry:
+      type: object
+      required:
+      - id
+      - occurredAt
+      - actorKind
+      - actor
+      - action
+      - targetType
+      - targetId
+      - targetLabel
+      - targetExists
+      - metadata
+      - requestId
+      properties:
+        id:
+          type: integer
+          format: int64
+        occurredAt:
+          type: string
+          format: date-time
+        actorKind:
+          type: string
+          enum:
+          - user
+          - api_key
+          - system
+        actorUserId:
+          type: string
+          format: uuid
+          nullable: true
+        teamId:
+          type: string
+          format: uuid
+          nullable: true
+        teamName:
+          type: string
+          nullable: true
+          description: The team's name for a team's entry (null for platform entries, or when the team was deleted)
+        teamSlug:
+          type: string
+          nullable: true
+          description: The team's slug, with teamName
+        action:
+          type: string
+          example: team.member_add
+        actor:
+          $ref: '#/components/schemas/AuditActor'
+        targetType:
+          type: string
+        targetId:
+          type: string
+        targetLabel:
+          type: string
+          nullable: true
+          description: The target's current name, resolved when the log is read. For a deleted target, the last
+            name recorded in the audit log; null when none is known.
+        targetExists:
+          type: boolean
+          description: Whether the target still exists (deleted and soft-deleted targets are false)
+        before:
+          description: Configuration before the change
+          nullable: true
+        after:
+          description: Configuration after the change
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        requestId:
+          type: string
+        via:
+          allOf:
+          - $ref: '#/components/schemas/AuditVia'
+          nullable: true
+          description: How the person acted. Null for the systems entries.
+        clientIp:
+          type: string
+          nullable: true
+          description: The caller's address as recorded, in the platform log only (null in a team's log, or when
+            none was recorded).
+    AuditPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+        nextCursor:
+          type: string
+          nullable: true
+    AuditVia:
+      type: object
+      required:
+      - kind
+      properties:
+        kind:
+          type: string
+          enum:
+          - session
+          - api_key
+          - oauth
+          description: 'session: signed in to the web app; api_key: with an API key; oauth: through a connected
+            MCP client.'
+        name:
+          type: string
+          description: The API key's or the connected app's name, when known
+    AuthConfig:
+      type: object
+      required:
+      - oidcEnabled
+      - devAuthEnabled
+      - loginUrl
+      - devAccounts
+      - instance
+      properties:
+        instance:
+          $ref: '#/components/schemas/InstanceInfo'
+        oidcEnabled:
+          type: boolean
+        devAuthEnabled:
+          type: boolean
+        loginUrl:
+          type: string
+        devAccounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DevAccount'
+        teamRequestUrl:
+          type: string
+          nullable: true
+          description: Where people request a new team (only platform admins create teams)
+    Capabilities:
+      type: object
+      required:
+      - platformAdmin
+      - platformAuditor
+      properties:
+        platformAdmin:
+          type: boolean
+        platformAuditor:
+          type: boolean
+    DevAccount:
+      type: object
+      required:
+      - id
+      - name
+      - email
+      - platformRole
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        platformRole:
+          $ref: '#/components/schemas/PlatformRole'
+    DevLoginRequest:
+      type: object
+      required:
+      - account
+      properties:
+        account:
+          type: string
+          example: admin
+    ErrorResponse:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+              description: Structured context for some errors.
+    Health:
+      type: object
+      required:
+      - status
+      - checks
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          - draining
+          - unavailable
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+    InstanceInfo:
+      type: object
+      description: How this deployment presents itself (INSTANCE_NAME, ORG_NAME, UI_THEME, UI_LOGO_URL, SUPPORT_URL).
+      required:
+      - name
+      - orgName
+      - theme
+      - logoUrl
+      - supportUrl
+      properties:
+        name:
+          type: string
+          example: Open MCP Gateway
+          description: Product name shown in the UI and page titles
+        orgName:
+          type: string
+          example: Example Corp
+          description: Organisation name (empty when not configured)
+        theme:
+          type: string
+          enum:
+          - neutral
+          description: UI theme, applied as data-brand on the html element
+        logoUrl:
+          type: string
+          nullable: true
+          example: https://www.example.edu/logo.svg
+          description: https URL or same-origin path of the logo
+        supportUrl:
+          type: string
+          nullable: true
+          example: https://help.example.edu/ai
+          description: 'Where the Help link points: an http(s) URL or a mailto: address'
+    Invite:
+      type: object
+      required:
+      - id
+      - email
+      - role
+      - createdAt
+      - expiresAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/TeamRole'
+        invitedBy:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    Me:
+      type: object
+      required:
+      - user
+      - csrfToken
+      - capabilities
+      - teams
+      properties:
+        teams:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyTeam'
+        user:
+          $ref: '#/components/schemas/User'
+        csrfToken:
+          type: string
+        capabilities:
+          $ref: '#/components/schemas/Capabilities'
+    Member:
+      type: object
+      required:
+      - user
+      - role
+      - revision
+      - createdAt
+      properties:
+        user:
+          $ref: '#/components/schemas/MemberUser'
+        role:
+          $ref: '#/components/schemas/TeamRole'
+        revision:
+          $ref: '#/components/schemas/Revision'
+        createdAt:
+          type: string
+          format: date-time
+    MemberAdd:
+      type: object
+      required:
+      - email
+      - role
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/TeamRole'
+    MemberAddResult:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - added
+          - invited
+        member:
+          $ref: '#/components/schemas/Member'
+        invite:
+          $ref: '#/components/schemas/Invite'
+    MemberUpdate:
+      type: object
+      required:
+      - role
+      properties:
+        role:
+          $ref: '#/components/schemas/TeamRole'
+    MemberUser:
+      type: object
+      required:
+      - id
+      - email
+      - displayName
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        status:
+          $ref: '#/components/schemas/UserStatus'
+    MyTeam:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - status
+      - role
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/TeamStatus'
+        role:
+          $ref: '#/components/schemas/TeamRole'
+    Ok:
+      type: object
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+    OwnerAssign:
+      type: object
+      required:
+      - email
+      properties:
+        email:
+          type: string
+          format: email
+    PlatformRole:
+      type: string
+      enum:
+      - none
+      - platform_admin
+      - platform_auditor
+    Revision:
+      type: integer
+      format: int64
+      description: Increases on every change. Send it back in If-Match.
+    Team:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - description
+      - status
+      - revision
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TeamStatus'
+        revision:
+          $ref: '#/components/schemas/Revision'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+    TeamCreate:
+      type: object
+      required:
+      - slug
+      - name
+      - ownerEmail
+      properties:
+        slug:
+          type: string
+          example: platform-tools
+        name:
+          type: string
+          example: Platform Tools
+        description:
+          type: string
+        ownerEmail:
+          type: string
+          format: email
+    TeamCreated:
+      type: object
+      required:
+      - team
+      - owner
+      properties:
+        team:
+          $ref: '#/components/schemas/TeamSummary'
+        owner:
+          $ref: '#/components/schemas/MemberAddResult'
+    TeamPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamSummary'
+        nextCursor:
+          type: string
+          nullable: true
+    TeamRole:
+      type: string
+      enum:
+      - owner
+      - admin
+      - editor
+      - member
+    TeamStatus:
+      type: string
+      enum:
+      - active
+      - archived
+    TeamSummary:
+      type: object
+      required:
+      - team
+      - memberCount
+      - ownerCount
+      - ownerInvites
+      properties:
+        team:
+          $ref: '#/components/schemas/Team'
+        memberCount:
+          type: integer
+          format: int64
+        ownerCount:
+          type: integer
+          format: int64
+        ownerInvites:
+          type: integer
+          format: int64
+          description: Open owner invites (an owner invited by email who hasn't signed in yet)
+    TeamUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TeamStatus'
+    TeamView:
+      type: object
+      required:
+      - team
+      properties:
+        team:
+          $ref: '#/components/schemas/Team'
+        role:
+          description: The caller's role; absent when viewing as a platform admin or auditor
+          allOf:
+          - $ref: '#/components/schemas/TeamRole'
+    User:
+      type: object
+      required:
+      - id
+      - email
+      - displayName
+      - platformRole
+      - status
+      - revision
+      - createdAt
+      properties:
+        revision:
+          $ref: '#/components/schemas/Revision'
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        platformRole:
+          $ref: '#/components/schemas/PlatformRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        teamCount:
+          type: integer
+          format: int64
+          description: Teams the user belongs to (admin user list only)
+    UserDetail:
+      type: object
+      required:
+      - user
+      - teams
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        teams:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyTeam'
+    UserPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        nextCursor:
+          type: string
+          nullable: true
+    UserStatus:
+      type: string
+      enum:
+      - active
+      - suspended
+    UserUpdate:
+      type: object
+      properties:
+        platformRole:
+          $ref: '#/components/schemas/PlatformRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+    PublishPolicy:
+      type: string
+      enum:
+      - approval_required
+      - self_publish
+      description: 'approval_required: a platform admin approves each server, and each changed capability, before
+        it reaches the catalog. self_publish: the team''s owners and admins do.'
+    PublishState:
+      type: string
+      enum:
+      - private
+      - pending
+      - published
+      - rejected
+    CapabilityKind:
+      type: string
+      enum:
+      - tool
+      - resource
+      - resource_template
+      - prompt
+    McpErrorClass:
+      type: string
+      enum:
+      - unavailable
+      - auth
+      - not_found
+      - rate_limited
+      - bad_request
+      - bad_response
+      - config
+      - timeout
+      - too_large
+      - not_allowed
+      description: 'not_allowed: the address is private/loopback/link-local, or the server redirected'
+    CapabilityCounts:
+      type: object
+      required:
+      - tools
+      - resources
+      - resourceTemplates
+      - prompts
+      properties:
+        tools:
+          type: integer
+          format: int64
+        resources:
+          type: integer
+          format: int64
+        resourceTemplates:
+          type: integer
+          format: int64
+        prompts:
+          type: integer
+          format: int64
+    ServerHealth:
+      type: object
+      description: The latest health check. unknown before the first one.
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - healthy
+          - failing
+          - unknown
+        checkedAt:
+          type: string
+          format: date-time
+        statusSince:
+          type: string
+          format: date-time
+          description: When the current status began
+        latencyMs:
+          type: integer
+          format: int32
+        errorClass:
+          $ref: '#/components/schemas/McpErrorClass'
+        message:
+          type: string
+    McpServer:
+      type: object
+      description: A remote MCP server a team registered. The auth header value is never returned.
+      required:
+      - id
+      - teamId
+      - teamSlug
+      - teamName
+      - slug
+      - name
+      - description
+      - url
+      - transport
+      - hasAuth
+      - authValueHint
+      - timeoutSeconds
+      - enabled
+      - publishState
+      - effectivePublishPolicy
+      - counts
+      - pendingChanges
+      - health
+      - revision
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        teamSlug:
+          type: string
+        teamName:
+          type: string
+        slug:
+          type: string
+          description: Immutable; prefixes the server's tool names in gateways (slug__tool)
+          example: service-status
+        name:
+          type: string
+          example: Service status
+        description:
+          type: string
+        url:
+          type: string
+          example: https://status.example.com/mcp
+        transport:
+          type: string
+          enum:
+          - streamable_http
+        authHeaderName:
+          type: string
+          description: 'The static header sent with every request (absent: none)'
+        hasAuth:
+          type: boolean
+        authValueHint:
+          type: string
+          description: Last 4 characters of the header value, or empty
+        timeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 120
+        enabled:
+          type: boolean
+        publishState:
+          $ref: '#/components/schemas/PublishState'
+        effectivePublishPolicy:
+          $ref: '#/components/schemas/PublishPolicy'
+        publishRequestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        publishRequestNote:
+          type: string
+          nullable: true
+        publishReviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        publishReviewedByName:
+          type: string
+          nullable: true
+        publishReviewNote:
+          type: string
+          nullable: true
+        counts:
+          $ref: '#/components/schemas/CapabilityCounts'
+        pendingChanges:
+          type: integer
+          format: int64
+          description: Capabilities of a published server whose definition changed since approval (hidden from the
+            catalog until approved)
+        health:
+          $ref: '#/components/schemas/ServerHealth'
+        refreshedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When capabilities were last read (null; never)
+        lastRefreshError:
+          type: string
+          nullable: true
+        revision:
+          $ref: '#/components/schemas/Revision'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    McpServerPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpServer'
+        nextCursor:
+          type: string
+          nullable: true
+    McpServerCreate:
+      type: object
+      required:
+      - slug
+      - name
+      - url
+      properties:
+        slug:
+          type: string
+          pattern: ^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$
+          description: Unique across the platform, immutable
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 2000
+        url:
+          type: string
+          maxLength: 500
+          description: The Streamable HTTP endpoint, https only (plain http for loopback in development)
+        authHeaderName:
+          type: string
+          description: A header such as Authorization or X-API-Key; send it with authValue, or neither
+        authValue:
+          type: string
+          description: Stored encrypted, never returned
+        timeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 120
+          default: 30
+        enabled:
+          type: boolean
+          default: true
+    McpServerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 2000
+        url:
+          type: string
+          maxLength: 500
+        authHeaderName:
+          type: string
+          description: Omit to keep; an empty string removes the header and its value
+        authValue:
+          type: string
+          description: Omit to keep the stored value
+        timeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 120
+        enabled:
+          type: boolean
+    McpServerCreated:
+      type: object
+      required:
+      - server
+      properties:
+        server:
+          $ref: '#/components/schemas/McpServer'
+        refresh:
+          allOf:
+          - $ref: '#/components/schemas/McpRefreshResult'
+          nullable: true
+          description: The first discovery, when it worked
+        refreshError:
+          allOf:
+          - $ref: '#/components/schemas/McpTestResult'
+          nullable: true
+          description: Why the first discovery failed
+    McpCapability:
+      type: object
+      description: 'A tool, resource, resource template or prompt as the server listed it. Descriptions and schemas
+        are untrusted text a model will read: review them before approving.'
+      required:
+      - id
+      - serverId
+      - kind
+      - name
+      - title
+      - description
+      - definition
+      - fingerprint
+      - approved
+      - changed
+      - firstSeenAt
+      - lastSeenAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/CapabilityKind'
+        name:
+          type: string
+          description: Tool or prompt name, resource URI, or resource template URI template
+        title:
+          type: string
+        description:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+          description: The full definition as listed (input/output schema, annotations, arguments, mime type ...)
+        fingerprint:
+          type: string
+          description: SHA-256 of the canonical definition
+        approved:
+          type: boolean
+          description: The current definition is approved for the catalog
+        changed:
+          type: boolean
+          description: Approved once, but the definition changed since (published servers); hidden from the catalog
+        approvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        approvedByName:
+          type: string
+          nullable: true
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        goneAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When a refresh no longer found it (null while listed)
+    McpRefreshResult:
+      type: object
+      required:
+      - listed
+      - added
+      - changed
+      - gone
+      - capabilities
+      properties:
+        listed:
+          type: integer
+        added:
+          type: integer
+        changed:
+          type: integer
+          description: Capabilities whose definition changed
+        gone:
+          type: integer
+          description: Capabilities no longer listed
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpCapability'
+    McpTestResult:
+      type: object
+      required:
+      - ok
+      - latencyMs
+      properties:
+        ok:
+          type: boolean
+        latencyMs:
+          type: integer
+          format: int64
+        counts:
+          $ref: '#/components/schemas/CapabilityCounts'
+        serverName:
+          type: string
+          description: serverInfo.name the server reported
+        serverVersion:
+          type: string
+        protocolVersion:
+          type: string
+        errorClass:
+          $ref: '#/components/schemas/McpErrorClass'
+        httpStatus:
+          type: integer
+          format: int32
+        message:
+          type: string
+          description: A short message (never a header value or a raw body)
+    McpHealthCheck:
+      type: object
+      required:
+      - checkedAt
+      - ok
+      - latencyMs
+      - trigger
+      properties:
+        checkedAt:
+          type: string
+          format: date-time
+        ok:
+          type: boolean
+        latencyMs:
+          type: integer
+          format: int32
+        trigger:
+          type: string
+          enum:
+          - manual
+          - scheduled
+        errorClass:
+          $ref: '#/components/schemas/McpErrorClass'
+        httpStatus:
+          type: integer
+          format: int32
+        message:
+          type: string
+    McpPublishRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 2000
+          description: For the reviewer
+    McpPublishReview:
+      type: object
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+        note:
+          type: string
+          maxLength: 2000
+          description: Shown to the team
+    PublishingSettings:
+      type: object
+      required:
+      - defaultPolicy
+      - revision
+      - updatedAt
+      properties:
+        defaultPolicy:
+          $ref: '#/components/schemas/PublishPolicy'
+        revision:
+          $ref: '#/components/schemas/Revision'
+        updatedAt:
+          type: string
+          format: date-time
+    PublishingSettingsUpdate:
+      type: object
+      required:
+      - defaultPolicy
+      properties:
+        defaultPolicy:
+          $ref: '#/components/schemas/PublishPolicy'
+    TeamPublishing:
+      type: object
+      required:
+      - override
+      - effective
+      - defaultPolicy
+      - revision
+      properties:
+        override:
+          allOf:
+          - $ref: '#/components/schemas/PublishPolicy'
+          nullable: true
+          description: null when the team follows the platform default
+        effective:
+          $ref: '#/components/schemas/PublishPolicy'
+        defaultPolicy:
+          $ref: '#/components/schemas/PublishPolicy'
+        revision:
+          allOf:
+          - $ref: '#/components/schemas/Revision'
+          description: The team's revision (If-Match for the admin update)
+    TeamPublishingUpdate:
+      type: object
+      required:
+      - override
+      properties:
+        override:
+          allOf:
+          - $ref: '#/components/schemas/PublishPolicy'
+          nullable: true
+    CatalogServer:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - description
+      - teamSlug
+      - teamName
+      - counts
+      - health
+      - publishedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        teamSlug:
+          type: string
+          description: The owning team
+        teamName:
+          type: string
+        counts:
+          allOf:
+          - $ref: '#/components/schemas/CapabilityCounts'
+          description: Approved, listed capabilities only
+        health:
+          $ref: '#/components/schemas/ServerHealth'
+        publishedAt:
+          type: string
+          format: date-time
+    CatalogServerPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogServer'
+        nextCursor:
+          type: string
+          nullable: true
+    CatalogCapability:
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      - title
+      - description
+      - definition
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/CapabilityKind'
+        name:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+    CatalogServerDetail:
+      type: object
+      required:
+      - server
+      - capabilities
+      properties:
+        server:
+          $ref: '#/components/schemas/CatalogServer'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogCapability'

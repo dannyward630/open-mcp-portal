@@ -1,0 +1,10 @@
+/* Catalog: the list's one-line descriptions. Semantic tokens only. */
+
+.description {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}

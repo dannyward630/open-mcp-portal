@@ -1,0 +1,166 @@
+/* MCP servers: badges, results, capabilities and form layout. Semantic tokens only. */
+
+/* A badge with muted text after it ("Healthy since 3 hours ago"). */
+.inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* In a table cell: the badge, and the time under it on one line of its own. */
+.stacked {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.since {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+}
+
+/* One count of a list of counts ("2 tools"): the list wraps between counts, never inside one. */
+.count {
+  white-space: nowrap;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* A card's buttons (Test, Refresh; Publish, Withdraw). */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Text from the server (an error message, a note): kept as written. */
+.message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.url {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.host {
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.danger {
+  color: var(--color-danger-text);
+  overflow-wrap: anywhere;
+}
+
+.dangerSmall {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: var(--font-size-xs);
+  color: var(--color-danger-text);
+}
+
+/* ---------------- capabilities ---------------- */
+
+.kindGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.kindTitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.capList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-control);
+
+  &[data-muted] {
+    background-color: var(--color-surface-sunken);
+  }
+}
+
+.capHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.capName {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.capCode {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+/* The server's own words: plain text, line breaks kept. */
+.capDescription {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.capMeta {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* ---------------- forms ---------------- */
+
+/* A field across both columns of a FormSection. */
+.wide {
+  grid-column: 1 / -1;
+}
+
+/* The switch lines up with the field beside it. */
+.switchCell {
+  align-self: end;
+  padding-bottom: var(--space-2);
+}

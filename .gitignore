@@ -1,0 +1,12 @@
+/bin/
+.env
+*.env.local
+*.test
+*.out
+coverage.*
+.DS_Store
+# go build output left in the command directory
+/cmd/open-mcp-gateway/open-mcp-gateway
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep

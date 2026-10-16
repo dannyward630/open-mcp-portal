@@ -1,0 +1,147 @@
+/*
+ * Add MCP server (?form=new over the team's server list): name and slug
+ * (suggested from the name, never changed afterwards), description, the
+ * address, the optional header, timeout and the switch. The gateway reads
+ * the server's capabilities at once; its record page then shows what that
+ * first read found, or why it couldn't.
+ */
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { api, type Schemas, unwrap } from "../../api/client";
+import { teamServersKey } from "../../api/queries";
+import { useAuthConfig } from "../../session";
+import { FormPage, FormSection } from "../templates/form-page";
+import { ErrorAlert } from "@/components/ui/alert/alert";
+import { Field } from "@/components/ui/field/field";
+import { Input, Textarea } from "@/components/ui/input/input";
+import { toast } from "@/components/ui/toast/toast";
+import { serverSlug, slugPattern } from "./labels";
+import { firstDiscoveryKey } from "./scope";
+import { type AuthEdit, AuthFields, EnabledSwitch, type ServerForm, serverFieldErrors, serverProblems, TimeoutField, UrlField } from "./server-fields";
+import m from "./servers.module.css";
+
+const empty: ServerForm = { name: "", description: "", url: "", authHeaderName: "", timeoutSeconds: 30, enabled: true };
+
+const slugProblem = (slug: string) =>
+  !slug ? "Enter a slug." : slugPattern.test(slug) ? undefined : "Use 1 to 48 lowercase letters, digits and hyphens, starting and ending with a letter or digit.";
+
+export function AddServerForm({ team, onClose }: { team: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const dev = Boolean(useAuthConfig().data?.devAuthEnabled);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [form, setForm] = useState(empty);
+  const [slug, setSlug] = useState("");
+  const [slugEdited, setSlugEdited] = useState(false);
+  const [auth, setAuth] = useState<AuthEdit>({ value: "", remove: false });
+  const [submitted, setSubmitted] = useState(false);
+  const [created, setCreated] = useState<Schemas["McpServerCreated"] | null>(null);
+  const create = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/v1/teams/{team}/mcp-servers", {
+          params: { path: { team } },
+          body: {
+            slug,
+            name: form.name.trim(),
+            description: form.description.trim() || undefined,
+            url: form.url.trim(),
+            ...(form.authHeaderName.trim() ? { authHeaderName: form.authHeaderName.trim(), authValue: auth.value } : {}),
+            timeoutSeconds: form.timeoutSeconds,
+            enabled: form.enabled,
+          },
+        }),
+      ),
+    onSuccess: (created) => {
+      const s = created.server;
+      qc.setQueryData(firstDiscoveryKey(s.id), created);
+      void qc.invalidateQueries({ queryKey: teamServersKey(team) });
+      if (created.refreshError) toast.warning(`${s.name} was added`, "Its capabilities couldn't be read yet.");
+      else toast.success(`${s.name} was added`);
+      setCreated(created);
+    },
+  });
+  // Saved: the form stops counting as unsaved (dirty={false} below) in this render, so its guard lets the
+  // navigation through; the effect runs after the form's guard has taken that in (children's effects run first).
+  // Navigating from onSuccess raced it: a quick reply arrived before the busy state rendered.
+  useEffect(() => {
+    // Replace the form's history entry: Back from the new server returns to the list.
+    if (created) void navigate({ to: "/teams/$team/servers/$serverId", params: { team, serverId: created.server.id }, replace: true });
+  }, [created, navigate, team]);
+  const problems = submitted ? serverProblems(form, auth, { dev, hasAuth: false }) : {};
+  const fromServer = serverFieldErrors(create.error);
+  // A refusal belongs to the value that was sent: editing that field clears it, so the form can be sent again.
+  const set = (patch: Partial<ServerForm>) => {
+    if (patch.url !== undefined && fromServer.url) create.reset();
+    setForm((f) => ({ ...f, ...patch }));
+  };
+  const slugError = (submitted ? slugProblem(slug) : undefined) ?? fromServer.slug;
+  const errors = { ...problems, url: problems.url ?? fromServer.url };
+  const shownError = fromServer.slug || fromServer.url ? undefined : create.error;
+
+  const submit = () => {
+    setSubmitted(true);
+    if (Object.keys(serverProblems(form, auth, { dev, hasAuth: false })).length > 0 || slugProblem(slug)) {
+      requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    create.mutate();
+  };
+  const fields = { form, set, errors, dev };
+  return (
+    <FormPage
+      label="Add MCP server"
+      title="Add MCP server"
+      description="A remote MCP server your team runs, reached over Streamable HTTP. It stays private to the team until it's published to the catalog."
+      onClose={onClose}
+      onSubmit={submit}
+      submitLabel="Add server"
+      busy={create.isPending}
+      dirty={created ? false : undefined}
+      formRef={formRef}
+    >
+      <FormSection title="Server">
+        <Field label="Name" error={errors.name}>
+          <Input
+            maxLength={100}
+            value={form.name}
+            onChange={(e) => {
+              set({ name: e.target.value });
+              if (!slugEdited) setSlug(serverSlug(e.target.value));
+            }}
+          />
+        </Field>
+        <Field label="Slug" description="Can't be changed later. Gateways name its tools slug__tool, so keep it short." error={slugError}>
+          <Input
+            spellCheck={false}
+            autoComplete="off"
+            maxLength={48}
+            value={slug}
+            onChange={(e) => {
+              setSlugEdited(true);
+              if (fromServer.slug) create.reset();
+              setSlug(e.target.value);
+            }}
+          />
+        </Field>
+        <Field label="Description" labelHint="Optional" description="What the server is for. Shown in the catalog once published." className={m.wide}>
+          <Textarea maxLength={2000} value={form.description} onChange={(e) => set({ description: e.target.value })} />
+        </Field>
+      </FormSection>
+      <FormSection title="Connection">
+        <div className={m.wide}>
+          <UrlField {...fields} />
+        </div>
+        <TimeoutField {...fields} />
+        <div className={m.switchCell}>
+          <EnabledSwitch {...fields} />
+        </div>
+      </FormSection>
+      <FormSection title="Authentication">
+        <AuthFields {...fields} auth={auth} setAuth={setAuth} hasAuth={false} />
+      </FormSection>
+      <ErrorAlert error={shownError} title="Couldn't add the server" />
+    </FormPage>
+  );
+}

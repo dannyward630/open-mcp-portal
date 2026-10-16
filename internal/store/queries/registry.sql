@@ -1,0 +1,210 @@
+-- The MCP server registry: servers, capabilities, health checks and the
+-- publishing policy (internal/registry).
+
+-- name: GetPlatformSettings :one
+SELECT * FROM platform_settings WHERE id = 1;
+
+-- name: LockPlatformSettings :one
+SELECT * FROM platform_settings WHERE id = 1 FOR UPDATE;
+
+-- name: UpdatePublishDefaultPolicy :one
+UPDATE platform_settings
+SET publish_default_policy = @policy, revision = revision + 1, updated_by = @updated_by, updated_at = now()
+WHERE id = 1
+RETURNING *;
+
+-- name: SetTeamPublishOverride :one
+UPDATE teams
+SET publish_policy_override = sqlc.narg(override)::text, revision = revision + 1, updated_at = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: InsertMCPServer :one
+INSERT INTO mcp_servers (
+    id, team_id, slug, name, description, url, auth_header_name, auth_value_cipher, auth_value_hint,
+    timeout_seconds, enabled, created_by, updated_by
+) VALUES (
+    @id, @team_id, @slug, @name, @description, @url, @auth_header_name, @auth_value_cipher, @auth_value_hint,
+    @timeout_seconds, @enabled, @created_by, @created_by
+)
+RETURNING *;
+
+-- name: GetMCPServer :one
+SELECT * FROM mcp_servers WHERE id = $1;
+
+-- name: LockMCPServer :one
+SELECT * FROM mcp_servers WHERE id = $1 FOR UPDATE;
+
+-- name: UpdateMCPServer :one
+UPDATE mcp_servers
+SET name = @name, description = @description, url = @url, auth_header_name = @auth_header_name,
+    auth_value_cipher = @auth_value_cipher, auth_value_hint = @auth_value_hint,
+    timeout_seconds = @timeout_seconds, enabled = @enabled,
+    revision = revision + 1, updated_by = @updated_by, updated_at = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: DeleteMCPServer :exec
+DELETE FROM mcp_servers WHERE id = $1;
+
+-- name: SetMCPServerPublishState :one
+-- Moves a server to a publish state. The request columns are set when it
+-- is requested (pending or self-published), the review columns when a
+-- platform admin reviews it; published_at is kept while published.
+UPDATE mcp_servers
+SET publish_state        = @publish_state,
+    publish_requested_at = CASE WHEN @requested::bool THEN now() ELSE publish_requested_at END,
+    publish_requested_by = CASE WHEN @requested::bool THEN sqlc.narg(actor)::uuid ELSE publish_requested_by END,
+    publish_request_note = CASE WHEN @requested::bool THEN sqlc.narg(note)::text ELSE publish_request_note END,
+    publish_reviewed_at  = CASE WHEN @reviewed::bool THEN now() WHEN @requested::bool THEN NULL ELSE publish_reviewed_at END,
+    publish_reviewed_by  = CASE WHEN @reviewed::bool THEN sqlc.narg(actor)::uuid WHEN @requested::bool THEN NULL ELSE publish_reviewed_by END,
+    publish_review_note  = CASE WHEN @reviewed::bool THEN sqlc.narg(note)::text WHEN @requested::bool THEN NULL ELSE publish_review_note END,
+    published_at         = CASE WHEN @publish_state::text = 'published' THEN coalesce(published_at, now()) ELSE NULL END,
+    revision             = revision + 1,
+    updated_by           = sqlc.narg(actor)::uuid,
+    updated_at           = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: SetMCPServerRefreshed :exec
+UPDATE mcp_servers SET refreshed_at = now(), last_refresh_error = NULL WHERE id = $1;
+
+-- name: ClearMCPServerRefreshed :exec
+-- A new URL: the stored capabilities were read from the old endpoint.
+UPDATE mcp_servers SET refreshed_at = NULL WHERE id = $1;
+
+-- name: SetMCPServerRefreshError :exec
+UPDATE mcp_servers SET last_refresh_error = @message WHERE id = @id;
+
+-- name: ListMCPServers :many
+-- One page of servers ordered by (name, id), with their team and reviewer.
+-- team_id narrows to one team; publish_state to one state; changes_only to
+-- published servers with capabilities waiting for approval; catalog to
+-- published, enabled servers. search is LIKE-escaped by the caller.
+SELECT sqlc.embed(s), t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+       COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
+           AS reviewed_by_name
+FROM mcp_servers s
+JOIN teams t ON t.id = s.team_id
+WHERE (sqlc.narg(team_id)::uuid IS NULL OR s.team_id = sqlc.narg(team_id)::uuid)
+  AND (sqlc.narg(publish_state)::text IS NULL OR s.publish_state = sqlc.narg(publish_state)::text)
+  AND (NOT @catalog::bool OR (s.publish_state = 'published' AND s.enabled))
+  AND (NOT @changes_only::bool OR (s.publish_state = 'published' AND EXISTS (
+        SELECT 1 FROM mcp_capabilities c
+        WHERE c.server_id = s.id AND c.gone_at IS NULL AND c.approved_fingerprint IS DISTINCT FROM c.fingerprint)))
+  AND (sqlc.narg(search)::text IS NULL
+       OR s.name ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'
+       OR s.slug ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'
+       OR (@catalog::bool AND s.description ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'))
+  AND (sqlc.narg(after_name)::text IS NULL OR (s.name, s.id) > (sqlc.narg(after_name)::text, sqlc.narg(after_id)::uuid))
+ORDER BY s.name, s.id
+LIMIT @page_size;
+
+-- name: GetMCPServerView :one
+SELECT sqlc.embed(s), t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+       COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
+           AS reviewed_by_name
+FROM mcp_servers s
+JOIN teams t ON t.id = s.team_id
+WHERE s.id = $1;
+
+-- name: MCPCapabilityStats :many
+-- Per server and kind: listed capabilities, the approved ones, and the
+-- listed ones whose current definition is not approved.
+SELECT c.server_id, c.kind,
+       count(*) FILTER (WHERE c.gone_at IS NULL)::bigint AS listed,
+       count(*) FILTER (WHERE c.gone_at IS NULL AND c.approved_fingerprint = c.fingerprint)::bigint AS approved,
+       count(*) FILTER (WHERE c.gone_at IS NULL AND c.approved_fingerprint IS DISTINCT FROM c.fingerprint)::bigint AS unapproved
+FROM mcp_capabilities c
+WHERE c.server_id = ANY(@server_ids::uuid[])
+GROUP BY c.server_id, c.kind;
+
+-- name: ListMCPCapabilities :many
+-- A server's capabilities ordered by kind (tool, resource, template,
+-- prompt) and name, gone ones included, with who approved each.
+SELECT sqlc.embed(c),
+       COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = c.approved_by), '')::text
+           AS approved_by_name
+FROM mcp_capabilities c
+WHERE c.server_id = @server_id
+  AND (sqlc.narg(kind)::text IS NULL OR c.kind = sqlc.narg(kind)::text)
+ORDER BY CASE c.kind WHEN 'tool' THEN 0 WHEN 'resource' THEN 1 WHEN 'resource_template' THEN 2 ELSE 3 END, c.name;
+
+-- name: ListApprovedMCPCapabilities :many
+-- The catalog's capabilities of a server: listed and approved.
+SELECT * FROM mcp_capabilities c
+WHERE c.server_id = @server_id AND c.gone_at IS NULL AND c.approved_fingerprint = c.fingerprint
+ORDER BY CASE c.kind WHEN 'tool' THEN 0 WHEN 'resource' THEN 1 WHEN 'resource_template' THEN 2 ELSE 3 END, c.name;
+
+-- name: LockMCPCapability :one
+SELECT * FROM mcp_capabilities WHERE id = @id AND server_id = @server_id FOR UPDATE;
+
+-- name: UpsertMCPCapability :exec
+-- Stores a listed capability. The approval columns are never touched here:
+-- a changed definition (fingerprint) is unapproved by definition.
+INSERT INTO mcp_capabilities (server_id, kind, name, title, description, definition, fingerprint)
+VALUES (@server_id, @kind, @name, @title, @description, @definition, @fingerprint)
+ON CONFLICT (server_id, kind, name) DO UPDATE
+SET title = EXCLUDED.title, description = EXCLUDED.description, definition = EXCLUDED.definition,
+    fingerprint = EXCLUDED.fingerprint, last_seen_at = now(), gone_at = NULL;
+
+-- name: MarkMCPCapabilitiesGone :many
+-- Marks the server's listed capabilities that the refresh didn't list as
+-- gone, and withdraws their approval.
+UPDATE mcp_capabilities c
+SET gone_at = now(), approved_fingerprint = NULL, approved_by = NULL, approved_at = NULL
+WHERE c.server_id = @server_id AND c.gone_at IS NULL
+  -- listed holds "kind name" for every capability the refresh listed.
+  AND NOT ((c.kind || ' ' || c.name) = ANY(@listed::text[]))
+RETURNING c.kind, c.name;
+
+-- name: ApproveMCPCapability :one
+UPDATE mcp_capabilities
+SET approved_fingerprint = fingerprint, approved_by = @approved_by, approved_at = now()
+WHERE id = @id AND gone_at IS NULL
+RETURNING *;
+
+-- name: ApproveListedMCPCapabilities :execrows
+-- Approves every listed capability of a server whose current definition is
+-- not approved yet (publishing).
+UPDATE mcp_capabilities
+SET approved_fingerprint = fingerprint, approved_by = @approved_by, approved_at = now()
+WHERE server_id = @server_id AND gone_at IS NULL AND approved_fingerprint IS DISTINCT FROM fingerprint;
+
+-- name: InsertMCPHealthCheck :one
+-- Stores a check. status_since is carried over from the server's previous
+-- check while the outcome stays the same.
+INSERT INTO mcp_health_checks (server_id, ok, latency_ms, trigger, triggered_by, error_class, http_status, message, status_since)
+SELECT @server_id, @ok::bool, @latency_ms, @trigger, @triggered_by, @error_class, @http_status, @message,
+       COALESCE((SELECT CASE WHEN p.ok = @ok::bool THEN p.status_since END
+                 FROM mcp_health_checks p WHERE p.server_id = @server_id
+                 ORDER BY p.checked_at DESC, p.id DESC LIMIT 1), now())
+RETURNING *;
+
+-- name: PruneMCPHealthChecks :execrows
+-- Keeps a server's latest keep checks.
+DELETE FROM mcp_health_checks d
+WHERE d.server_id = @server_id::uuid
+  AND d.id NOT IN (SELECT h.id FROM mcp_health_checks h WHERE h.server_id = @server_id::uuid
+                   ORDER BY h.checked_at DESC, h.id DESC LIMIT @keep::int);
+
+-- name: ForgetMCPHealthChecks :exec
+DELETE FROM mcp_health_checks WHERE server_id = $1;
+
+-- name: ListMCPHealthChecks :many
+SELECT * FROM mcp_health_checks WHERE server_id = @server_id ORDER BY checked_at DESC, id DESC LIMIT @page_size;
+
+-- name: LatestMCPHealthChecks :many
+SELECT DISTINCT ON (h.server_id) h.*
+FROM mcp_health_checks h
+WHERE h.server_id = ANY(@server_ids::uuid[])
+ORDER BY h.server_id, h.checked_at DESC, h.id DESC;
+
+-- name: ListMCPServersDueForCheck :many
+-- Enabled servers whose latest check is older than due_before (or that
+-- have none): the health loop's targets. Several replicas taking turns
+-- therefore don't test a server twice in one interval.
+SELECT s.* FROM mcp_servers s
+WHERE s.enabled
+  AND NOT EXISTS (SELECT 1 FROM mcp_health_checks h WHERE h.server_id = s.id AND h.checked_at >= @due_before)
+ORDER BY s.id;

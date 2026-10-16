@@ -1,0 +1,338 @@
+package registry
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/ncecere/open-mcp-gateway/internal/apperr"
+	"github.com/ncecere/open-mcp-gateway/internal/audit"
+	"github.com/ncecere/open-mcp-gateway/internal/authz"
+	"github.com/ncecere/open-mcp-gateway/internal/store"
+	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+)
+
+// Discovery: Test reads a server's capabilities without storing them;
+// Refresh stores them. A capability is new, unchanged (same fingerprint: its
+// approval stands), changed (another fingerprint: unapproved by
+// definition, since approved means approved_fingerprint = fingerprint) or
+// gone (no longer listed: marked gone and its approval withdrawn). A
+// refresh never approves anything. Both store a manual health check.
+
+// Health check triggers.
+const (
+	TriggerManual    = "manual"
+	TriggerScheduled = "scheduled"
+)
+
+// KeepChecks is how many health checks are kept per server.
+const KeepChecks = 100
+
+func timeout(sv dbgen.McpServer) time.Duration { return time.Duration(sv.TimeoutSeconds) * time.Second }
+
+// TestResult is the outcome of reading a server's capabilities.
+type TestResult struct {
+	OK                                         bool
+	Latency                                    time.Duration
+	Counts                                     upstream.Counts
+	ServerName, ServerVersion, ProtocolVersion string
+	Err                                        *upstream.Error // nil when OK
+}
+
+// probe discovers a server's capabilities (no storing). headerValue is
+// returned so messages can be scrubbed of it.
+func (s *Service) probe(ctx context.Context, sv dbgen.McpServer) (TestResult, upstream.Discovery, string) {
+	t, err := s.target(sv)
+	if err != nil {
+		var e *upstream.Error
+		errors.As(err, &e)
+		return TestResult{Err: e}, upstream.Discovery{}, ""
+	}
+	d, err := s.client.Discover(ctx, t)
+	res := TestResult{Latency: d.Latency, ServerName: d.ServerName, ServerVersion: d.ServerVersion, ProtocolVersion: d.ProtocolVersion}
+	if err != nil {
+		e, ok := err.(*upstream.Error)
+		if !ok {
+			e = &upstream.Error{Class: upstream.ClassUnavailable, Message: "The test failed."}
+		}
+		res.Err = &upstream.Error{Class: e.Class, HTTPStatus: e.HTTPStatus, Message: upstream.SafeMessage(e.Message, t.HeaderValue)}
+		return res, d, t.HeaderValue
+	}
+	res.OK, res.Counts = true, upstream.CountKinds(d.Capabilities)
+	return res, d, t.HeaderValue
+}
+
+// recordCheck stores a health check and prunes the server's history.
+func recordCheck(ctx context.Context, q *dbgen.Queries, serverID uuid.UUID, res TestResult, trigger string, actor uuid.NullUUID) error {
+	p := dbgen.InsertMCPHealthCheckParams{ServerID: serverID, Ok: res.OK, Trigger: trigger,
+		LatencyMs: int32(min(max(res.Latency.Milliseconds(), 0), 1<<31-1))}
+	if trigger == TriggerManual {
+		p.TriggeredBy = actor
+	}
+	if res.Err != nil {
+		class := res.Err.Class
+		p.Ok, p.ErrorClass, p.Message = false, &class, res.Err.Message
+		if st := res.Err.HTTPStatus; st >= 100 && st <= 599 {
+			v := int32(st)
+			p.HttpStatus = &v
+		}
+	}
+	if _, err := q.InsertMCPHealthCheck(ctx, p); err != nil {
+		return err
+	}
+	_, err := q.PruneMCPHealthChecks(ctx, dbgen.PruneMCPHealthChecksParams{ServerID: serverID, Keep: KeepChecks})
+	return err
+}
+
+// Test reads a server's capabilities without saving them (team editors and
+// above; the server may be disabled) and stores the result as a manual
+// health check.
+func (s *Service) Test(ctx context.Context, a authz.Actor, ref string, id uuid.UUID) (TestResult, error) {
+	ta, err := access(ctx, s.q, a, ref)
+	if err != nil {
+		return TestResult{}, err
+	}
+	if err := authz.CheckServerEdit(ta.role); err != nil {
+		return TestResult{}, err
+	}
+	sv, err := teamServer(ctx, s.q, ta.team.ID, id, false)
+	if err != nil {
+		return TestResult{}, err
+	}
+	res, _, _ := s.probe(ctx, sv)
+	if err := recordCheck(context.WithoutCancel(ctx), s.q, id, res, TriggerManual, by(a)); err != nil {
+		s.log.WarnContext(ctx, "could not store an MCP server test", "server", id, "err", err)
+	}
+	return res, nil
+}
+
+// RefreshResult counts what a refresh changed, with the capabilities after it.
+type RefreshResult struct {
+	Listed, Added, Changed, Gone int
+	Capabilities                 []CapabilityView
+}
+
+// Refresh reads a server's capabilities again and stores them (team editors
+// and above; the server may be disabled). When the server can't be read it
+// is 502 discovery_failed with the test result as details. Audited as
+// mcp_server.refresh with the counts.
+func (s *Service) Refresh(ctx context.Context, a authz.Actor, ref string, id uuid.UUID) (RefreshResult, error) {
+	ta, err := access(ctx, s.q, a, ref)
+	if err != nil {
+		return RefreshResult{}, err
+	}
+	if err := ta.writable(authz.CheckServerEdit); err != nil {
+		return RefreshResult{}, err
+	}
+	sv, err := teamServer(ctx, s.q, ta.team.ID, id, false)
+	if err != nil {
+		return RefreshResult{}, err
+	}
+	res, fail, err := s.refresh(ctx, a, sv)
+	if err != nil {
+		return RefreshResult{}, err
+	}
+	if fail != nil {
+		return RefreshResult{}, &DiscoveryError{Result: *fail}
+	}
+	return *res, nil
+}
+
+// DiscoveryError is a refresh that couldn't read the server (502
+// discovery_failed; the HTTP layer renders Result as details).
+type DiscoveryError struct{ Result TestResult }
+
+func (e *DiscoveryError) Error() string { return "discovery failed: " + e.Result.Err.Message }
+
+// AsAppError is the error as the API renders it, with details filled by
+// conv (the API's McpTestResult).
+func (e *DiscoveryError) AsAppError(details any) *apperr.Error {
+	out := apperr.New(http.StatusBadGateway, "discovery_failed", "The server's capabilities couldn't be read: "+e.Result.Err.Message)
+	out.Details = details
+	return out
+}
+
+// refresh discovers and stores a server's capabilities (authorization
+// done). A discovery failure is returned as fail (and stored), not err.
+func (s *Service) refresh(ctx context.Context, a authz.Actor, sv dbgen.McpServer) (*RefreshResult, *TestResult, error) {
+	res, d, _ := s.probe(ctx, sv)
+	if !res.OK {
+		err := store.InTx(context.WithoutCancel(ctx), s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
+			if _, err := anyServer(ctx, q, sv.ID, true); err != nil {
+				return err
+			}
+			msg := res.Err.Message
+			if err := q.SetMCPServerRefreshError(ctx, dbgen.SetMCPServerRefreshErrorParams{ID: sv.ID, Message: &msg}); err != nil {
+				return err
+			}
+			return recordCheck(ctx, q, sv.ID, res, TriggerManual, by(a))
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, &res, nil
+	}
+	var out RefreshResult
+	err := store.InTx(context.WithoutCancel(ctx), s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
+		cur, err := anyServer(ctx, q, sv.ID, true)
+		if err != nil {
+			return err
+		}
+		if out, err = storeCapabilities(ctx, q, cur.ID, d.Capabilities); err != nil {
+			return err
+		}
+		if err := q.SetMCPServerRefreshed(ctx, cur.ID); err != nil {
+			return err
+		}
+		if err := recordCheck(ctx, q, cur.ID, res, TriggerManual, by(a)); err != nil {
+			return err
+		}
+		e := a.Audit("mcp_server.refresh", "mcp_server", cur.ID.String())
+		e.TeamID = cur.TeamID
+		e.Metadata = map[string]any{"name": cur.Name, "listed": out.Listed, "added": out.Added, "changed": out.Changed, "gone": out.Gone}
+		if err := audit.Record(ctx, q, e); err != nil {
+			return err
+		}
+		out.Capabilities, err = capabilities(ctx, q, cur, nil)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return &out, nil, nil
+}
+
+// storeCapabilities upserts the listed capabilities and marks the others
+// gone.
+func storeCapabilities(ctx context.Context, q *dbgen.Queries, serverID uuid.UUID, listed []upstream.Capability) (RefreshResult, error) {
+	sum := RefreshResult{Listed: len(listed)}
+	before, err := q.ListMCPCapabilities(ctx, dbgen.ListMCPCapabilitiesParams{ServerID: serverID})
+	if err != nil {
+		return sum, err
+	}
+	prev := make(map[string]dbgen.McpCapability, len(before))
+	for _, c := range before {
+		prev[c.McpCapability.Kind+" "+c.McpCapability.Name] = c.McpCapability
+	}
+	keys := make([]string, 0, len(listed))
+	for _, cp := range listed {
+		key := cp.Kind + " " + cp.Name
+		keys = append(keys, key)
+		old, existed := prev[key]
+		switch {
+		case !existed || old.GoneAt != nil:
+			sum.Added++
+		case old.Fingerprint != cp.Fingerprint:
+			sum.Changed++
+		}
+		if err := q.UpsertMCPCapability(ctx, dbgen.UpsertMCPCapabilityParams{ServerID: serverID, Kind: cp.Kind, Name: cp.Name,
+			Title: cp.Title, Description: cp.Description, Definition: cp.Definition, Fingerprint: cp.Fingerprint}); err != nil {
+			return sum, err
+		}
+	}
+	gone, err := q.MarkMCPCapabilitiesGone(ctx, dbgen.MarkMCPCapabilitiesGoneParams{ServerID: serverID, Listed: keys})
+	if err != nil {
+		return sum, err
+	}
+	sum.Gone = len(gone)
+	return sum, nil
+}
+
+// CapabilityView is a capability as the API shows it.
+type CapabilityView struct {
+	Capability     dbgen.McpCapability
+	ApprovedByName string
+	// Published: the server is published (changed only applies then).
+	Published bool
+}
+
+// Approved reports whether the current definition is approved.
+func (c CapabilityView) Approved() bool { return IsApproved(c.Capability) }
+
+// Changed reports whether an approved capability of a published server
+// changed since its approval.
+func (c CapabilityView) Changed() bool { return IsChanged(c.Capability, c.Published) }
+
+// IsApproved: the approved fingerprint is the current one, and the
+// capability is listed. A gone capability is never approved.
+func IsApproved(c dbgen.McpCapability) bool {
+	return c.ApprovedFingerprint != nil && *c.ApprovedFingerprint == c.Fingerprint && c.GoneAt == nil
+}
+
+// IsChanged: approved once, but the definition differs now, on a published
+// server.
+func IsChanged(c dbgen.McpCapability, published bool) bool {
+	return published && c.ApprovedFingerprint != nil && *c.ApprovedFingerprint != c.Fingerprint && c.GoneAt == nil
+}
+
+func capabilities(ctx context.Context, q *dbgen.Queries, sv dbgen.McpServer, kind *string) ([]CapabilityView, error) {
+	rows, err := q.ListMCPCapabilities(ctx, dbgen.ListMCPCapabilitiesParams{ServerID: sv.ID, Kind: kind})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CapabilityView, len(rows))
+	for i, r := range rows {
+		out[i] = CapabilityView{Capability: r.McpCapability, ApprovedByName: r.ApprovedByName, Published: sv.PublishState == StatePublished}
+	}
+	return out, nil
+}
+
+func checkKind(kind *string) error {
+	if kind != nil && !upstream.ValidKind(*kind) {
+		return errInvalidKind
+	}
+	return nil
+}
+
+// ListCapabilities lists a team server's capabilities, gone ones included
+// (members; platform admins and auditors).
+func (s *Service) ListCapabilities(ctx context.Context, a authz.Actor, ref string, id uuid.UUID, kind *string) ([]CapabilityView, error) {
+	ta, err := access(ctx, s.q, a, ref)
+	if err != nil {
+		return nil, err
+	}
+	sv, err := teamServer(ctx, s.q, ta.team.ID, id, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkKind(kind); err != nil {
+		return nil, err
+	}
+	return capabilities(ctx, s.q, sv, kind)
+}
+
+// AdminListCapabilities lists any server's capabilities (platform admins
+// and auditors).
+func (s *Service) AdminListCapabilities(ctx context.Context, a authz.Actor, id uuid.UUID, kind *string) ([]CapabilityView, error) {
+	if !a.CanReadPlatform() {
+		return nil, errPlatformRead
+	}
+	sv, err := anyServer(ctx, s.q, id, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkKind(kind); err != nil {
+		return nil, err
+	}
+	return capabilities(ctx, s.q, sv, kind)
+}
+
+// maxHealthChecks is how many checks the API lists.
+const maxHealthChecks = 50
+
+// HealthChecks lists a team server's recent checks, newest first.
+func (s *Service) HealthChecks(ctx context.Context, a authz.Actor, ref string, id uuid.UUID) ([]dbgen.McpHealthCheck, error) {
+	ta, err := access(ctx, s.q, a, ref)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := teamServer(ctx, s.q, ta.team.ID, id, false); err != nil {
+		return nil, err
+	}
+	return s.q.ListMCPHealthChecks(ctx, dbgen.ListMCPHealthChecksParams{ServerID: id, PageSize: maxHealthChecks})
+}
