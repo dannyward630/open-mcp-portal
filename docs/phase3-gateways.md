@@ -1,7 +1,7 @@
 # Phase 3 — Gateways (design draft)
 
-Status: **draft for review, not implemented**. Decisions 5–8, 13 and 14 in [decisions.md](decisions.md) are
-confirmed; everything marked *proposed* needs a yes/no before building.
+Status: **approved, in progress**. Open questions were answered as decisions 15–19 in [decisions.md](decisions.md).
+Items still marked *proposed* (key rotation period, call outcomes) are defaults that may be tuned.
 
 ## Goal
 
@@ -23,7 +23,7 @@ it may use, and every upstream call carries a signed identity of the user. Calls
 
 ## Who may build what
 
-- **Team gateways** — team owners/admins create and edit (*proposed*; editors too?). They may select:
+- **Team gateways** — team owners/admins create and edit (decision 16). They may select:
   - any capability of the team's own servers (private or published, enabled, listed), and
   - approved capabilities of published catalog servers.
   Access: the team's members, filtered by each capability's optional minimum role.
@@ -91,12 +91,10 @@ GET               /.well-known/jwks.json                                 (outsid
   until expiry; the client's credential is never forwarded upstream.
 - No arguments/results in `mcp_calls` or logs.
 
-## Open questions (answer before building)
+## Resolved questions
 
-1. **Client credential for Phase 3.** OAuth sign-in for MCP clients is Phase 4. To use and test gateways now,
-   bring in Grounded's **personal API keys** in Phase 3 (and service accounts + OAuth in Phase 4)? *Recommended: yes.*
-2. **Team gateway editors.** Owners/admins only, or editors too? *Recommended: owners/admins* (a gateway grants access).
-3. **Sharing team gateways.** Team gateways are team-members-only; cross-team sharing goes through platform
-   gateways. OK, or should team admins also grant their gateway to other teams/users? *Recommended: members-only for now.*
-4. **Resources in Phase 3** or a follow-up? *Recommended: follow-up* (tools and prompts first).
-5. **Identity header** as proposed above (Bearer when free, otherwise `MCP-Gateway-Identity`)? *Recommended: yes.*
+1. Personal API keys ship in Phase 3 (own implementation). OAuth and service accounts in Phase 4.
+2. Team gateways: owners and admins edit; members read and connect.
+3. Team gateways are members-only; cross-team sharing uses platform gateways.
+4. Tools and prompts first; resources later.
+5. Identity header as proposed.

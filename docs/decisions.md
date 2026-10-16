@@ -28,6 +28,11 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 | 12 | Client authentication | Both: OAuth sign-in for interactive MCP clients (Claude Code, Claude Desktop, VS Code, Cursor) through the company IdP, and API keys (personal or team service-account) for headless agents, CI and scripts. Adapt Grounded's `internal/oauth` (PKCE S256, Client ID Metadata Documents, dynamic registration, consent page) and API keys; add an allowlist of trusted client IDs that skip consent |
 | 13 | Gateways and access | Team gateways (team admins curate from their own servers plus catalog servers) and platform gateways (platform admins curate, shared with selected teams, users or SSO groups). Personal gateways later. A gateway exposes only the tools selected for it; access is granted to teams, users or SSO groups; a tool can require a minimum team role. Every call checks gateway tool list, caller access, server publish status and (later) the user's OAuth consent |
 | 14 | Call records | Metadata always (caller, gateway, tool, server, outcome, latency, sizes). Argument/result capture is opt-in per server or gateway, truncated and redacted, with a retention period (platform default, team overrides, as in Grounded) and visible only to the owning team's admins and platform auditors |
+| 15 | Phase 3 client credential | Personal API keys ship in Phase 3 (our own implementation; Grounded is only a reference). OAuth for MCP clients and service accounts stay in Phase 4 |
+| 16 | Team gateway editing | Team owners and admins create, edit and delete team gateways (a gateway grants access); members read them and connect |
+| 17 | Sharing team gateways | Team gateways are for the team's members only; cross-team sharing goes through platform gateways |
+| 18 | Resources | Phase 3 exposes tools and prompts; resources and resource templates follow in a later step |
+| 19 | Identity header | `Authorization: Bearer <jwt>` when the server has no static `Authorization` header; otherwise `MCP-Gateway-Identity: <jwt>` |
 
 ## Proposed build order
 
