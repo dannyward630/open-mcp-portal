@@ -34,6 +34,10 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 | 18 | Resources | Phase 3 exposes tools and prompts; resources and resource templates follow in a later step |
 | 19 | Identity header | `Authorization: Bearer <jwt>` when the server has no static `Authorization` header; otherwise `MCP-Gateway-Identity: <jwt>` |
 | 20 | Internal MCP servers | Platform admins maintain an allowlist of internal networks (CIDRs) and hostnames (exact or `*.suffix`) that MCP servers may use, each optionally allowing plain `http`. A deployment setting can add entries (read-only in the UI). Loopback, link-local (incl. cloud metadata), unspecified and multicast addresses stay blocked whatever the list says; everything not listed stays blocked as today |
+| 21 | OAuth connections | One connection per gateway: an OAuth token is bound to one gateway (`resource` = its URL); connecting a client to several gateways means approving each, unless the client is trusted |
+| 22 | Service account roles | A service account has a team role of `member` or `editor` (used for minimum-role checks); never owner or admin |
+| 23 | Service accounts and platform gateways | Service accounts reach platform gateways only through grants to their team; no grants to individual service accounts |
+| 24 | Trusted clients | The trusted-client allowlist (decision 12) starts with Claude, Claude Code and VS Code; platform admins can edit it |
 
 ## Proposed build order
 

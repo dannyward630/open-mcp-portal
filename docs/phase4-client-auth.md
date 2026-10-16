@@ -1,6 +1,6 @@
 # Phase 4 — Client sign-in (OAuth) and service accounts (design draft)
 
-Status: **draft for review, not implemented**. Builds on decisions 12, 15–17. Items marked *proposed* need a yes/no.
+Status: **approved, in progress**. Builds on decisions 12, 15–17; open questions answered as decisions 21–24.
 Grounded's OAuth server (`internal/oauth`, `docs/mcp.md` "Signing in with OAuth") is the reference, not a dependency.
 
 ## Goal
@@ -76,10 +76,6 @@ resource indicators, PKCE S256, RFC 9207 `iss`), like Grounded.
 - Service accounts: authz matrix, key rotation, role/minRole, team grant coverage, archived team, JWT claims.
 - Secrets never in responses (beyond creation), audit or logs.
 
-## Open questions
+## Resolved questions
 
-1. **One connection per gateway** (a person connecting Claude Code to three gateways approves three times, unless
-   the client is trusted)? *Recommended: yes* — it matches how MCP clients add servers.
-2. **Service account roles** limited to `member`/`editor`? *Recommended: yes.*
-3. **Service account access to platform gateways via team grants only** (no individual grants)? *Recommended: yes.*
-4. **Trusted clients seeded** with Claude, Claude Code and VS Code (platform admins can remove them)? *Recommended: yes.*
+All four recommendations accepted (decisions 21–24).
