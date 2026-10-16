@@ -779,7 +779,9 @@ paths:
       operationId: createTeamMcpServer
       summary: Register a remote MCP server (editors and above); reads its capabilities at once
       description: 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused
-        (details.reason). The server is created even when discovery fails; refresh then says why.
+        (details.reason invalid, too_long, userinfo, query, fragment, scheme, private_address or blocked_address;
+        private_address can be allowed by a platform admin in Internal networks). The server is created even when
+        discovery fails; refresh then says why.
       requestBody:
         required: true
         content:
@@ -1400,6 +1402,105 @@ paths:
         '412':
           $ref: '#/components/responses/ErrorReply'
         '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/settings/network:
+    get:
+      tags:
+      - admin
+      operationId: adminGetNetworkSettings
+      summary: The allowlist of internal networks and hosts MCP servers may use (platform admins and auditors)
+      description: entries are the platform admins' (editable); deploymentEntries come from UPSTREAM_ALLOWED_NETWORKS
+        and are read-only. Loopback, link-local (including cloud metadata), unspecified, multicast and broadcast
+        addresses stay blocked whatever the entries say.
+      responses:
+        '200':
+          description: Settings
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NetworkSettings'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    put:
+      tags:
+      - admin
+      operationId: adminUpdateNetworkSettings
+      summary: Replace the platform admins' allowlist entries (platform admins)
+      description: Entries are canonicalised (masked prefixes, lower-case host names without a trailing dot). 422
+        invalid_entry with details.index and details.reason (invalid_kind, invalid_cidr, invalid_host, non_ascii,
+        ip_as_host, always_blocked, invalid_note, duplicate, too_many). Servers are never edited; one outside the new
+        policy fails its next exchange (error class not_allowed). Other replicas apply the change within 30 seconds.
+        Audited as settings.network_update.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetworkSettingsUpdate'
+      responses:
+        '200':
+          description: Updated settings
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NetworkSettings'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/settings/network/check:
+    post:
+      tags:
+      - admin
+      operationId: adminCheckNetworkUrl
+      summary: Say whether the gateway would reach an MCP server URL now, and why (platform admins and auditors)
+      description: Applies the same rule as saving and dialling, with this replica's copy of the allowlist. Resolves the
+        host name (at most 3 seconds) but never connects. Every resolved address must be allowed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetworkCheckRequest'
+      responses:
+        '200':
+          description: The verdict
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NetworkCheckResult'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
           $ref: '#/components/responses/ErrorReply'
   /v1/admin/teams/{team}/publishing:
     parameters:
@@ -3106,7 +3207,8 @@ components:
       - timeout
       - too_large
       - not_allowed
-      description: 'not_allowed: the address is private/loopback/link-local, or the server redirected'
+      description: 'not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted),
+        or the server redirected'
     CapabilityCounts:
       type: object
       required:
@@ -3543,6 +3645,129 @@ components:
       properties:
         defaultPolicy:
           $ref: '#/components/schemas/PublishPolicy'
+    NetworkEntry:
+      type: object
+      description: One allowlist entry. A cidr entry allows private addresses inside it (literal or resolved); a host
+        entry allows the private addresses a matching host resolves to. allowHttp also allows plain http for URLs
+        whose host matches (a host entry, or a literal address inside a cidr entry).
+      required:
+      - kind
+      - value
+      - allowHttp
+      properties:
+        kind:
+          type: string
+          enum:
+          - cidr
+          - host
+        value:
+          type: string
+          maxLength: 260
+          description: 'cidr: an IPv4 or IPv6 prefix such as 10.20.0.0/16 (a bare address means /32 or /128). host: an
+            exact ASCII host name such as mcp.corp.example.com, or *.corp.example.com for its subdomains only (not
+            corp.example.com itself).'
+        allowHttp:
+          type: boolean
+        note:
+          type: string
+          maxLength: 200
+    NetworkSettings:
+      type: object
+      required:
+      - entries
+      - deploymentEntries
+      - revision
+      - updatedAt
+      properties:
+        entries:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/NetworkEntry'
+        deploymentEntries:
+          type: array
+          description: From UPSTREAM_ALLOWED_NETWORKS; read-only
+          items:
+            $ref: '#/components/schemas/NetworkEntry'
+        revision:
+          $ref: '#/components/schemas/Revision'
+        updatedAt:
+          type: string
+          format: date-time
+    NetworkSettingsUpdate:
+      type: object
+      required:
+      - entries
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetworkEntry'
+    NetworkCheckRequest:
+      type: object
+      required:
+      - url
+      properties:
+        url:
+          type: string
+          maxLength: 2000
+    NetworkCheckReason:
+      type: string
+      description: 'Allowed: public, cidr_entry, host_entry, development. Refused: blocked_address, private_address,
+        dns_failed, or a URL problem (invalid, too_long, userinfo, query, fragment, scheme).'
+      enum:
+      - public
+      - cidr_entry
+      - host_entry
+      - development
+      - blocked_address
+      - private_address
+      - dns_failed
+      - invalid
+      - too_long
+      - userinfo
+      - query
+      - fragment
+      - scheme
+    NetworkCheckAddress:
+      type: object
+      required:
+      - address
+      - allowed
+      - reason
+      properties:
+        address:
+          type: string
+        allowed:
+          type: boolean
+        reason:
+          type: string
+          enum:
+          - public
+          - cidr_entry
+          - host_entry
+          - development
+          - blocked_address
+          - private_address
+    NetworkCheckResult:
+      type: object
+      required:
+      - allowed
+      - reason
+      - message
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          $ref: '#/components/schemas/NetworkCheckReason'
+        message:
+          type: string
+        matchedEntry:
+          $ref: '#/components/schemas/NetworkEntry'
+        resolvedAddresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetworkCheckAddress'
     TeamPublishing:
       type: object
       required:

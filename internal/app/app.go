@@ -112,8 +112,10 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 		return httpapi.Deps{}, err
 	}
 	// The development allowance for MCP server addresses (DEV_AUTH on a
-	// loopback APP_URL); there is no setting for it in production.
-	client := &upstream.Client{AllowPrivate: cfg.AllowPrivateUpstreams(), Log: log}
+	// loopback APP_URL); in production internal networks are allowed only by
+	// the allowlist (the deployment's entries plus the platform admins').
+	nets := registry.NewNetworks(pool, cfg.UpstreamAllowedNetworks, log)
+	client := &upstream.Client{AllowPrivate: cfg.AllowPrivateUpstreams(), Networks: nets, Log: log}
 	pepper, err := secrets.ParseKey(cfg.APIKeyPepper)
 	if err != nil {
 		return httpapi.Deps{}, fmt.Errorf("API_KEY_PEPPER: %w", err)

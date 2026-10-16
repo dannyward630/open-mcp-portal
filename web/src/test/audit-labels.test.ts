@@ -26,5 +26,14 @@ describe("audit labels", () => {
     expect(actionLabel("mcp_capability.approve")).toBe("Approved capability");
     expect(areaOf("mcp_server.refresh")).toBe("MCP servers");
     expect(areaOf("settings.publishing_update")).toBe("Platform settings");
+    expect(actionLabel("settings.network_update")).toBe("Changed internal networks");
+    expect(areaOf("settings.network_update")).toBe("Platform settings");
+    const e = {
+      action: "settings.network_update",
+      before: { entries: [] },
+      after: { entries: [{ kind: "cidr", value: "10.20.0.0/16", allowHttp: false }, { kind: "host", value: "*.corp.example.com", allowHttp: true, note: "Wiki" }] },
+    };
+    expect(changedRows(auditChange(e))).toEqual([{ field: "Allowed networks and hosts", before: [], after: ["10.20.0.0/16", "*.corp.example.com (http) · Wiki"] }]);
+    expect(valueText(changedRows(auditChange(e))[0]?.after)).toBe("10.20.0.0/16, *.corp.example.com (http) · Wiki");
   });
 });

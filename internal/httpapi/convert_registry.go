@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-gateway/internal/upstream"
 )
 
 // Conversions of the registry's views to API types. The header value and
@@ -154,4 +156,53 @@ func toAPITeamPublishing(p registry.TeamPublishing) apitypes.TeamPublishing {
 
 func toAPISettings(s registry.Settings) apitypes.PublishingSettings {
 	return apitypes.PublishingSettings{DefaultPolicy: apitypes.PublishPolicy(s.PublishDefaultPolicy), Revision: s.Revision, UpdatedAt: s.UpdatedAt}
+}
+
+func toAPINetworkEntries(in []netpolicy.Entry) []apitypes.NetworkEntry {
+	out := make([]apitypes.NetworkEntry, len(in))
+	for i, e := range in {
+		out[i] = toAPINetworkEntry(e)
+	}
+	return out
+}
+
+func toAPINetworkEntry(e netpolicy.Entry) apitypes.NetworkEntry {
+	out := apitypes.NetworkEntry{Kind: apitypes.NetworkEntryKind(e.Kind), Value: e.Value, AllowHttp: e.AllowHTTP}
+	if e.Note != "" {
+		note := e.Note
+		out.Note = &note
+	}
+	return out
+}
+
+func fromAPINetworkEntries(in []apitypes.NetworkEntry) []netpolicy.Entry {
+	out := make([]netpolicy.Entry, len(in))
+	for i, e := range in {
+		out[i] = netpolicy.Entry{Kind: string(e.Kind), Value: e.Value, AllowHTTP: e.AllowHttp}
+		if e.Note != nil {
+			out[i].Note = *e.Note
+		}
+	}
+	return out
+}
+
+func toAPINetworkSettings(s registry.NetworkSettings) apitypes.NetworkSettings {
+	return apitypes.NetworkSettings{Entries: toAPINetworkEntries(s.Entries), DeploymentEntries: toAPINetworkEntries(s.Deployment),
+		Revision: s.Revision, UpdatedAt: s.UpdatedAt}
+}
+
+func toAPINetworkCheck(r upstream.CheckResult) apitypes.NetworkCheckResult {
+	out := apitypes.NetworkCheckResult{Allowed: r.Allowed, Reason: apitypes.NetworkCheckReason(r.Reason), Message: r.Message}
+	if r.Matched != nil {
+		e := toAPINetworkEntry(*r.Matched)
+		out.MatchedEntry = &e
+	}
+	if r.Addresses != nil {
+		addrs := make([]apitypes.NetworkCheckAddress, len(r.Addresses))
+		for i, a := range r.Addresses {
+			addrs[i] = apitypes.NetworkCheckAddress{Address: a.Address, Allowed: a.Allowed, Reason: apitypes.NetworkCheckAddressReason(a.Reason)}
+		}
+		out.ResolvedAddresses = &addrs
+	}
+	return out
 }

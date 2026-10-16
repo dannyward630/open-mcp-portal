@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
 )
 
 func env(m map[string]string) func(string) (string, bool) {
@@ -244,5 +246,38 @@ func TestValidateInstance(t *testing.T) {
 				t.Fatalf("want %q, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestUpstreamAllowedNetworks(t *testing.T) {
+	c, err := LoadFrom("", env(nil))
+	if err != nil || len(c.UpstreamAllowedNetworks) != 0 {
+		t.Fatalf("default = %+v %v", c.UpstreamAllowedNetworks, err)
+	}
+	c, err = LoadFrom("", env(map[string]string{
+		"UPSTREAM_ALLOWED_NETWORKS": "10.20.3.0/16, http:*.SVC.cluster.local. ,mcp.corp.example.com,http:10.30.0.7",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := netpolicy.FormatList(c.UpstreamAllowedNetworks); got != "10.20.0.0/16,http:*.svc.cluster.local,mcp.corp.example.com,http:10.30.0.7/32" {
+		t.Fatalf("entries = %s", got)
+	}
+	if c.UpstreamAllowedNetworks[1].Kind != netpolicy.KindHost || c.UpstreamAllowedNetworks[0].Kind != netpolicy.KindCIDR {
+		t.Fatalf("kinds = %+v", c.UpstreamAllowedNetworks)
+	}
+	// The YAML file accepts a list.
+	cfg := filepath.Join(t.TempDir(), "c.yaml")
+	if err := os.WriteFile(cfg, []byte("upstream_allowed_networks:\n  - 10.20.0.0/16\n  - http:mcp.corp.example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = LoadFrom(cfg, env(nil)); err != nil || netpolicy.FormatList(c.UpstreamAllowedNetworks) != "10.20.0.0/16,http:mcp.corp.example.com" {
+		t.Fatalf("file = %+v %v", c.UpstreamAllowedNetworks, err)
+	}
+	for _, bad := range []string{"10.0.0.0/33", "127.0.0.0/8", "169.254.169.254", "localhost", "https://mcp.example.com", "mcp.example.com:443", "*"} {
+		_, err := LoadFrom("", env(map[string]string{"UPSTREAM_ALLOWED_NETWORKS": "10.20.0.0/16," + bad}))
+		if err == nil || !strings.Contains(err.Error(), "UPSTREAM_ALLOWED_NETWORKS") {
+			t.Errorf("%q: %v", bad, err)
+		}
 	}
 }

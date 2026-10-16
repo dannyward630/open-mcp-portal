@@ -22,8 +22,16 @@ const userStatusLabels: Record<string, string> = { active: "Active", suspended: 
 const teamStatusLabels: Record<string, string> = { active: "Active", archived: "Archived" };
 const platformRoleLabels: Record<string, string> = { none: "None", platform_admin: "Platform admin", platform_auditor: "Platform auditor" };
 
+/** Internal network entries as words: "10.20.0.0/16", "*.corp.example.com (http) · Build farm". */
+const networkEntries: Format = (v) =>
+  Array.isArray(v)
+    ? v.map((e: { value?: string; allowHttp?: boolean; note?: string }) => `${e.value ?? ""}${e.allowHttp ? " (http)" : ""}${e.note ? ` · ${e.note}` : ""}`)
+    : v;
+
 function fieldsFor(action: string): Fields | undefined {
   switch (action) {
+    case "settings.network_update":
+      return { entries: ["Allowed networks and hosts", networkEntries] };
     case "platform.bootstrap_role":
     case "platform.user_suspend":
     case "platform.user_reactivate":

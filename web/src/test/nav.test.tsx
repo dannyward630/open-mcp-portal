@@ -24,7 +24,7 @@ describe("navigation lists", () => {
     ]);
     expect(teamNavFor(meFor("none", "member"), team.slug).find((n) => n.label === "MCP servers")?.to).toBe("/teams/$team/servers");
     expect(teamNavFor(meFor("none", "member"), team.slug).find((n) => n.label === "Gateways")?.to).toBe("/teams/$team/gateways");
-    expect(adminNav.map((n) => n.to)).toEqual(["/admin/users", "/admin/teams", "/admin/servers", "/admin/publishing", "/admin/gateways", "/admin/audit", "/admin/calls"]);
+    expect(adminNav.map((n) => n.to)).toEqual(["/admin/users", "/admin/teams", "/admin/servers", "/admin/publishing", "/admin/networks", "/admin/gateways", "/admin/audit", "/admin/calls"]);
     const labels = [...workspaceNav, ...teamNavFor(meFor("none", "owner"), team.slug), ...adminNav].map((n) => n.label);
     expect(labels).not.toContain("Connect");
   });

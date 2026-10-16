@@ -40,7 +40,8 @@ func (a *api) mcpServerRoutes() []route {
 	}
 }
 
-// mcpAdminRoutes: every team's servers, reviews and publishing settings.
+// mcpAdminRoutes: every team's servers, reviews, publishing settings and
+// internal networks.
 func (a *api) mcpAdminRoutes() []route {
 	return []route{
 		{"GET", "/v1/admin/mcp-servers", a.admin(a.adminListMcpServers)},
@@ -51,6 +52,9 @@ func (a *api) mcpAdminRoutes() []route {
 		{"PUT", "/v1/admin/mcp-servers/{serverId}/capabilities/{capabilityId}/approval", a.admin(a.adminApproveMcpCapability)},
 		{"GET", "/v1/admin/settings/publishing", a.admin(a.adminGetPublishingSettings)},
 		{"PUT", "/v1/admin/settings/publishing", a.admin(a.adminUpdatePublishingSettings)},
+		{"GET", "/v1/admin/settings/network", a.admin(a.adminGetNetworkSettings)},
+		{"PUT", "/v1/admin/settings/network", a.admin(a.adminUpdateNetworkSettings)},
+		{"POST", "/v1/admin/settings/network/check", a.admin(a.adminCheckNetworkUrl)},
 		{"GET", "/v1/admin/teams/{team}/publishing", a.admin(a.adminGetTeamPublishing)},
 		{"PUT", "/v1/admin/teams/{team}/publishing", a.admin(a.adminUpdateTeamPublishing)},
 	}
@@ -488,4 +492,36 @@ func (a *api) adminUpdateTeamPublishing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeRevised(w, http.StatusOK, p.TeamRevision, toAPITeamPublishing(p))
+}
+
+func (a *api) adminGetNetworkSettings(w http.ResponseWriter, r *http.Request) {
+	s, err := a.Registry.GetNetworkSettings(r.Context(), a.actor(r))
+	if failed(w, r, err) {
+		return
+	}
+	writeRevised(w, http.StatusOK, s.Revision, toAPINetworkSettings(s))
+}
+
+func (a *api) adminUpdateNetworkSettings(w http.ResponseWriter, r *http.Request) {
+	in, rev, ok := decodeRevised[apitypes.NetworkSettingsUpdate](w, r)
+	if !ok {
+		return
+	}
+	s, err := a.Registry.UpdateNetworkSettings(r.Context(), a.actor(r), fromAPINetworkEntries(in.Entries), rev)
+	if failed(w, r, err) {
+		return
+	}
+	writeRevised(w, http.StatusOK, s.Revision, toAPINetworkSettings(s))
+}
+
+func (a *api) adminCheckNetworkUrl(w http.ResponseWriter, r *http.Request) {
+	var in apitypes.NetworkCheckRequest
+	if !httpx.Decode(w, r, &in) {
+		return
+	}
+	res, err := a.Registry.CheckNetworkURL(r.Context(), a.actor(r), in.Url)
+	if failed(w, r, err) {
+		return
+	}
+	httpx.JSON(w, http.StatusOK, toAPINetworkCheck(res))
 }

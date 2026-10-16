@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-10-16.
+Last updated: 2026-10-16 (internal networks, decision 20).
 
 ## Where things stand
 
@@ -60,6 +60,24 @@ Last updated: 2026-10-16.
     `resources/list|templates/list|read`, JWT claim `resource`); API keys limited to gateways (`gatewayIds`,
     `ApiKey.gateways`, error class `key_scope`). Migration `00006_gateway_resources_key_scopes`. See
     [phase3-gateways.md](phase3-gateways.md) "As built".
+
+- **Internal MCP servers (decision 20): done, not browser-checked.** Platform admins allow internal networks (CIDRs)
+  and host names (exact or `*.suffix`, optionally with plain http) in **Admin › Internal networks**
+  (`/admin/networks`: staged edits, Save with If-Match and confirmation, read-only deployment entries, a URL checker);
+  `UPSTREAM_ALLOWED_NETWORKS` adds read-only deployment entries. Loopback, link-local/metadata, unspecified, multicast
+  and broadcast stay blocked. Rules in [registry.md](registry.md#security), operations in
+  [deploy.md](deploy.md#internal-mcp-servers).
+  - Migration `00007_network_allowlist` adds a one-row `network_settings` table (entries JSON, own revision).
+  - New package `internal/netpolicy` (classification, canonical entries, matching); `upstream.Client` gained
+    `Networks` (the live policy) and `Dial` (a test seam); `registry.Networks` caches the admin entries (30s; the saving
+    replica applies a change at once).
+  - Contract changes: `GET`/`PUT /v1/admin/settings/network`, `POST /v1/admin/settings/network/check`; schemas
+    `NetworkEntry`, `NetworkSettings`, `NetworkSettingsUpdate`, `NetworkCheckRequest`, `NetworkCheckResult`; new
+    `url_not_allowed` reason `blocked_address` (loopback/link-local/metadata literals and `localhost`, previously
+    `private_address`); `private_address` now says a platform admin can allow the network; audit
+    `settings.network_update`. `Registry.Target` takes a context.
+  - UI: the add-server and settings URL fields let plain http through to the server (it decides from the allowlist);
+    a `private_address` refusal links platform admins to Internal networks and tells others to ask one.
 
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and

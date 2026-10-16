@@ -18,12 +18,16 @@ describe("emailProblem", () => {
 });
 
 describe("server fields", () => {
-  it("allows https, and plain http only on loopback in development", () => {
+  it("allows https, plain http on loopback in development, and leaves other http hosts to the server's allowlist", () => {
     expect(urlProblem("https://tools.example.com/mcp", false)).toBeUndefined();
     expect(urlProblem("http://localhost:9000/mcp", true)).toBeUndefined();
     expect(urlProblem("http://127.0.0.1:9000/mcp", true)).toBeUndefined();
     expect(urlProblem("http://localhost:9000/mcp", false)).toBe("Use an https address.");
-    expect(urlProblem("http://tools.example.com/mcp", true)).toMatch(/loopback/);
+    expect(urlProblem("http://127.0.0.1:9000/mcp", false)).toBe("Use an https address.");
+    // An internal host may be allowed plain http by a platform admin: the server decides.
+    expect(urlProblem("http://mcp.corp.example.com/mcp", false)).toBeUndefined();
+    expect(urlProblem("http://tools.example.com/mcp", true)).toBeUndefined();
+    expect(urlProblem("ftp://tools.example.com/mcp", false)).toBe("Use an https address.");
     expect(urlProblem("tools.example.com", false)).toMatch(/full URL/);
     expect(urlProblem("", false)).toBe("Enter the server's URL.");
   });

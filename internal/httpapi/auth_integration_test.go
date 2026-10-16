@@ -44,6 +44,13 @@ func newTestApp(t *testing.T, mutate func(*config.Config)) *testApp {
 // newTestAppLog is newTestApp logging to log.
 func newTestAppLog(t *testing.T, mutate func(*config.Config), log *slog.Logger) *testApp {
 	t.Helper()
+	return newTestAppDeps(t, mutate, log, nil)
+}
+
+// newTestAppDeps is newTestAppLog with a hook that adjusts the services
+// before the handler is built (nil: none).
+func newTestAppDeps(t *testing.T, mutate func(*config.Config), log *slog.Logger, hook func(*httpapi.Deps)) *testApp {
+	t.Helper()
 	pool, _ := testutil.NewDB(t)
 	var handler http.Handler
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
@@ -66,6 +73,9 @@ func newTestAppLog(t *testing.T, mutate func(*config.Config), log *slog.Logger) 
 	}
 	deps.Health = httpapi.NewHealth(map[string]func(context.Context) error{"postgres": pool.Ping})
 	deps.Web, deps.WebBuilt = testWeb, true
+	if hook != nil {
+		hook(&deps)
+	}
 	handler = httpapi.NewAPIHandler(deps)
 
 	jar, _ := cookiejar.New(nil)

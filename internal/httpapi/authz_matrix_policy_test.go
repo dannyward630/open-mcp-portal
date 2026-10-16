@@ -210,6 +210,17 @@ var matrixPolicies = map[string]policy{
 		return request{method: "PUT", path: "/v1/admin/settings/publishing", body: map[string]any{"defaultPolicy": "approval_required"},
 			headers: map[string]string{"If-Match": `"` + rev + `"`}}
 	}},
+	"adminGetNetworkSettings": {own: platform, build: func(*mctx) request { return get("/v1/admin/settings/network") }},
+	"adminUpdateNetworkSettings": {own: padmin, build: func(c *mctx) request {
+		rev := c.e.exec(`SELECT revision::text FROM network_settings`)
+		return request{method: "PUT", path: "/v1/admin/settings/network",
+			body:    map[string]any{"entries": []any{map[string]any{"kind": "cidr", "value": "10.20.0.0/16", "allowHttp": false}}},
+			headers: map[string]string{"If-Match": `"` + rev + `"`}}
+	}},
+	// A literal address: the check never needs DNS here.
+	"adminCheckNetworkUrl": {own: platform, build: func(*mctx) request {
+		return post("/v1/admin/settings/network/check", map[string]any{"url": "https://10.20.0.5/mcp"})
+	}},
 	"adminGetTeamPublishing": {own: platform, build: func(c *mctx) request { return get("/v1/admin/teams/" + c.e.b.slug + "/publishing") }},
 	"adminUpdateTeamPublishing": {own: padmin, build: func(c *mctx) request {
 		return request{method: "PUT", path: "/v1/admin/teams/" + c.spareTeam() + "/publishing", body: map[string]any{"override": "self_publish"},

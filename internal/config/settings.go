@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
 )
 
 type setting struct {
@@ -89,6 +91,16 @@ func trustedProxies(c *Config, v string) error {
 	return nil
 }
 
+// upstreamAllowedNetworks reads UPSTREAM_ALLOWED_NETWORKS (netpolicy.ParseList).
+func upstreamAllowedNetworks(c *Config, v string) error {
+	entries, err := netpolicy.ParseList(v)
+	if err != nil {
+		return err
+	}
+	c.UpstreamAllowedNetworks = entries
+	return nil
+}
+
 var settings = []setting{
 	{key: "APP_URL", apply: str(func(c *Config) *string { return &c.AppURL })},
 	{key: "LISTEN_ADDR", apply: str(func(c *Config) *string { return &c.ListenAddr })},
@@ -125,6 +137,7 @@ var settings = []setting{
 	{key: "SIGNING_KEY_PREPUBLISH", apply: duration(func(c *Config) *time.Duration { return &c.SigningKeyPrepublish }, 0, 7*24*time.Hour)},
 	{key: "SESSION_TTL", apply: duration(func(c *Config) *time.Duration { return &c.SessionTTL }, 5*time.Minute, 30*24*time.Hour)},
 	{key: "TRUSTED_PROXIES", apply: trustedProxies},
+	{key: "UPSTREAM_ALLOWED_NETWORKS", apply: upstreamAllowedNetworks},
 	{key: "REQUESTS_PER_MINUTE", apply: integer(func(c *Config) *int { return &c.RequestsPerMinute }, 1, 1_000_000)},
 	{key: "LOGIN_ATTEMPTS_PER_MINUTE", apply: integer(func(c *Config) *int { return &c.LoginAttemptsPerMinute }, 1, 10_000)},
 	{key: "SHUTDOWN_DELAY", apply: duration(func(c *Config) *time.Duration { return &c.ShutdownDelay }, 0, 5*time.Minute)},

@@ -47,7 +47,7 @@ type TestResult struct {
 // probe discovers a server's capabilities (no storing). headerValue is
 // returned so messages can be scrubbed of it.
 func (s *Service) probe(ctx context.Context, sv dbgen.McpServer) (TestResult, upstream.Discovery, string) {
-	t, err := s.target(sv)
+	t, err := s.target(ctx, sv)
 	if err != nil {
 		var e *upstream.Error
 		errors.As(err, &e)

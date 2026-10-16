@@ -447,6 +447,105 @@ func (e MyGatewayAccess) Valid() bool {
 	}
 }
 
+// Defines values for NetworkCheckAddressReason.
+const (
+	NetworkCheckAddressReasonBlockedAddress NetworkCheckAddressReason = "blocked_address"
+	NetworkCheckAddressReasonCidrEntry      NetworkCheckAddressReason = "cidr_entry"
+	NetworkCheckAddressReasonDevelopment    NetworkCheckAddressReason = "development"
+	NetworkCheckAddressReasonHostEntry      NetworkCheckAddressReason = "host_entry"
+	NetworkCheckAddressReasonPrivateAddress NetworkCheckAddressReason = "private_address"
+	NetworkCheckAddressReasonPublic         NetworkCheckAddressReason = "public"
+)
+
+// Valid indicates whether the value is a known member of the NetworkCheckAddressReason enum.
+func (e NetworkCheckAddressReason) Valid() bool {
+	switch e {
+	case NetworkCheckAddressReasonBlockedAddress:
+		return true
+	case NetworkCheckAddressReasonCidrEntry:
+		return true
+	case NetworkCheckAddressReasonDevelopment:
+		return true
+	case NetworkCheckAddressReasonHostEntry:
+		return true
+	case NetworkCheckAddressReasonPrivateAddress:
+		return true
+	case NetworkCheckAddressReasonPublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NetworkCheckReason.
+const (
+	NetworkCheckReasonBlockedAddress NetworkCheckReason = "blocked_address"
+	NetworkCheckReasonCidrEntry      NetworkCheckReason = "cidr_entry"
+	NetworkCheckReasonDevelopment    NetworkCheckReason = "development"
+	NetworkCheckReasonDnsFailed      NetworkCheckReason = "dns_failed"
+	NetworkCheckReasonFragment       NetworkCheckReason = "fragment"
+	NetworkCheckReasonHostEntry      NetworkCheckReason = "host_entry"
+	NetworkCheckReasonInvalid        NetworkCheckReason = "invalid"
+	NetworkCheckReasonPrivateAddress NetworkCheckReason = "private_address"
+	NetworkCheckReasonPublic         NetworkCheckReason = "public"
+	NetworkCheckReasonQuery          NetworkCheckReason = "query"
+	NetworkCheckReasonScheme         NetworkCheckReason = "scheme"
+	NetworkCheckReasonTooLong        NetworkCheckReason = "too_long"
+	NetworkCheckReasonUserinfo       NetworkCheckReason = "userinfo"
+)
+
+// Valid indicates whether the value is a known member of the NetworkCheckReason enum.
+func (e NetworkCheckReason) Valid() bool {
+	switch e {
+	case NetworkCheckReasonBlockedAddress:
+		return true
+	case NetworkCheckReasonCidrEntry:
+		return true
+	case NetworkCheckReasonDevelopment:
+		return true
+	case NetworkCheckReasonDnsFailed:
+		return true
+	case NetworkCheckReasonFragment:
+		return true
+	case NetworkCheckReasonHostEntry:
+		return true
+	case NetworkCheckReasonInvalid:
+		return true
+	case NetworkCheckReasonPrivateAddress:
+		return true
+	case NetworkCheckReasonPublic:
+		return true
+	case NetworkCheckReasonQuery:
+		return true
+	case NetworkCheckReasonScheme:
+		return true
+	case NetworkCheckReasonTooLong:
+		return true
+	case NetworkCheckReasonUserinfo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NetworkEntryKind.
+const (
+	Cidr NetworkEntryKind = "cidr"
+	Host NetworkEntryKind = "host"
+)
+
+// Valid indicates whether the value is a known member of the NetworkEntryKind enum.
+func (e NetworkEntryKind) Valid() bool {
+	switch e {
+	case Cidr:
+		return true
+	case Host:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlatformRole.
 const (
 	None            PlatformRole = "none"
@@ -1187,14 +1286,14 @@ type McpCapability struct {
 	Title    string             `json:"title"`
 }
 
-// McpErrorClass not_allowed: the address is private/loopback/link-local, or the server redirected
+// McpErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
 type McpErrorClass string
 
 // McpHealthCheck defines model for McpHealthCheck.
 type McpHealthCheck struct {
 	CheckedAt time.Time `json:"checkedAt"`
 
-	// ErrorClass not_allowed: the address is private/loopback/link-local, or the server redirected
+	// ErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
 	ErrorClass *McpErrorClass        `json:"errorClass,omitempty"`
 	HttpStatus *int32                `json:"httpStatus,omitempty"`
 	LatencyMs  int32                 `json:"latencyMs"`
@@ -1348,7 +1447,7 @@ type McpServerUpdate struct {
 type McpTestResult struct {
 	Counts *CapabilityCounts `json:"counts,omitempty"`
 
-	// ErrorClass not_allowed: the address is private/loopback/link-local, or the server redirected
+	// ErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
 	ErrorClass *McpErrorClass `json:"errorClass,omitempty"`
 	HttpStatus *int32         `json:"httpStatus,omitempty"`
 	LatencyMs  int64          `json:"latencyMs"`
@@ -1452,6 +1551,66 @@ type MyTeam struct {
 	Status TeamStatus         `json:"status"`
 }
 
+// NetworkCheckAddress defines model for NetworkCheckAddress.
+type NetworkCheckAddress struct {
+	Address string                    `json:"address"`
+	Allowed bool                      `json:"allowed"`
+	Reason  NetworkCheckAddressReason `json:"reason"`
+}
+
+// NetworkCheckAddressReason defines model for NetworkCheckAddress.Reason.
+type NetworkCheckAddressReason string
+
+// NetworkCheckReason Allowed: public, cidr_entry, host_entry, development. Refused: blocked_address, private_address, dns_failed, or a URL problem (invalid, too_long, userinfo, query, fragment, scheme).
+type NetworkCheckReason string
+
+// NetworkCheckRequest defines model for NetworkCheckRequest.
+type NetworkCheckRequest struct {
+	Url string `json:"url"`
+}
+
+// NetworkCheckResult defines model for NetworkCheckResult.
+type NetworkCheckResult struct {
+	Allowed bool `json:"allowed"`
+
+	// MatchedEntry One allowlist entry. A cidr entry allows private addresses inside it (literal or resolved); a host entry allows the private addresses a matching host resolves to. allowHttp also allows plain http for URLs whose host matches (a host entry, or a literal address inside a cidr entry).
+	MatchedEntry *NetworkEntry `json:"matchedEntry,omitempty"`
+	Message      string        `json:"message"`
+
+	// Reason Allowed: public, cidr_entry, host_entry, development. Refused: blocked_address, private_address, dns_failed, or a URL problem (invalid, too_long, userinfo, query, fragment, scheme).
+	Reason            NetworkCheckReason     `json:"reason"`
+	ResolvedAddresses *[]NetworkCheckAddress `json:"resolvedAddresses,omitempty"`
+}
+
+// NetworkEntry One allowlist entry. A cidr entry allows private addresses inside it (literal or resolved); a host entry allows the private addresses a matching host resolves to. allowHttp also allows plain http for URLs whose host matches (a host entry, or a literal address inside a cidr entry).
+type NetworkEntry struct {
+	AllowHttp bool             `json:"allowHttp"`
+	Kind      NetworkEntryKind `json:"kind"`
+	Note      *string          `json:"note,omitempty"`
+
+	// Value cidr: an IPv4 or IPv6 prefix such as 10.20.0.0/16 (a bare address means /32 or /128). host: an exact ASCII host name such as mcp.corp.example.com, or *.corp.example.com for its subdomains only (not corp.example.com itself).
+	Value string `json:"value"`
+}
+
+// NetworkEntryKind defines model for NetworkEntry.Kind.
+type NetworkEntryKind string
+
+// NetworkSettings defines model for NetworkSettings.
+type NetworkSettings struct {
+	// DeploymentEntries From UPSTREAM_ALLOWED_NETWORKS; read-only
+	DeploymentEntries []NetworkEntry `json:"deploymentEntries"`
+	Entries           []NetworkEntry `json:"entries"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision  Revision  `json:"revision"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// NetworkSettingsUpdate defines model for NetworkSettingsUpdate.
+type NetworkSettingsUpdate struct {
+	Entries []NetworkEntry `json:"entries"`
+}
+
 // Ok defines model for Ok.
 type Ok struct {
 	Ok bool `json:"ok"`
@@ -1494,7 +1653,7 @@ type Revision = int64
 type ServerHealth struct {
 	CheckedAt *time.Time `json:"checkedAt,omitempty"`
 
-	// ErrorClass not_allowed: the address is private/loopback/link-local, or the server redirected
+	// ErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
 	ErrorClass *McpErrorClass     `json:"errorClass,omitempty"`
 	LatencyMs  *int32             `json:"latencyMs,omitempty"`
 	Message    *string            `json:"message,omitempty"`
@@ -1857,6 +2016,12 @@ type AdminListMcpCapabilitiesParams struct {
 	Kind *CapabilityKindParam `form:"kind,omitempty" json:"kind,omitempty"`
 }
 
+// AdminUpdateNetworkSettingsParams defines parameters for AdminUpdateNetworkSettings.
+type AdminUpdateNetworkSettingsParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // AdminUpdatePublishingSettingsParams defines parameters for AdminUpdatePublishingSettings.
 type AdminUpdatePublishingSettingsParams struct {
 	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
@@ -2052,6 +2217,12 @@ type AdminAddGatewayGrantJSONRequestBody = GatewayGrantCreate
 
 // AdminReviewMcpServerJSONRequestBody defines body for AdminReviewMcpServer for application/json ContentType.
 type AdminReviewMcpServerJSONRequestBody = McpPublishReview
+
+// AdminUpdateNetworkSettingsJSONRequestBody defines body for AdminUpdateNetworkSettings for application/json ContentType.
+type AdminUpdateNetworkSettingsJSONRequestBody = NetworkSettingsUpdate
+
+// AdminCheckNetworkUrlJSONRequestBody defines body for AdminCheckNetworkUrl for application/json ContentType.
+type AdminCheckNetworkUrlJSONRequestBody = NetworkCheckRequest
 
 // AdminUpdatePublishingSettingsJSONRequestBody defines body for AdminUpdatePublishingSettings for application/json ContentType.
 type AdminUpdatePublishingSettingsJSONRequestBody = PublishingSettingsUpdate

@@ -194,6 +194,23 @@ func (q *Queries) GetMCPServerView(ctx context.Context, id uuid.UUID) (GetMCPSer
 	return i, err
 }
 
+const getNetworkSettings = `-- name: GetNetworkSettings :one
+SELECT id, entries, revision, updated_by, updated_at FROM network_settings WHERE id = 1
+`
+
+func (q *Queries) GetNetworkSettings(ctx context.Context) (NetworkSetting, error) {
+	row := q.db.QueryRow(ctx, getNetworkSettings)
+	var i NetworkSetting
+	err := row.Scan(
+		&i.ID,
+		&i.Entries,
+		&i.Revision,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getPlatformSettings = `-- name: GetPlatformSettings :one
 
 SELECT id, publish_default_policy, revision, updated_by, updated_at FROM platform_settings WHERE id = 1
@@ -756,6 +773,23 @@ func (q *Queries) LockMCPServer(ctx context.Context, id uuid.UUID) (McpServer, e
 	return i, err
 }
 
+const lockNetworkSettings = `-- name: LockNetworkSettings :one
+SELECT id, entries, revision, updated_by, updated_at FROM network_settings WHERE id = 1 FOR UPDATE
+`
+
+func (q *Queries) LockNetworkSettings(ctx context.Context) (NetworkSetting, error) {
+	row := q.db.QueryRow(ctx, lockNetworkSettings)
+	var i NetworkSetting
+	err := row.Scan(
+		&i.ID,
+		&i.Entries,
+		&i.Revision,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lockPlatformSettings = `-- name: LockPlatformSettings :one
 SELECT id, publish_default_policy, revision, updated_by, updated_at FROM platform_settings WHERE id = 1 FOR UPDATE
 `
@@ -1069,6 +1103,31 @@ func (q *Queries) UpdateMCPServer(ctx context.Context, arg UpdateMCPServerParams
 		&i.Revision,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateNetworkEntries = `-- name: UpdateNetworkEntries :one
+UPDATE network_settings
+SET entries = $1, revision = revision + 1, updated_by = $2, updated_at = now()
+WHERE id = 1
+RETURNING id, entries, revision, updated_by, updated_at
+`
+
+type UpdateNetworkEntriesParams struct {
+	Entries   json.RawMessage
+	UpdatedBy uuid.NullUUID
+}
+
+func (q *Queries) UpdateNetworkEntries(ctx context.Context, arg UpdateNetworkEntriesParams) (NetworkSetting, error) {
+	row := q.db.QueryRow(ctx, updateNetworkEntries, arg.Entries, arg.UpdatedBy)
+	var i NetworkSetting
+	err := row.Scan(
+		&i.ID,
+		&i.Entries,
+		&i.Revision,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
 	)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-gateway/internal/testutil"
 )
@@ -27,9 +28,18 @@ type registryEnv struct {
 
 const toolsTeam = "/v1/teams/tools"
 
-func newRegistryEnv(t *testing.T) *registryEnv {
-	app := newTestApp(t, nil)
-	e := &registryEnv{t: t, app: app, fake: testutil.NewFakeMCP(t)}
+func newRegistryEnv(t *testing.T) *registryEnv { return newRegistryEnvWith(t, nil) }
+
+// newRegistryEnvWith is newRegistryEnv with a hook that adjusts the
+// services (given the fake server) before the handler is built.
+func newRegistryEnvWith(t *testing.T, hook func(*httpapi.Deps, *testutil.FakeMCP)) *registryEnv {
+	fake := testutil.NewFakeMCP(t)
+	var depsHook func(*httpapi.Deps)
+	if hook != nil {
+		depsHook = func(d *httpapi.Deps) { hook(d, fake) }
+	}
+	app := newTestAppDeps(t, nil, testutil.Logger(), depsHook)
+	e := &registryEnv{t: t, app: app, fake: fake}
 	e.admin, e.auditor = app.signIn("admin"), app.signIn("auditor")
 	e.owner, e.editor, e.member, e.outsider = app.signIn("user"), app.signIn("alex"), app.signIn("blair"), app.signIn("casey")
 	createTeam(t, e.admin, "tools", "user@localhost")

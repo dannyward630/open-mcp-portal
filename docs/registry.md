@@ -2,7 +2,7 @@
 
 Teams register the remote MCP servers they run. The gateway discovers each server's **tools, resources, resource templates and prompts**, keeps track of its health, and publishes it to the company **catalog** under the platform's publishing policy ([decisions](decisions.md) 9 and 10, [SPEC](../SPEC.md) §5 and §7 phase 2). Gateways (phase 3) will build on this catalog.
 
-Code: `internal/registry` (servers, capabilities, publishing, health loop), `internal/upstream` (guarded MCP client, SSRF guard), `internal/secrets` (header value encryption), migration `00003_registry.sql`. Adapted from Grounded's `internal/mcpclient`.
+Code: `internal/registry` (servers, capabilities, publishing, health loop), `internal/upstream` (guarded MCP client, SSRF guard), `internal/netpolicy` (the address policy and allowlist), `internal/secrets` (header value encryption), migrations `00003_registry.sql` and `00007_network_allowlist.sql`. Adapted from Grounded's `internal/mcpclient`.
 
 ## Servers
 
@@ -10,7 +10,7 @@ Code: `internal/registry` (servers, capabilities, publishing, health loop), `int
 |---|---|
 | Slug | Unique across the platform and **immutable**: `^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$`. Gateways will name tools `slug__tool` |
 | Name, description | 1–100 and up to 2000 characters |
-| URL | The Streamable HTTP endpoint (see [Security](#security)). Problems return `422 url_not_allowed` with `details.reason` (`invalid`, `too_long`, `userinfo`, `query`, `fragment`, `scheme`, `private_address`) |
+| URL | The Streamable HTTP endpoint (see [Security](#security)). Problems return `422 url_not_allowed` with `details.reason` (`invalid`, `too_long`, `userinfo`, `query`, `fragment`, `scheme`, `private_address`, `blocked_address`) |
 | Header and value | Optional static header, such as `Authorization: Bearer …` or `X-API-Key: …`. The value is sealed with `ENCRYPTION_KEY` (AES-256-GCM, bound to the server's ID). It is never returned, logged or audited. Responses show only `hasAuth`, the header name and `authValueHint` (the last 4 characters, and only when the value has at least 8). When you update the server, leaving `authValue` out keeps the stored value, and `authHeaderName: ""` removes both |
 | Timeout | 1–120 s (default 30). It bounds the whole exchange |
 | Enabled | A disabled server is skipped by the health loop, can't be published and drops out of the catalog |
@@ -50,7 +50,7 @@ The **catalog** lists servers that are published and enabled and whose team is a
 
 ## Roles
 
-| | Read servers, capabilities, health and policy | Create, update, test, refresh | Delete, publish, unpublish | Approve changes | Review, settings, overrides |
+| | Read servers, capabilities, health and policy | Create, update, test, refresh | Delete, publish, unpublish | Approve changes | Review, settings (publishing, internal networks), overrides |
 |---|---|---|---|---|---|
 | team member | ✓ | | | | |
 | team editor | ✓ | ✓ | | | |
@@ -62,14 +62,23 @@ Platform roles never change servers through the team routes. People outside the 
 
 ## Health
 
-Test, refresh and the background loop each store a check: ok or failed, latency, trigger (`manual` or `scheduled`), error class, HTTP status, and a short message with the header value and anything secret-looking redacted. The server keeps its latest 100 checks. `statusSince` carries over while the outcome stays the same, so a "failing since" time survives pruning. Error classes: `unavailable`, `auth`, `not_found`, `rate_limited`, `bad_request`, `bad_response`, `config` (the header can't be decrypted), `timeout`, `too_large`, `not_allowed` (blocked address or a redirect).
+Test, refresh and the background loop each store a check: ok or failed, latency, trigger (`manual` or `scheduled`), error class, HTTP status, and a short message with the header value and anything secret-looking redacted. The server keeps its latest 100 checks. `statusSince` carries over while the outcome stays the same, so a "failing since" time survives pruning. Error classes: `unavailable`, `auth`, `not_found`, `rate_limited`, `bad_request`, `bad_response`, `config` (the header can't be decrypted), `timeout`, `too_large`, `not_allowed` (a blocked or unallowed address, or a redirect).
 
 The loop runs at start-up and then every `HEALTH_CHECK_INTERVAL` (default `5m`, `0` turns it off, minimum `30s`). It tests enabled servers of active teams four at a time. Only one replica runs a pass at a time (PostgreSQL advisory lock `omg.mcp-health-checks`), and any server checked within the last 90% of the interval is skipped, so replicas taking turns don't check it twice.
 
 ## Security
 
-- **Addresses:** the URL must be https at a public address. Private, loopback, link-local (including cloud metadata), CGNAT, documentation and translation ranges are refused, and so are numeric host notations. The check runs **when the server is saved**, for literal IPs and `localhost`. It runs again **every time the gateway dials**, against every address the host resolves to, and the connection is pinned to the address that was checked. The URL is checked again before every exchange. Redirects are never followed. Proxy environment variables are ignored. URLs can't contain user info, a query or a fragment: credentials belong in the header.
-- **Development:** when `DEV_AUTH=true` with a loopback `APP_URL`, plain `http://` to loopback hosts and private or loopback addresses are allowed. No setting allows them in production.
+- **Addresses** (code: `internal/netpolicy`, `internal/upstream/guard.go`). Every address is in one of three classes:
+  - **Always blocked**, whatever the allowlist says: loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16` including the cloud metadata address `169.254.169.254`, `fe80::/10`), unspecified (`0.0.0.0`, `::`), `0.0.0.0/8`, multicast (`224.0.0.0/4`, `ff00::/8`), broadcast (`255.255.255.255`), other metadata endpoints (`168.63.129.16`, `100.100.100.200`, `fd00:ec2::254`), and the IPv4-mapped (`::ffff:a.b.c.d`), IPv4-compatible (`::a.b.c.d`) and NAT64 (`64:ff9b::/96`) forms of those. Zoned IPv6 addresses too. `localhost` and `*.localhost` are refused by name.
+  - **Public**: allocated public unicast. Allowed, over https only (as before).
+  - **Private**: everything else (RFC 1918, CGNAT, ULA, documentation, benchmarking and reserved ranges). Allowed only when (a) the URL's host is a literal address inside a `cidr` entry, (b) the URL's host matches a `host` entry, or (c) the host name resolves to it and it is inside a `cidr` entry. Otherwise `422 url_not_allowed` with reason `private_address` when saving a literal address, or error class `not_allowed` when dialling.
+- **Allowlist entries.** `cidr`: an IPv4 or IPv6 prefix, canonicalised (`10.20.3.4/16` is stored as `10.20.0.0/16`, a bare address as `/32` or `/128`, an IPv4-mapped prefix as its IPv4 form); a prefix entirely inside an always-blocked range is refused (`always_blocked`). `host`: an exact host name (`mcp.corp.example.com`) or `*.suffix`, which matches subdomains only (`*.corp.example.com` matches `a.corp.example.com` and `a.b.corp.example.com`, not `corp.example.com` or `evilcorp.example.com`). Host names are lower-cased, lose a trailing dot, and must be ASCII letter-digit-hyphen labels (use punycode, `xn--…`, for international names); no scheme, port, path, address or `localhost`. URL hosts are compared the same way (case and a trailing dot don't matter; the port is not part of the host). Each entry has `allowHttp` and an optional `note` (at most 200 characters). Problems are `422 invalid_entry` with `details.index` and `details.reason` (`invalid_kind`, `invalid_cidr`, `invalid_host`, `non_ascii`, `ip_as_host`, `always_blocked`, `invalid_note`, `duplicate`, `too_many`).
+- **Where entries come from.** Platform admins manage up to 100 in **Admin › Internal networks** (`GET`/`PUT /v1/admin/settings/network`, `If-Match` on its own revision, audited as `settings.network_update` with the lists before and after). The deployment adds entries with `UPSTREAM_ALLOWED_NETWORKS` (comma-separated; kind inferred; an `http:` prefix sets `allowHttp`, for example `10.20.0.0/16,http:*.svc.cluster.local,mcp.corp.example.com`); an invalid one fails configuration loading, and the UI shows them read-only. Both lists apply together.
+- **Plain http** is allowed only when the URL's host matches a `host` entry with `allowHttp`, or is a literal address inside a `cidr` entry with `allowHttp`. A name that merely resolves into an http-allowed network still needs https. Everything else must be https (reason `scheme`).
+- **When it's checked.** **When the server is saved**: the URL's shape, the scheme, literal addresses and `localhost`. **Before every exchange** (refresh, test, health check, forwarded call): the stored URL against the current policy. **Every time the gateway dials**: every address the host resolves to must be allowed (one blocked or unallowed address refuses the connection, so DNS rebinding to `169.254.169.254` is refused even for a host entry), and the connection is pinned to the checked addresses. Redirects are never followed. Proxy environment variables are ignored. URLs can't contain user info, a query or a fragment: credentials belong in the header.
+- **Changes are live.** Dials read a cached copy of the admin entries that is refreshed at most every **30 seconds**; the replica that saves a change applies it at once, other replicas within 30 seconds. If the database can't be read, the last copy stays in force. Changing the entries never edits servers: a server outside the new policy fails its next exchange with error class `not_allowed`, and its health shows failing.
+- **Checking a URL.** `POST /v1/admin/settings/network/check` with `{url}` (platform admins and auditors) applies the same rules with this replica's copy: it resolves the host (at most 3 seconds) but never connects, and returns `allowed`, a `reason` (`public`, `cidr_entry`, `host_entry`, `development`; or `blocked_address`, `private_address`, `dns_failed`, or a URL problem such as `scheme`), a `message`, the `matchedEntry` and each resolved address with its own verdict.
+- **Development:** when `DEV_AUTH=true` with a loopback `APP_URL`, plain `http://` to loopback hosts and private, loopback and link-local addresses are allowed, as before (allowlist entries also apply). This allowance never exists in production.
 - **Secrets:** `ENCRYPTION_KEY` is required by `serve`. Outside loopback, the server refuses to start with the example key from `.env.example`. `ENCRYPTION_KEY_PREVIOUS` still decrypts values sealed with the old key; re-entering a value re-seals it with the current key. The audit log records only `authValueChanged`.
 - **Untrusted text:** descriptions and schemas are prompts a model will read. Review them before you approve, and treat annotations as hints only.
 
@@ -87,5 +96,6 @@ See [`../api/openapi.yaml`](../api/openapi.yaml) (tags `mcp-servers`, `catalog`,
 - `GET /v1/catalog/servers`, `GET /v1/catalog/servers/{serverId}`
 - `GET /v1/admin/mcp-servers?publishState=&changes=&team=`, `GET …/{serverId}`, `GET …/{serverId}/capabilities`, `GET …/{serverId}/health-checks` (platform admins and auditors), `POST …/{serverId}/review`, `PUT …/{serverId}/capabilities/{capabilityId}/approval`
 - `GET`/`PUT /v1/admin/settings/publishing`, `GET`/`PUT /v1/admin/teams/{team}/publishing`
+- `GET`/`PUT /v1/admin/settings/network`, `POST /v1/admin/settings/network/check` (internal networks; see [Security](#security))
 
-Audit actions: `mcp_server.create`, `.update`, `.delete`, `.refresh`, `.publish_request`, `.publish` (self-publish or approval), `.reject`, `.unpublish`, `mcp_capability.approve`, `settings.publishing_update`, `team.publishing_override`.
+Audit actions: `mcp_server.create`, `.update`, `.delete`, `.refresh`, `.publish_request`, `.publish` (self-publish or approval), `.reject`, `.unpublish`, `mcp_capability.approve`, `settings.publishing_update`, `settings.network_update`, `team.publishing_override`.

@@ -42,6 +42,7 @@ const actionLabels: Record<string, string> = {
   "mcp_server.unpublish": "Unpublished MCP server",
   "mcp_capability.approve": "Approved capability",
   "settings.publishing_update": "Changed default publishing policy",
+  "settings.network_update": "Changed internal networks",
   "gateway.create": "Created gateway",
   "gateway.update": "Changed gateway",
   "gateway.delete": "Deleted gateway",

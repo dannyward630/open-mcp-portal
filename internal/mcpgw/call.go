@@ -70,7 +70,7 @@ func (rc *request) call(kind string) {
 func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) {
 	ctx := rc.r.Context()
 	rec := calls.Call{ExposedName: o.ExposedName, Server: &o.Server, CapabilityID: o.Capability.ID}
-	target, err := rc.h.Registry.Target(o.Server)
+	target, err := rc.h.Registry.Target(ctx, o.Server)
 	if err != nil {
 		rc.upstreamFailed(rec, err)
 		return

@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
 )
 
 type Config struct {
@@ -59,6 +61,12 @@ type Config struct {
 
 	// TrustedProxies are the ingress CIDRs allowed to set X-Forwarded-For.
 	TrustedProxies []netip.Prefix
+
+	// UpstreamAllowedNetworks are the deployment's entries in the allowlist
+	// of internal networks and hosts MCP servers may use
+	// (UPSTREAM_ALLOWED_NETWORKS), shown read-only next to the platform
+	// admins' entries.
+	UpstreamAllowedNetworks []netpolicy.Entry
 
 	// RequestsPerMinute limits each signed-in person; LoginAttemptsPerMinute
 	// limits sign-in attempts per client address. Both are counted per

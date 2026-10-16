@@ -14,7 +14,7 @@
  *   3. add its breadcrumb in breadcrumbs.tsx.
  * Only list pages that exist: no placeholders or "coming soon" links.
  */
-import { Activity, BadgeCheck, FileClock, Home, LayoutDashboard, Library, Network, Server, Settings, Users, UsersRound } from "lucide-react";
+import { Activity, BadgeCheck, FileClock, Home, LayoutDashboard, Library, Network, Server, Settings, Users, UsersRound, Waypoints } from "lucide-react";
 import { type ReactNode } from "react";
 import { terms } from "../../lib/terms";
 import { type Me } from "../../session";
@@ -112,7 +112,7 @@ export function teamNavFor(me: Me, slug: string): TeamNavItem[] {
 
 /* ---------------- admin ---------------- */
 
-export type AdminPath = "/admin/users" | "/admin/teams" | "/admin/servers" | "/admin/publishing" | "/admin/gateways" | "/admin/audit" | "/admin/calls";
+export type AdminPath = "/admin/users" | "/admin/teams" | "/admin/servers" | "/admin/publishing" | "/admin/networks" | "/admin/gateways" | "/admin/audit" | "/admin/calls";
 
 export type AdminNavItem = { to: AdminPath; label: string; icon: ReactNode; exact?: boolean };
 
@@ -134,6 +134,7 @@ export const adminSections: { label?: string; defaultOpen?: boolean; items: Admi
     items: [
       { to: "/admin/servers", label: terms.mcpServers, icon: icon(Server) },
       { to: "/admin/publishing", label: terms.publishing, icon: icon(BadgeCheck) },
+      { to: "/admin/networks", label: terms.internalNetworks, icon: icon(Waypoints) },
     ],
   },
   {
@@ -165,6 +166,7 @@ export const adminKeywords: Partial<Record<AdminPath, string[]>> = {
   "/admin/teams": ["team", "create team", "archive", "owner", "assign owner"],
   "/admin/servers": ["mcp", "servers", "review", "approve", "reject", "pending", "catalog", "capabilities", "changes"],
   "/admin/publishing": ["policy", "approval required", "self publish", "default", "catalog"],
+  "/admin/networks": ["internal", "network", "cidr", "allowlist", "private address", "host", "http", "ssrf", "egress"],
   "/admin/gateways": ["gateway", "platform gateway", "grant", "grants", "access", "sso group", "team gateway", "disable"],
   "/admin/audit": ["audit log", "history", "changes", "who changed", "sign-ins", "export", "csv"],
   "/admin/calls": ["calls", "call log", "tool calls", "usage", "activity", "denied", "errors", "latency"],

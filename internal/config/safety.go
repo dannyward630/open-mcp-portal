@@ -46,8 +46,10 @@ func (c Config) LoopbackAppURL() bool {
 
 // AllowPrivateUpstreams is the development allowance for MCP server URLs:
 // with DEV_AUTH on a loopback APP_URL, plain http to loopback hosts and
-// private, loopback and link-local addresses are accepted. There is no
-// setting to allow them in production.
+// private, loopback and link-local addresses are accepted. In production,
+// internal networks and hosts are allowed only by allowlist entries
+// (UPSTREAM_ALLOWED_NETWORKS and Admin › Internal networks), and loopback
+// and link-local addresses never.
 func (c Config) AllowPrivateUpstreams() bool { return c.DevAuth && c.LoopbackAppURL() }
 
 // SafetyErrors returns the production safety violations for a process mode.

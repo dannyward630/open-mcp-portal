@@ -74,11 +74,11 @@ describe("Add MCP server", () => {
     const name = await screen.findByRole("textbox", { name: "Name" });
     await u.type(name, "Service Status!");
     expect(screen.getByRole("textbox", { name: "Slug" })).toHaveValue("service-status");
-    await u.type(screen.getByRole("textbox", { name: "URL" }), "http://status.example.com/mcp");
+    await u.type(screen.getByRole("textbox", { name: "URL" }), "ftp://status.example.com/mcp");
     await u.type(screen.getByRole("textbox", { name: /Header name/ }), "Authorization");
     await u.click(screen.getByRole("button", { name: "Add server" }));
-    // Dev personas: plain http only on loopback.
-    expect(await screen.findByText(/Plain http works only for a loopback address/)).toBeInTheDocument();
+    // https, or http where the server allows it (loopback in development, allowlisted internal hosts).
+    expect(await screen.findByText("Use an https address.")).toBeInTheDocument();
     expect(screen.getByText("Enter the header's value, or clear the header name.")).toBeInTheDocument();
     expect(calls.some((c) => c.method === "POST")).toBe(false);
 

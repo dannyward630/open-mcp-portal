@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -40,6 +41,13 @@ type Client struct {
 	// APP_URL): private, loopback and link-local addresses, and http for
 	// loopback hosts.
 	AllowPrivate bool
+	// Networks is the allowlist of internal networks and hosts in force,
+	// read at every check and dial (nil: none, so public addresses only).
+	Networks NetworkPolicy
+	// Dial connects to an address the rule approved (nil: a net.Dialer with
+	// a 10s timeout). Tests replace it to reach a local server that stands
+	// in for an allowlisted address.
+	Dial func(ctx context.Context, network, address string) (net.Conn, error)
 	// MaxResponseBytes caps one HTTP response (DefaultMaxResponseBytes when 0).
 	MaxResponseBytes int64
 	Log              *slog.Logger
@@ -95,6 +103,10 @@ func (s *session) close() {
 // open connects to a server: server/discover (2026-07-28), or the
 // initialize handshake for older servers.
 func (c *Client) open(ctx context.Context, t Target) (*session, error) {
+	// The policy may have changed since the URL was saved.
+	if _, err := c.NormalizeURL(ctx, t.URL); err != nil {
+		return nil, notAllowed(err)
+	}
 	ex := &exchange{}
 	hc, done := c.httpClient(t, ex)
 	client := mcp.NewClient(&mcp.Implementation{Name: "open-mcp-gateway", Title: "Open MCP Gateway", Version: buildinfo.Version}, &mcp.ClientOptions{
@@ -357,7 +369,7 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 	var netErr *url.Error
 	switch {
 	case errors.Is(err, ErrBlockedAddress) || strings.Contains(err.Error(), ErrBlockedAddress.Error()):
-		return &Error{Class: ClassNotAllowed, Message: "The server's address is not allowed (private, loopback or link-local, or a redirect)."}
+		return &Error{Class: ClassNotAllowed, Message: messageNotAllowed}
 	case errors.Is(err, ErrResponseTooLarge) || strings.Contains(err.Error(), ErrResponseTooLarge.Error()):
 		return &Error{Class: ClassTooLarge, Message: fmt.Sprintf("The server's response was larger than %d bytes.", c.maxResponse())}
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded):

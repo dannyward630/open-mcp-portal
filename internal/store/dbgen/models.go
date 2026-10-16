@@ -178,6 +178,14 @@ type McpServer struct {
 	UpdatedAt          time.Time
 }
 
+type NetworkSetting struct {
+	ID        int16
+	Entries   json.RawMessage
+	Revision  int64
+	UpdatedBy uuid.NullUUID
+	UpdatedAt time.Time
+}
+
 type PlatformBootstrap struct {
 	OIDCIssuer  string
 	OIDCSubject string

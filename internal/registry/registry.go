@@ -66,16 +66,26 @@ type Service struct {
 	q      *dbgen.Queries
 	box    *secrets.Box
 	client *upstream.Client
+	nets   *Networks
 	log    *slog.Logger
 }
 
 // New returns a Service. client reaches the servers (its AllowPrivate is the
-// development allowance, which also applies to URLs when saved).
+// development allowance, which also applies to URLs when saved). Its
+// Networks should be a *Networks (NewNetworks), whose admin entries this
+// service edits; when it has none, one without deployment entries is set.
 func New(pool *pgxpool.Pool, box *secrets.Box, client *upstream.Client, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{pool: pool, q: dbgen.New(pool), box: box, client: client, log: log}
+	nets, _ := client.Networks.(*Networks)
+	if nets == nil {
+		nets = NewNetworks(pool, nil, log)
+		if client.Networks == nil {
+			client.Networks = nets
+		}
+	}
+	return &Service{pool: pool, q: dbgen.New(pool), box: box, client: client, nets: nets, log: log}
 }
 
 // ServerAAD binds a server's sealed header value to its row.
@@ -420,7 +430,7 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 		if err := ta.writable(authz.CheckServerEdit); err != nil {
 			return err
 		}
-		p, err := s.insertParams(id, ta.team.ID, a, in)
+		p, err := s.insertParams(ctx, id, ta.team.ID, a, in)
 		if err != nil {
 			return err
 		}
@@ -451,7 +461,7 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 	return out, err
 }
 
-func (s *Service) insertParams(id, teamID uuid.UUID, a authz.Actor, in CreateInput) (dbgen.InsertMCPServerParams, error) {
+func (s *Service) insertParams(ctx context.Context, id, teamID uuid.UUID, a authz.Actor, in CreateInput) (dbgen.InsertMCPServerParams, error) {
 	if !slugRE.MatchString(in.Slug) {
 		return dbgen.InsertMCPServerParams{}, apperr.Invalid("invalid_slug",
 			"Slug must be 1-48 lowercase letters, digits or hyphens, and cannot start or end with a hyphen")
@@ -459,7 +469,7 @@ func (s *Service) insertParams(id, teamID uuid.UUID, a authz.Actor, in CreateInp
 	if err := checkFields(in.Name, in.Description, in.TimeoutSeconds); err != nil {
 		return dbgen.InsertMCPServerParams{}, err
 	}
-	u, err := upstream.NormalizeURL(in.URL, s.client.AllowPrivate)
+	u, err := s.client.NormalizeURL(ctx, in.URL)
 	if err != nil {
 		return dbgen.InsertMCPServerParams{}, err
 	}
@@ -500,7 +510,7 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 		if cur.Revision != expectedRevision {
 			return apperr.Stale()
 		}
-		p, valueChanged, err := s.applyUpdate(cur, in)
+		p, valueChanged, err := s.applyUpdate(ctx, cur, in)
 		if err != nil {
 			return err
 		}
@@ -576,7 +586,7 @@ func resubmitOnMove(ctx context.Context, q *dbgen.Queries, a authz.Actor, ta tea
 	return audit.Record(ctx, q, e)
 }
 
-func (s *Service) applyUpdate(cur dbgen.McpServer, in UpdateInput) (dbgen.UpdateMCPServerParams, bool, error) {
+func (s *Service) applyUpdate(ctx context.Context, cur dbgen.McpServer, in UpdateInput) (dbgen.UpdateMCPServerParams, bool, error) {
 	p := dbgen.UpdateMCPServerParams{ID: cur.ID, Name: cur.Name, Description: cur.Description, URL: cur.URL,
 		AuthHeaderName: cur.AuthHeaderName, AuthValueCipher: cur.AuthValueCipher, AuthValueHint: cur.AuthValueHint,
 		TimeoutSeconds: cur.TimeoutSeconds, Enabled: cur.Enabled}
@@ -589,7 +599,7 @@ func (s *Service) applyUpdate(cur dbgen.McpServer, in UpdateInput) (dbgen.Update
 		return p, false, err
 	}
 	if in.URL != nil {
-		u, err := upstream.NormalizeURL(*in.URL, s.client.AllowPrivate)
+		u, err := s.client.NormalizeURL(ctx, *in.URL)
 		if err != nil {
 			return p, false, err
 		}
@@ -672,18 +682,24 @@ func (s *Service) Delete(ctx context.Context, a authz.Actor, ref string, id uuid
 
 // Target is how to reach a server for a forwarded call (internal/mcpgw):
 // see target.
-func (s *Service) Target(sv dbgen.McpServer) (upstream.Target, error) { return s.target(sv) }
+func (s *Service) Target(ctx context.Context, sv dbgen.McpServer) (upstream.Target, error) {
+	return s.target(ctx, sv)
+}
 
 // Client is the guarded client servers are reached with.
 func (s *Service) Client() *upstream.Client { return s.client }
 
 // target reads how to reach a server, decrypting its header value. The URL
 // is checked against the address rule again (it may have been saved under
-// the development allowance).
-func (s *Service) target(sv dbgen.McpServer) (upstream.Target, error) {
+// the development allowance, or the allowlist may have changed since).
+func (s *Service) target(ctx context.Context, sv dbgen.McpServer) (upstream.Target, error) {
 	t := upstream.Target{URL: sv.URL, Timeout: timeout(sv)}
-	if _, err := upstream.NormalizeURL(sv.URL, s.client.AllowPrivate); err != nil {
-		return t, errNotAllowedNow
+	if _, err := s.client.NormalizeURL(ctx, sv.URL); err != nil {
+		msg := errNotAllowedNow.Message
+		if e, ok := apperr.As(err); ok {
+			msg = "The server's URL is not allowed: " + e.Message
+		}
+		return t, &upstream.Error{Class: upstream.ClassNotAllowed, Message: msg}
 	}
 	if sv.AuthHeaderName != nil && sv.AuthValueCipher != nil {
 		plain, err := s.box.Open(sv.AuthValueCipher, ServerAAD(sv.ID))

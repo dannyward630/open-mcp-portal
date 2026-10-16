@@ -104,10 +104,14 @@ spec:
 ---
 # HTTPS to anywhere: upstream MCP servers and the OIDC provider. The
 # gateway's own SSRF guard still applies whatever this allows: outside
-# development it only connects to public addresses, never private,
-# loopback or link-local ones, and it never uses an HTTP(S) proxy. MCP
-# servers registered on another port (for example https://mcp.example.com:8443)
-# need an extra egress rule for that port in the overlay.
+# development it connects to public addresses, and to internal ones only
+# when the allowlist (UPSTREAM_ALLOWED_NETWORKS or Admin › Internal
+# networks) covers them, never to loopback or link-local ones, and it never
+# uses an HTTP(S) proxy. MCP servers registered on another port (for
+# example https://mcp.example.com:8443, or plain http on 80/8080) need an
+# extra egress rule for that port in the overlay; in-cluster servers
+# (*.svc.cluster.local) usually need a namespaceSelector/podSelector rule,
+# since many CNIs don't apply ipBlock to pod addresses.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

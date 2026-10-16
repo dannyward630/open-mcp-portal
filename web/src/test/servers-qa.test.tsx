@@ -82,7 +82,7 @@ describe("A refused URL", () => {
     await u.type(url, "https://10.0.0.1/mcp");
     expect(screen.getByText("The server will leave the catalog")).toBeInTheDocument();
     await u.click(screen.getByRole("button", { name: "Save settings" }));
-    const refusal = "The gateway won't connect to a private, loopback or link-local address. Use the server's public address.";
+    const refusal = /Ask a platform admin to allow its network, or use the server's public address/;
     expect(await screen.findByText(refusal)).toBeInTheDocument();
 
     await u.clear(url);

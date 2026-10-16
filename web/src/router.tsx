@@ -17,7 +17,7 @@ import styles from "./router.module.css";
  *
  * Areas: the team's MCP servers and gateways under teams/$team, the Catalog
  * and My gateways at the top level, API keys next to Profile, MCP servers,
- * Publishing, Gateways and Calls under admin. Later phases add theirs here
+ * Publishing, Internal networks, Gateways and Calls under admin. Later phases add theirs here
  * and in components/layout/nav.tsx.
  */
 const pages = {
@@ -30,6 +30,7 @@ const pages = {
   teamServers: () => import("./pages/team/servers/routes"),
   catalog: () => import("./pages/catalog/routes"),
   adminServers: () => import("./pages/admin/servers/routes"),
+  adminNetworks: () => import("./pages/admin/networks/routes"),
   teamGateways: () => import("./pages/team/gateways/routes"),
   myGateways: () => import("./pages/gateways/routes"),
   adminGateways: () => import("./pages/admin/gateways/routes"),
@@ -203,6 +204,7 @@ const appTree = appRoute.addChildren([
     adminList("servers", lazy(pages.adminServers, "AdminServersPage")),
     adminTabs("servers/$serverId", serverTabs, lazy(pages.adminServers, "AdminServerPage")),
     adminList("publishing", lazy(pages.adminServers, "AdminPublishingPage")),
+    adminList("networks", lazy(pages.adminNetworks, "AdminNetworksPage")),
     adminList("gateways", lazy(pages.adminGateways, "AdminGatewaysPage")),
     adminTabs("gateways/$gatewayId", gatewayTabs, lazy(pages.adminGateways, "AdminGatewayPage")),
     adminList("calls", lazy(pages.adminGateways, "AdminCallsPage")),

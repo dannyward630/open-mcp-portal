@@ -95,7 +95,7 @@ func (rc *request) forwardRead(exposed string, t readTarget) {
 	ctx := rc.r.Context()
 	o := t.offer
 	rec := calls.Call{ExposedName: exposed, Server: &o.Server, CapabilityID: o.Capability.ID}
-	target, err := rc.h.Registry.Target(o.Server)
+	target, err := rc.h.Registry.Target(ctx, o.Server)
 	if err != nil {
 		rc.upstreamFailed(rec, err)
 		return

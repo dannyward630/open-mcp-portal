@@ -4,12 +4,14 @@
  * header value is replace-only: it's stored encrypted, only its last four
  * characters come back, and an empty field keeps the stored one.
  */
+import type { ReactNode } from "react";
 import { ApiError } from "../../api/client";
 import { Checkbox } from "@/components/ui/checkbox/checkbox";
 import { Field } from "@/components/ui/field/field";
 import { Input } from "@/components/ui/input/input";
 import { NumberInput } from "@/components/ui/number-input/number-input";
 import { Switch } from "@/components/ui/switch/switch";
+import { PrivateAddressRefusal } from "./url-refusal";
 
 export type ServerForm = { name: string; description: string; url: string; authHeaderName: string; timeoutSeconds: number; enabled: boolean };
 
@@ -20,7 +22,10 @@ const headerPattern = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
 
 const isLoopback = (host: string) => host === "localhost" || host.endsWith(".localhost") || /^127\.\d+\.\d+\.\d+$/.test(host) || host === "[::1]";
 
-/** What's wrong with a server URL: https only, plain http on a loopback address in development. */
+/**
+ * What's wrong with a server URL before it's sent. https, or plain http: on a loopback address in development, or
+ * for an internal host a platform admin allowed it for (the server knows the list, so it decides those).
+ */
 export function urlProblem(url: string, dev: boolean): string | undefined {
   const v = url.trim();
   if (!v) return "Enter the server's URL.";
@@ -31,11 +36,14 @@ export function urlProblem(url: string, dev: boolean): string | undefined {
     return "Enter a full URL, such as https://tools.example.com/mcp.";
   }
   if (u.protocol === "https:") return undefined;
-  if (u.protocol === "http:" && dev && isLoopback(u.hostname)) return undefined;
-  return dev ? "Use https. Plain http works only for a loopback address (localhost, 127.0.0.1) in development." : "Use an https address.";
+  if (u.protocol === "http:" && (dev || !isLoopback(u.hostname))) return undefined;
+  return "Use an https address.";
 }
 
 export type ServerProblems = Partial<Record<"name" | "url" | "authHeaderName" | "authValue" | "timeoutSeconds", string>>;
+
+/** Field errors as shown: the form's own, or the server's refusal (which may hold a link). */
+export type FieldErrors = Partial<Record<keyof ServerProblems, ReactNode>>;
 
 /** The form's field errors; `hasAuth` says a header value is stored already (edits). */
 export function serverProblems(f: ServerForm, auth: AuthEdit, opts: { dev: boolean; hasAuth: boolean }): ServerProblems {
@@ -54,18 +62,19 @@ export function serverProblems(f: ServerForm, auth: AuthEdit, opts: { dev: boole
 }
 
 /** Why the server refused a URL (422 url_not_allowed, details.reason), in a sentence. */
-const urlReasons: Record<string, string> = {
+const urlReasons: Record<string, ReactNode> = {
   invalid: "This isn't a URL the gateway can use. Enter a full address, such as https://tools.example.com/mcp.",
   too_long: "This URL is too long. Use a shorter address.",
   userinfo: "Remove the user name and password from the URL. Send credentials in the header below instead.",
   query: "Remove the query (the part from ?). Send credentials in the header below instead.",
   fragment: "Remove the fragment (the part from #).",
-  scheme: "Use an https address.",
-  private_address: "The gateway won't connect to a private, loopback or link-local address. Use the server's public address.",
+  scheme: "Use an https address. Plain http works only for internal hosts a platform admin has allowed it for.",
+  private_address: <PrivateAddressRefusal />,
+  blocked_address: "The gateway never connects to loopback, link-local (such as cloud metadata), multicast or broadcast addresses. Use the server's real address.",
 };
 
 /** A server's refusal as field errors: a taken slug, a URL the gateway won't connect to. */
-export function serverFieldErrors(err: unknown): { slug?: string; url?: string } {
+export function serverFieldErrors(err: unknown): { slug?: string; url?: ReactNode } {
   if (!(err instanceof ApiError)) return {};
   if (err.code === "slug_taken") return { slug: "Another server uses this slug. Choose another." };
   if (err.code === "url_not_allowed") {
@@ -78,7 +87,7 @@ export function serverFieldErrors(err: unknown): { slug?: string; url?: string }
 type FieldsProps = {
   form: ServerForm;
   set: (patch: Partial<ServerForm>) => void;
-  errors: ServerProblems;
+  errors: FieldErrors;
   disabled?: boolean;
   dev: boolean;
 };
@@ -90,7 +99,7 @@ export function UrlField({ form, set, errors, disabled, dev }: FieldsProps) {
       description={
         dev
           ? "The server's Streamable HTTP endpoint, such as https://tools.example.com/mcp. In development, plain http also works on a loopback address (http://localhost:9000/mcp)."
-          : "The server's Streamable HTTP endpoint, such as https://tools.example.com/mcp. https only."
+          : "The server's Streamable HTTP endpoint, such as https://tools.example.com/mcp. https, unless a platform admin allowed plain http for an internal host."
       }
       error={errors.url}
     >

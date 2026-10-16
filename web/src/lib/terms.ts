@@ -20,6 +20,7 @@ export const terms = {
   mcpServers: "MCP servers",
   catalog: "Catalog",
   publishing: "Publishing",
+  internalNetworks: "Internal networks",
   gateways: "Gateways",
   myGateways: "My gateways",
   apiKeys: "API keys",

@@ -95,7 +95,7 @@ CROSS JOIN LATERAL (
                                    LEFT JOIN teams t ON t.id = gg.team_id LEFT JOIN users u ON u.id = gg.user_id
                                    WHERE gg.id = ids.target_uuid)
         WHEN 'api_key' THEN (SELECT k.name FROM api_keys k WHERE k.id = ids.target_uuid)
-        WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' END)
+        WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' WHEN 'network' THEN 'Internal networks' END)
     END)::text AS label
 ) live
 WHERE ($1::uuid IS NULL OR a.team_id = $1::uuid)

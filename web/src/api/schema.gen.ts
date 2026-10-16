@@ -458,7 +458,7 @@ export interface paths {
         put?: never;
         /**
          * Register a remote MCP server (editors and above); reads its capabilities at once
-         * @description 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused (details.reason). The server is created even when discovery fails; refresh then says why.
+         * @description 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused (details.reason invalid, too_long, userinfo, query, fragment, scheme, private_address or blocked_address; private_address can be allowed by a platform admin in Internal networks). The server is created even when discovery fails; refresh then says why.
          */
         post: operations["createTeamMcpServer"];
         delete?: never;
@@ -834,6 +834,50 @@ export interface paths {
         /** Change the default publishing policy (platform admins) */
         put: operations["adminUpdatePublishingSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The allowlist of internal networks and hosts MCP servers may use (platform admins and auditors)
+         * @description entries are the platform admins' (editable); deploymentEntries come from UPSTREAM_ALLOWED_NETWORKS and are read-only. Loopback, link-local (including cloud metadata), unspecified, multicast and broadcast addresses stay blocked whatever the entries say.
+         */
+        get: operations["adminGetNetworkSettings"];
+        /**
+         * Replace the platform admins' allowlist entries (platform admins)
+         * @description Entries are canonicalised (masked prefixes, lower-case host names without a trailing dot). 422 invalid_entry with details.index and details.reason (invalid_kind, invalid_cidr, invalid_host, non_ascii, ip_as_host, always_blocked, invalid_note, duplicate, too_many). Servers are never edited; one outside the new policy fails its next exchange (error class not_allowed). Other replicas apply the change within 30 seconds. Audited as settings.network_update.
+         */
+        put: operations["adminUpdateNetworkSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/network/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Say whether the gateway would reach an MCP server URL now, and why (platform admins and auditors)
+         * @description Applies the same rule as saving and dialling, with this replica's copy of the allowlist. Resolves the host name (at most 3 seconds) but never connects. Every resolved address must be allowed.
+         */
+        post: operations["adminCheckNetworkUrl"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1506,7 +1550,7 @@ export interface components {
         /** @enum {string} */
         CapabilityKind: "tool" | "resource" | "resource_template" | "prompt";
         /**
-         * @description not_allowed: the address is private/loopback/link-local, or the server redirected
+         * @description not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
          * @enum {string}
          */
         McpErrorClass: "unavailable" | "auth" | "not_found" | "rate_limited" | "bad_request" | "bad_response" | "config" | "timeout" | "too_large" | "not_allowed";
@@ -1723,6 +1767,47 @@ export interface components {
         };
         PublishingSettingsUpdate: {
             defaultPolicy: components["schemas"]["PublishPolicy"];
+        };
+        /** @description One allowlist entry. A cidr entry allows private addresses inside it (literal or resolved); a host entry allows the private addresses a matching host resolves to. allowHttp also allows plain http for URLs whose host matches (a host entry, or a literal address inside a cidr entry). */
+        NetworkEntry: {
+            /** @enum {string} */
+            kind: "cidr" | "host";
+            /** @description cidr: an IPv4 or IPv6 prefix such as 10.20.0.0/16 (a bare address means /32 or /128). host: an exact ASCII host name such as mcp.corp.example.com, or *.corp.example.com for its subdomains only (not corp.example.com itself). */
+            value: string;
+            allowHttp: boolean;
+            note?: string;
+        };
+        NetworkSettings: {
+            entries: components["schemas"]["NetworkEntry"][];
+            /** @description From UPSTREAM_ALLOWED_NETWORKS; read-only */
+            deploymentEntries: components["schemas"]["NetworkEntry"][];
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        NetworkSettingsUpdate: {
+            entries: components["schemas"]["NetworkEntry"][];
+        };
+        NetworkCheckRequest: {
+            url: string;
+        };
+        /**
+         * @description Allowed: public, cidr_entry, host_entry, development. Refused: blocked_address, private_address, dns_failed, or a URL problem (invalid, too_long, userinfo, query, fragment, scheme).
+         * @enum {string}
+         */
+        NetworkCheckReason: "public" | "cidr_entry" | "host_entry" | "development" | "blocked_address" | "private_address" | "dns_failed" | "invalid" | "too_long" | "userinfo" | "query" | "fragment" | "scheme";
+        NetworkCheckAddress: {
+            address: string;
+            allowed: boolean;
+            /** @enum {string} */
+            reason: "public" | "cidr_entry" | "host_entry" | "development" | "blocked_address" | "private_address";
+        };
+        NetworkCheckResult: {
+            allowed: boolean;
+            reason: components["schemas"]["NetworkCheckReason"];
+            message: string;
+            matchedEntry?: components["schemas"]["NetworkEntry"];
+            resolvedAddresses?: components["schemas"]["NetworkCheckAddress"][];
         };
         TeamPublishing: {
             /** @description null when the team follows the platform default */
@@ -3590,6 +3675,93 @@ export interface operations {
             403: components["responses"]["ErrorReply"];
             412: components["responses"]["ErrorReply"];
             428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetNetworkSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NetworkSettings"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateNetworkSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetworkSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated settings */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NetworkSettings"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminCheckNetworkUrl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetworkCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description The verdict */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NetworkCheckResult"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
         };
     };
     adminGetTeamPublishing: {

@@ -55,6 +55,7 @@ file named by `OMG_CONFIG_FILE`. Each secret can also be read from a file named 
 | `OIDC_CLIENT_SECRET` | yes (secret) | |
 | `BOOTSTRAP_ADMIN_SUBJECT` | first install | The OIDC `sub` made platform admin on first sign-in. It takes effect once. |
 | `TRUSTED_PROXIES` | recommended | Ingress controller CIDRs allowed to set `X-Forwarded-For`, used for logging and sign-in rate limits. |
+| `UPSTREAM_ALLOWED_NETWORKS` | optional | Internal networks and hosts MCP servers may use, besides public addresses. See [Internal MCP servers](#internal-mcp-servers). |
 | `OIDC_ALLOWED_EMAIL_DOMAINS`, `OIDC_GROUPS_CLAIM`, `INSTANCE_NAME`, `ORG_NAME`, `SUPPORT_URL`, … | optional | |
 
 Generate keys. `ENCRYPTION_KEY`, `ENCRYPTION_KEY_PREVIOUS` and `API_KEY_PEPPER` must each decode to exactly 32 bytes:
@@ -63,6 +64,29 @@ Generate keys. `ENCRYPTION_KEY`, `ENCRYPTION_KEY_PREVIOUS` and `API_KEY_PEPPER` 
 openssl rand -base64 32     # ENCRYPTION_KEY
 openssl rand -base64 32     # API_KEY_PEPPER (a different value)
 ```
+
+### Internal MCP servers
+
+Out of the box, MCP servers must be at **public** addresses over https. To let teams register servers on your internal
+network, allow those networks and hosts:
+
+- **Deployment entries**: `UPSTREAM_ALLOWED_NETWORKS`, comma-separated. Each entry is a network or address
+  (`10.20.0.0/16`, `fd00:1234::/32`, `10.20.0.5`) or a host name (`mcp.corp.example.com`, or `*.corp.example.com` for
+  its subdomains only). Prefix an entry with `http:` to also allow plain http for it:
+  `UPSTREAM_ALLOWED_NETWORKS=10.20.0.0/16,http:*.svc.cluster.local,mcp.corp.example.com`. An invalid entry stops `serve`
+  (and `doctor` reports it). Admins see these entries read-only.
+- **Admin entries**: platform admins manage up to 100 more in **Admin › Internal networks** (stored in PostgreSQL,
+  audited as `settings.network_update`). The replica that saves a change applies it at once; other replicas within 30
+  seconds.
+
+Loopback, link-local (including cloud metadata such as `169.254.169.254`), unspecified, multicast and broadcast
+addresses stay blocked whatever the entries say. The rules are in [registry.md](registry.md#security).
+
+**The NetworkPolicies must allow the same networks and ports.** The base's egress allows TCP 443 to `0.0.0.0/0` and
+`::/0`; add rules in your overlay for internal servers on other ports (plain http on 80 or 8080, `:8443`…). Many CNIs
+don't match pod addresses with `ipBlock`, so in-cluster servers (`*.svc.cluster.local`) usually need a
+`namespaceSelector`/`podSelector` egress rule for their namespace and port. If the gateway can resolve and approve an
+address but the policy drops it, the server's health shows `unavailable` (a timeout), not `not_allowed`.
 
 **Safety checks.** Unless `APP_URL` is a loopback address, `serve` refuses to start in any of these cases:
 
@@ -141,9 +165,11 @@ pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `A
   - TCP 443 to anywhere, for upstream MCP servers and the OIDC provider.
 
   **Upstream MCP servers on another port** (for example `https://mcp.example.com:8443`) need an extra egress rule in the
-  overlay, as the example shows. The gateway's SSRF guard applies whatever the policy allows. Outside development it
-  connects only to **public** addresses and never through an HTTP(S) proxy. MCP servers on cluster-internal or private
-  addresses cannot be registered yet.
+  overlay, as the example shows, and so do internal servers allowed by
+  [`UPSTREAM_ALLOWED_NETWORKS`](#internal-mcp-servers) or Admin › Internal networks on ports other than 443. The
+  gateway's SSRF guard applies whatever the policy allows. Outside development it connects to public addresses, and to
+  internal ones only when an allowlist entry covers them; never to loopback or link-local addresses, and never through
+  an HTTP(S) proxy.
 
 ### Ingress
 
@@ -219,4 +245,4 @@ backups:
 - No `k8s-smoke` (kind) test. `make k8s-validate` only renders the manifests and checks their schemas.
 - No published image or release workflow. The example's digest is a placeholder.
 - No Helm chart and no HorizontalPodAutoscaler.
-- No rate limits shared across replicas, and no SSE relay. Upstream MCP servers must be on public addresses.
+- No rate limits shared across replicas, and no SSE relay.

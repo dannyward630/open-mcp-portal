@@ -13,6 +13,18 @@ SET publish_default_policy = @policy, revision = revision + 1, updated_by = @upd
 WHERE id = 1
 RETURNING *;
 
+-- name: GetNetworkSettings :one
+SELECT * FROM network_settings WHERE id = 1;
+
+-- name: LockNetworkSettings :one
+SELECT * FROM network_settings WHERE id = 1 FOR UPDATE;
+
+-- name: UpdateNetworkEntries :one
+UPDATE network_settings
+SET entries = @entries, revision = revision + 1, updated_by = @updated_by, updated_at = now()
+WHERE id = 1
+RETURNING *;
+
 -- name: SetTeamPublishOverride :one
 UPDATE teams
 SET publish_policy_override = sqlc.narg(override)::text, revision = revision + 1, updated_at = now()

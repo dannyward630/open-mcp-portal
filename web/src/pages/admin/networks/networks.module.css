@@ -1,0 +1,28 @@
+/* Admin → Internal networks. Semantic tokens only. */
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.checkForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.checkField {
+  flex: 1 1 20rem;
+}
+
+.result {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.warnings {
+  margin: 0;
+  padding-left: var(--space-5);
+}
