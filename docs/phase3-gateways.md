@@ -1,6 +1,6 @@
 # Phase 3 — Gateways (design draft)
 
-Status: **approved; backend built** (see "As built" at the end). Open questions were answered as decisions 15–19 in
+Status: **built** (backend and UI; see "As built" at the end). Open questions were answered as decisions 15–19 in
 [decisions.md](decisions.md). Items still marked *proposed* (key rotation period, call outcomes) are defaults that may be
 tuned.
 
@@ -16,7 +16,7 @@ it may use, and every upstream call carries a signed identity of the user. Calls
 | `gateways` | id, slug (global, immutable), name, description, owner_kind `team`/`platform`, team_id (team gateways), enabled, capture_payloads (Phase 6; stored now, default false), revision, timestamps |
 | `gateway_capabilities` | gateway_id, capability_id, min_team_role (team gateways only; nullable), added_by/at |
 | `gateway_grants` | gateway_id, subject_kind `team`/`user`/`group`, team_id / user_id / group (exactly one), added_by/at |
-| `signing_keys` | kid, alg `ES256`, private key (encrypted with `ENCRYPTION_KEY`), public JWK, state `active`/`retiring`/`retired`, created_at, retire_after |
+| `signing_keys` | kid, alg `ES256`, private key (encrypted with `ENCRYPTION_KEY`), public JWK, state `next`/`active`/`retiring`/`retired`, created_at, activated_at, retire_after |
 | `api_keys` | Grounded's personal keys: prefix, HMAC digest, user_id, name, expires_at, revoked_at, last_used_at (*proposed*: Phase 3, see Q1) |
 | `mcp_calls` | time, gateway, server, capability, method, principal (user / key), client name, outcome, error class, latency, request/response bytes, request_id. No arguments or results |
 
@@ -53,8 +53,9 @@ it may use, and every upstream call carries a signed identity of the user. Calls
   `teams` (slugs), `gateway` (slug), `tool` (exposed name), `client` (key/client name), `iat`, `exp` = 5 min, `jti`.
 - *Proposed* header: `Authorization: Bearer <jwt>` when the server has no static `Authorization` header (servers can
   act as ordinary OAuth resource servers and validate against JWKS); otherwise `MCP-Gateway-Identity: <jwt>`.
-- `GET /.well-known/jwks.json` publishes active and retiring keys. A new key is generated on first use and rotated
-  every 30 days (*proposed*); retiring keys stay published for one day after rotation.
+- `GET /.well-known/jwks.json` publishes the next, active and retiring keys. A new key is generated on first use and
+  rotated every 30 days; the next key is published a day before it signs, and retiring keys stay published for one day
+  after rotation.
 - `docs/upstream-identity.md` will show servers how to verify the token (Go, Python, TypeScript snippets).
 
 ## Management API (to be added to `api/openapi.yaml`)
@@ -111,12 +112,17 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
   Exposed names must be unique **case-insensitively and across tools and prompts** (`422 name_clash`). Other errors:
   `400 duplicate_capability`, `400 invalid_role`, `422 min_role_not_allowed` (minRole on a platform gateway; the contract
   only says "must be absent"), `422 too_many`, `422 capability_not_selectable` (`details.capabilityIds`).
-- **Availability order:** `gone` (also any non-tool/prompt), `server_disabled`, then for catalog capabilities
-  `not_published`, `not_approved`, `changed`. A team gateway's own servers need no approval. `GatewayStats` (SQL)
-  mirrors the Go rule; a test checks they agree.
+- **Availability order:** `gone` (also any non-tool/prompt), `team_archived` (the server's team, or a team gateway's
+  own team, is archived), `server_disabled`, then for catalog capabilities `not_published`, `not_approved`, `changed`.
+  A team gateway's own servers need no approval. `GatewayStats` (SQL) mirrors the Go rule; a test checks they agree.
+- **Archived teams.** Archiving changes no data, so unarchiving restores everything. While a team is archived its team
+  gateways answer `/mcp/{slug}` with `404` (lists and calls recorded as denied, `errorClass` `team_archived`), drop out
+  of My gateways, and show every selected capability as `team_archived`; its servers leave the catalog,
+  gateway-options and the health loop, and other teams' and platform gateways mark their capabilities `team_archived`
+  (kept in a selection, not addable). Every list and call re-checks this.
 - **Access.** Platform admins and auditors read every gateway but can only *use* a team gateway if they are members, and a
-  platform gateway if granted. Group grants match `users.groups` exactly (case-sensitive). A gateway of an archived team
-  keeps serving. Platform admins may switch a team gateway off/on (`PATCH enabled`), nothing else (`403 team_gateway`);
+  platform gateway if granted. Group grants match `users.groups` exactly (case-sensitive); `/v1/me` returns the stored groups and
+  `MyGateway.groups` names the caller's groups a gateway is granted to. Platform admins may switch a team gateway off/on (`PATCH enabled`), nothing else (`403 team_gateway`);
   `GET …/grants` of a team gateway is `[]`.
 - **Runtime.** Lists are served from the stored, approved definitions (name replaced by the exposed name) without
   contacting servers, paged at 512 KiB with an opaque cursor. Calls are buffered (the SDK client reads an upstream SSE
@@ -131,9 +137,12 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
   `bad_request`. Initialize and ping are not recorded. `mcp_calls` is append-only (trigger, like `audit_log`).
 - **Identity JWT.** Adds `nbf` (iat − 30 s). `prompts/get` carries `prompt` instead of `tool`. `client` falls back to the
   API key's name. A replica caches the active key for 1 minute; the rotation loop (advisory lock
-  `omg.signing-key-rotation`) checks hourly, and the first key is created on first use or at start-up. A new key signs
-  at once, so verifiers must refetch the JWKS for an unknown `kid`; retiring keys stay published for 1 day, then their
-  private key is erased.
+  `omg.signing-key-rotation`) checks hourly. The first key on an empty table is created on first use or at start-up
+  and signs at once. After that the loop creates the next key (state `next`: published in the JWKS, not signing) at
+  least `SIGNING_KEY_PREPUBLISH` (default 24h, 0–7 days) before the active key has signed for 30 days, and promotes it
+  once the active key is due and the next key has been published that long (a late next key delays the rotation).
+  Verifiers should still refetch the JWKS for an unknown `kid`. Retiring keys stay published for 1 day, then their
+  private key is erased (migration `00005_signing_key_next`).
 - **API keys.** `omcp_` + 43 URL-safe characters; HMAC-SHA256 with `API_KEY_PEPPER` (32 bytes base64, required by
   `serve`, the `.env.example` value refused off loopback). Revoking a revoked key is a no-op `200`.
 - **Audit.** `gateway.create/update/delete/capabilities_set` (target `gateway`, team set for team gateways),
@@ -141,3 +150,6 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
   labels.
 - **Not built yet:** resources, the protected-resource metadata endpoint (Phase 4), payload capture (`capture_payloads`
   stays false), rate limits on `/mcp`.
+
+Results relayed from upstream servers have `_meta["io.modelcontextprotocol/serverInfo"]` removed: clients talk to the
+gateway, and the upstream's own name and version are not theirs to see. Other `_meta` entries pass through unchanged.

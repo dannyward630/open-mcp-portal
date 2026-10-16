@@ -12,8 +12,9 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 )
 
-// The health loop re-tests every enabled server on HEALTH_CHECK_INTERVAL the
-// way Test does (it lists, never calls a tool) and stores a scheduled check.
+// The health loop re-tests every enabled server of an active team on
+// HEALTH_CHECK_INTERVAL the way Test does (it lists, never calls a tool) and
+// stores a scheduled check. Archived teams' servers are skipped.
 // One replica runs a pass at a time (a PostgreSQL advisory lock), and a
 // server checked within the last 90% of the interval is skipped, so
 // replicas taking turns don't test it twice.

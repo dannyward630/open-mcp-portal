@@ -18,7 +18,7 @@ With no static header, your server can act as an ordinary OAuth resource server 
 | Item | Value |
 |---|---|
 | Algorithm | `ES256` only (header `alg`), and the header `kid` names the key |
-| Keys | `GET <gateway>/.well-known/jwks.json`, a JWK Set of the active key and any key retired in the last day. Cache it for up to 5 minutes (`Cache-Control: max-age=300`), and fetch it again when a token has a `kid` you haven't seen: keys rotate every 30 days, and a new key is used as soon as it exists |
+| Keys | `GET <gateway>/.well-known/jwks.json`, a JWK Set of the key that signs now, the next key (published at least a day before it signs, `SIGNING_KEY_PREPUBLISH`) and any key retired in the last day. Cache it for up to 5 minutes (`Cache-Control: max-age=300`). Keys rotate every 30 days; a cached set normally already holds the next key, but still fetch the set again when a token has a `kid` you haven't seen (the very first key signs as soon as it exists, and so does a new key if a gateway ever finds no key to sign with) |
 | `iss` | The gateway's URL (its `APP_URL`, for example `https://mcp.example.com`) |
 | `aud` | **Your server's URL exactly as registered** (for example `https://status.example.com/mcp`). A token minted for another server must be rejected |
 | `exp`, `nbf`, `iat` | `exp` is 5 minutes after `iat`, and `nbf` is 30 seconds before it. Allow a little clock skew |

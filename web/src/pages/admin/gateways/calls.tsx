@@ -11,6 +11,7 @@ import type { CallOutcome, McpCall } from "@/components/gateways/labels";
 import { ListPage, useListFilters } from "@/components/templates/list-page";
 import { Alert } from "@/components/ui/alert/alert";
 import type { Facet, FacetOption } from "@/components/ui/filter-bar/filter-bar";
+import { NARROW_QUERY, useMediaQuery } from "@/lib/bitop-utils";
 import { terms } from "@/lib/terms";
 import { dateFacet, one, rangeWindow, usePeopleOptions } from "../audit/common";
 import { useTeamOptions } from "./list";
@@ -46,6 +47,7 @@ function useFacets(): Facet<McpCall>[] {
 export function AdminCallsPage() {
   const facets = useFacets();
   const { values } = useListFilters(facets);
+  const narrow = useMediaQuery(NARROW_QUERY);
   const query = {
     gateway: one(values, "gateway") || undefined,
     server: one(values, "server") || undefined,
@@ -68,7 +70,7 @@ export function AdminCallsPage() {
       description="Every call through every gateway: who called which tool or prompt, through which gateway, and how it went."
       notices={<Alert tone="info">{callsPrivacy}</Alert>}
       caption={terms.calls}
-      columns={callColumns({ gateway: true, adminLinks: true })}
+      columns={callColumns({ gateway: true, adminLinks: true, narrow })}
       data={items}
       getRowId={(c) => String(c.id)}
       rowLabel={(c) => `${c.exposedName ?? c.method} by ${c.principal.displayName || c.principal.email}`}

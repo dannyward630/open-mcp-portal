@@ -487,6 +487,10 @@ func TestMCPRechecksBeforeEveryCall(t *testing.T) {
 			mustCode(e.t, "disable gateway", code, ec, 200, "")
 		}},
 		{"disable server", "support", false, func(e *rtEnv) { e.patchServer(e.owner, e.server, map[string]any{"enabled": false}) }},
+		// The team gateway's own team: the gateway stops serving (404).
+		{"archive gateway's team", "support", false, func(e *rtEnv) { e.setTeamStatus("tools", "archived") }},
+		// The server's team: a platform gateway's capability is unavailable.
+		{"archive server's team", "shared", false, func(e *rtEnv) { e.setTeamStatus("tools", "archived") }},
 		{"suspend user", "support", true, func(e *rtEnv) {
 			id := e.userID("blair@localhost")
 			var u apitypes.UserDetail
@@ -528,6 +532,17 @@ func TestMCPRechecksBeforeEveryCall(t *testing.T) {
 			if !tc.unauthorized {
 				if got := e.scalar(`SELECT outcome FROM mcp_calls ORDER BY id DESC LIMIT 1`); got != "denied" {
 					t.Fatalf("recorded %s", got)
+				}
+			}
+			if strings.HasPrefix(tc.name, "archive") {
+				if got := e.scalar(`SELECT coalesce(error_class, '') FROM mcp_calls ORDER BY id DESC LIMIT 1`); got != "team_archived" {
+					t.Fatalf("recorded error class %q", got)
+				}
+				// Unarchiving restores it: nothing was changed.
+				e.setTeamStatus("tools", "active")
+				res, err := connect(t, e.app, tc.gateway, e.key.Secret).CallTool(context.Background(), &mcp.CallToolParams{Name: "status__whoami"})
+				if err != nil || res.IsError {
+					t.Fatalf("after unarchiving: %+v %v", res, err)
 				}
 			}
 		})

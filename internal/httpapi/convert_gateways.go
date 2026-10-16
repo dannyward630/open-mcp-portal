@@ -89,6 +89,10 @@ func (a *api) toAPIMyGateway(m gateways.Mine) apitypes.MyGateway {
 	if g.TeamID.Valid {
 		out.TeamSlug, out.TeamName = nonEmpty(m.View.TeamSlug), nonEmpty(m.View.TeamName)
 	}
+	if len(m.Groups) > 0 {
+		groups := append([]string{}, m.Groups...)
+		out.Groups = &groups
+	}
 	return out
 }
 

@@ -66,7 +66,7 @@ export function ServerRecord({ server, scope, abilities, notices, links = [] }: 
       tabs={[
         { value: "overview", label: "Overview", icon: <LayoutDashboard aria-hidden />, content: <OverviewTab {...props} /> },
         { value: "capabilities", label: "Capabilities", icon: <ListTree aria-hidden />, count: totalCount(server.counts), content: <CapabilitiesTab {...props} /> },
-        { value: "health", label: "Health", icon: <Activity aria-hidden />, content: <HealthTab server={server} /> },
+        { value: "health", label: "Health", icon: <Activity aria-hidden />, content: <HealthTab server={server} scope={scope} /> },
         { value: "settings", label: "Settings", icon: <Settings2 aria-hidden />, content: <ServerSettingsTab {...props} /> },
       ]}
     />

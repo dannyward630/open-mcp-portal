@@ -42,9 +42,11 @@ States are `private`, `pending`, `published` and `rejected`. The **effective pol
 | Unpublish | team owners and admins | `pending`, `published` or `rejected`: the server becomes `private`. A private one gets `409 not_published` |
 | Approve a capability | platform admins; team owners and admins only under `self_publish` (otherwise `403 approval_required`) | Published servers only (`409 not_published`). Also `409 not_changed` and `409 capability_gone` |
 
-Publishing actions bump the server's revision. A platform admin sets the default with `PUT /v1/admin/settings/publishing` and a team override with `PUT /v1/admin/teams/{team}/publishing`. Both need `If-Match`; the team override uses the team's revision and bumps it. Changing the policy doesn't change any server's state.
+Publishing actions bump the server's revision. A platform admin sets the default with `PUT /v1/admin/settings/publishing` and a team override with `PUT /v1/admin/teams/{team}/publishing`. Both need `If-Match`; the team override uses the team's revision and bumps it.
 
-The **catalog** lists servers that are published and enabled, and shows only their approved, listed capabilities. Its counts cover only those capabilities. Its health has a status, a time and an error class, but no message. Any active signed-in person can read it.
+**Changing the policy doesn't change any server's state.** Servers already `pending` stay pending, in the review queue, until a platform admin reviews them or the team withdraws them (unpublish); nothing is approved or dropped on their behalf. Under `self_publish` (a new default or an override) a pending server's owners and admins can simply publish it: it is published at once with its current capabilities approved, as from `private`. Moving back to `approval_required` leaves published servers published. The policy in force when an action happens is the one that applies (for example, a URL change on a published server goes back to review only under `approval_required`).
+
+The **catalog** lists servers that are published and enabled and whose team is active, and shows only their approved, listed capabilities. Its counts cover only those capabilities. Its health has a status, a time and an error class, but no message. Any active signed-in person can read it.
 
 ## Roles
 
@@ -56,13 +58,13 @@ The **catalog** lists servers that are published and enabled, and shows only the
 | platform auditor | ✓ (any team, plus admin routes) | | | | |
 | platform admin | ✓ (any team, plus admin routes) | | | admin route | ✓ |
 
-Platform roles never change servers through the team routes. People outside the team get `404`, as in phase 1. Archived teams are read-only (`409 team_archived`).
+Platform roles never change servers through the team routes. People outside the team get `404`, as in phase 1. Archived teams are read-only (`409 team_archived`), and their servers are unavailable everywhere until the team is unarchived: they leave the catalog and gateway-options, the health loop skips them, and gateways show their capabilities as `team_archived` ([phase3-gateways.md](phase3-gateways.md)). Archiving changes no data, so unarchiving restores everything.
 
 ## Health
 
 Test, refresh and the background loop each store a check: ok or failed, latency, trigger (`manual` or `scheduled`), error class, HTTP status, and a short message with the header value and anything secret-looking redacted. The server keeps its latest 100 checks. `statusSince` carries over while the outcome stays the same, so a "failing since" time survives pruning. Error classes: `unavailable`, `auth`, `not_found`, `rate_limited`, `bad_request`, `bad_response`, `config` (the header can't be decrypted), `timeout`, `too_large`, `not_allowed` (blocked address or a redirect).
 
-The loop runs at start-up and then every `HEALTH_CHECK_INTERVAL` (default `5m`, `0` turns it off, minimum `30s`). It tests enabled servers four at a time. Only one replica runs a pass at a time (PostgreSQL advisory lock `omg.mcp-health-checks`), and any server checked within the last 90% of the interval is skipped, so replicas taking turns don't check it twice.
+The loop runs at start-up and then every `HEALTH_CHECK_INTERVAL` (default `5m`, `0` turns it off, minimum `30s`). It tests enabled servers of active teams four at a time. Only one replica runs a pass at a time (PostgreSQL advisory lock `omg.mcp-health-checks`), and any server checked within the last 90% of the interval is skipped, so replicas taking turns don't check it twice.
 
 ## Security
 
@@ -83,7 +85,7 @@ See [`../api/openapi.yaml`](../api/openapi.yaml) (tags `mcp-servers`, `catalog`,
 - `GET …/{serverId}/capabilities?kind=`, `PUT …/{serverId}/capabilities/{capabilityId}/approval`, `GET …/{serverId}/health-checks`
 - `GET /v1/teams/{team}/publishing`
 - `GET /v1/catalog/servers`, `GET /v1/catalog/servers/{serverId}`
-- `GET /v1/admin/mcp-servers?publishState=&changes=&team=`, `GET …/{serverId}`, `GET …/{serverId}/capabilities`, `POST …/{serverId}/review`, `PUT …/{serverId}/capabilities/{capabilityId}/approval`
+- `GET /v1/admin/mcp-servers?publishState=&changes=&team=`, `GET …/{serverId}`, `GET …/{serverId}/capabilities`, `GET …/{serverId}/health-checks` (platform admins and auditors), `POST …/{serverId}/review`, `PUT …/{serverId}/capabilities/{capabilityId}/approval`
 - `GET`/`PUT /v1/admin/settings/publishing`, `GET`/`PUT /v1/admin/teams/{team}/publishing`
 
 Audit actions: `mcp_server.create`, `.update`, `.delete`, `.refresh`, `.publish_request`, `.publish` (self-publish or approval), `.reject`, `.unpublish`, `mcp_capability.approve`, `settings.publishing_update`, `team.publishing_override`.

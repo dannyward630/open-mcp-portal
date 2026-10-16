@@ -53,14 +53,14 @@ export const capabilitiesQuery = (scope: ServerScope, id: string) =>
         : unwrap(await api.GET("/v1/admin/mcp-servers/{serverId}/capabilities", { params: { path: { serverId: id } } })),
   });
 
-/**
- * The recent health checks. There's no admin route for them: platform staff read any team's servers through the
- * team API, so Admin asks there too.
- */
-export const healthChecksQuery = (team: string, id: string) =>
+/** The recent health checks, from the team's API or Admin's. */
+export const healthChecksQuery = (scope: ServerScope, id: string) =>
   queryOptions({
-    queryKey: [...teamServersKey(team), id, "health"],
-    queryFn: async () => unwrap(await api.GET("/v1/teams/{team}/mcp-servers/{serverId}/health-checks", { params: { path: { team, serverId: id } } })),
+    queryKey: [...baseKey(scope), id, "health"],
+    queryFn: async () =>
+      scope.kind === "team"
+        ? unwrap(await api.GET("/v1/teams/{team}/mcp-servers/{serverId}/health-checks", { params: { path: { team: scope.team, serverId: id } } }))
+        : unwrap(await api.GET("/v1/admin/mcp-servers/{serverId}/health-checks", { params: { path: { serverId: id } } })),
   });
 
 /** The team's publishing policy (with whether it's the platform default). */

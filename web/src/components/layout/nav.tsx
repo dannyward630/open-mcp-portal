@@ -118,8 +118,10 @@ export type AdminNavItem = { to: AdminPath; label: string; icon: ReactNode; exac
 
 /**
  * Admin sidebar groups. Later phases add groups here (Settings), each with the pages it holds.
+ * `defaultOpen`: shown open until the person closes it (groups added since the first release, so
+ * nobody misses them; see admin-groups.ts).
  */
-export const adminSections: { label?: string; items: AdminNavItem[] }[] = [
+export const adminSections: { label?: string; defaultOpen?: boolean; items: AdminNavItem[] }[] = [
   {
     label: "People",
     items: [
@@ -136,10 +138,12 @@ export const adminSections: { label?: string; items: AdminNavItem[] }[] = [
   },
   {
     label: "Access",
+    defaultOpen: true,
     items: [{ to: "/admin/gateways", label: terms.gateways, icon: icon(Network) }],
   },
   {
     label: "Records",
+    defaultOpen: true,
     items: [
       { to: "/admin/audit", label: terms.auditLog, icon: icon(FileClock) },
       { to: "/admin/calls", label: terms.calls, icon: icon(Activity) },

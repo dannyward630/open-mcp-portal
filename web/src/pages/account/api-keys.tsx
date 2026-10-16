@@ -3,6 +3,8 @@
  * person's own keys with their status, last use and expiry (revoked and
  * expired ones stay listed for 30 days). Create shows the secret once
  * (create-key-dialog.tsx); Revoke asks first and takes effect at once.
+ * Expiry reads in days ("in 7 days", never "next week"), the exact date as
+ * its tooltip; a revoked key has none (its status says so).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -13,6 +15,7 @@ import { myApiKeysQuery } from "../../api/queries";
 import { ConfirmMutationDialog } from "../../components/confirm-dialog";
 import type { ApiKey } from "../../components/gateways/labels";
 import { ListPage, RelativeTime, timeColumn } from "../../components/templates/list-page";
+import { calendarDayDiff, formatDate, formatRelativeTime, toDate } from "../../lib/bitop-format";
 import { useIntent } from "../../lib/intents";
 import { terms } from "../../lib/terms";
 import { Alert } from "@/components/ui/alert/alert";
@@ -27,6 +30,29 @@ import { CreateKeyDialog } from "./create-key-dialog";
 
 const statusLabels: Record<ApiKey["status"], string> = { active: "Active", expired: "Expired", revoked: "Revoked" };
 const statusTone = { active: "success", expired: "neutral", revoked: "danger" } as const;
+
+/** "in 7 days", "tomorrow", "in 5 hours", "3 days ago": whole days from a day away, never weeks or months. */
+export function expiryText(value: string | null | undefined, now = new Date()): string {
+  const date = toDate(value);
+  if (!date) return "";
+  const days = calendarDayDiff(date, now);
+  if (Math.abs(date.getTime() - now.getTime()) < 86_400_000 / 2 || days === 0) return formatRelativeTime(date, { now });
+  try {
+    return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(days, "day");
+  } catch {
+    return formatDate(date);
+  }
+}
+
+function Expiry({ value }: { value: string | null | undefined }) {
+  const date = toDate(value);
+  if (!date) return <span className={s.muted}>—</span>;
+  return (
+    <time className={s.nowrap} dateTime={date.toISOString()} title={formatDate(date, { style: "long" })}>
+      {expiryText(value)}
+    </time>
+  );
+}
 
 const facets: Facet<ApiKey>[] = [
   {
@@ -48,16 +74,7 @@ const columns: DataTableColumn<ApiKey>[] = [
     header: "Expires",
     accessor: (k) => (k.expiresAt ? new Date(k.expiresAt) : null),
     sortable: true,
-    cell: (k) =>
-      k.status === "revoked" && k.revokedAt ? (
-        <span className={s.nowrap}>
-          Revoked <RelativeTime value={k.revokedAt} />
-        </span>
-      ) : (
-        <span className={s.nowrap}>
-          <RelativeTime value={k.expiresAt} />
-        </span>
-      ),
+    cell: (k) => (k.status === "revoked" ? <span className={s.muted}>—</span> : <Expiry value={k.expiresAt} />),
   },
   { ...timeColumn<ApiKey>("createdAt", "Created", (k) => k.createdAt), defaultHiddenNarrow: true },
 ];

@@ -13,6 +13,7 @@ import { gatewayTabs } from "../../lib/tabs";
 import { ConfirmMutationDialog } from "../confirm-dialog";
 import type { ActionItem } from "../templates/action-menu";
 import { DetailPage } from "../templates/detail-page";
+import { Alert } from "@/components/ui/alert/alert";
 import { Badge } from "@/components/ui/badge/badge";
 import { Button } from "@/components/ui/button/button";
 import { TextLink } from "@/components/ui/text-link/text-link";
@@ -22,7 +23,7 @@ import { GatewayAccessTab } from "./access-tab";
 import { GatewayActivityTab } from "./activity-tab";
 import { EnabledBadge, UnavailableCountBadge } from "./badges";
 import { GatewayCapabilitiesTab } from "./capabilities-tab";
-import { capabilityCount, type Gateway, ownerKindLabels } from "./labels";
+import { capabilityCount, type Gateway, grantCountLabel, ownerKindLabels } from "./labels";
 import { GatewayOverviewTab } from "./overview-tab";
 import { type GatewayAbilities, type GatewayScope, storeGateway, updateGateway } from "./scope";
 import { GatewaySettingsTab } from "./settings-tab";
@@ -57,12 +58,17 @@ export function GatewayRecord({ gateway, scope, abilities, notices, links = [] }
           ? [{ label: "Team", value: <TextLink render={<Link to="/admin/teams/$team" params={{ team: gateway.teamSlug }} />}>{gateway.teamName ?? gateway.teamSlug}</TextLink> }]
           : []),
         { label: "Capabilities", value: capabilityCount(gateway.capabilityCount) },
-        ...(platform ? [{ label: "Grants", value: gateway.grantCount.toLocaleString() }] : []),
+        ...(platform ? [{ label: "Grants", value: grantCountLabel(gateway.grantCount) }] : []),
       ]}
       primaryAction={abilities.canToggle ? <SwitchButton gateway={gateway} scope={scope} /> : undefined}
       menuLabel="More gateway actions"
       menuActions={links}
-      notices={notices}
+      notices={
+        <>
+          {scope.kind === "team" && !gateway.enabled && <TurnedOffNotice canEdit={abilities.canEdit} />}
+          {notices}
+        </>
+      }
       tabIds={gatewayTabs}
       tabsLabel="Gateway sections"
       tabs={[
@@ -73,6 +79,17 @@ export function GatewayRecord({ gateway, scope, abilities, notices, links = [] }
         { value: "settings", label: "Settings", icon: <Settings2 aria-hidden />, content: <GatewaySettingsTab {...props} /> },
       ]}
     />
+  );
+}
+
+/** A team gateway that's off, on the team's page: nobody can use it, and who can turn it on. */
+function TurnedOffNotice({ canEdit }: { canEdit: boolean }) {
+  return (
+    <Alert tone="warning" title="Turned off">
+      {`Nobody can use this gateway: its endpoint answers “not found” and it's missing from everyone's My gateways. ${
+        canEdit ? "Turn it on again in Settings." : "The team's owners and admins, or a platform admin, can turn it on again."
+      }`}
+    </Alert>
   );
 }
 

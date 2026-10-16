@@ -29,7 +29,7 @@ Last updated: 2026-10-16.
 
 - **Phase 3 (gateways): backend and UI done; verified end to end with curl** (team server → gateway with 2 of 5
   tools → API key → `initialize`, `tools/list` shows only the 2, `whoami` reaches the fake with a JWT it verified
-  against JWKS, an unselected tool is refused as unknown and logged `denied`). UI: 219 Vitest tests, no browser QA yet. See
+  against JWKS, an unselected tool is refused as unknown and logged `denied`). Browser QA done (no security or blocking bugs); its findings are fixed. 235 Vitest tests. See
   [phase3-gateways.md](phase3-gateways.md) "As built" and [upstream-identity.md](upstream-identity.md).
   - Migration `00004_gateways` adds `gateways`, `gateway_capabilities`, `gateway_grants`, `api_keys`, `signing_keys`,
     `mcp_calls` (append-only) and `users.groups`.
@@ -46,6 +46,14 @@ Last updated: 2026-10-16.
     a sentinel check that arguments/results are absent from `mcp_calls`, audit and logs.
   - Gaps: resources; OAuth protected-resource metadata (Phase 4); no rate limit on `/mcp`; no SSE relay (calls are
     buffered within 1 MiB); `server/discover` (2026-07-28 stateless protocol) answered "method not found".
+  - Follow-ups done (not yet browser-checked): archived teams stop serving (their team gateways answer 404, their
+    servers leave the catalog, gateway-options and health loop, other gateways show `team_archived`; unarchive
+    restores); signing keys are pre-published (`next` state, `SIGNING_KEY_PREPUBLISH`, default 24h; migration
+    `00005_signing_key_next`); `/v1/me` returns `groups` (Account › Profile shows them; My gateways names the granting
+    group via `MyGateway.groups`); `GET /v1/admin/mcp-servers/{serverId}/health-checks` (Admin's Health tab uses it);
+    policy changes leave pending servers pending (documented in [registry.md](registry.md), tested).
+    Contract changes: `GatewayUnavailableReason` + `team_archived`, `Me.groups` (required), `MyGateway.groups`
+    (optional), the admin health-checks operation.
 
 ## Differences from Grounded (deliberate)
 
@@ -70,14 +78,9 @@ make test && make web-test
 
 ## Next steps
 
-1. Browser QA of the Phase 3 UI (and the Phase 2 fixes at 390px).
-2. Phase 3 follow-ups: archived teams' gateways keep serving (should stop); pre-publish the next signing key before
-   it signs; `/v1/me` doesn't return the person's groups; `gateway-options` has no paging past 1000; resources;
-   API keys can't be scoped to gateways.
+1. Phase 4: OAuth for MCP clients (protected-resource metadata at the URL `/mcp` already advertises), service accounts.
+2. Phase 3 follow-ups: `gateway-options` has no paging past 1000; resources; API keys can't be scoped to gateways.
 3. `make docker`; Kubernetes manifests later (Phase 6).
-4. Phase 4: OAuth for MCP clients (protected-resource metadata at the URL `/mcp` already advertises), service accounts.
-5. Open questions to settle: what happens to pending requests when the default policy changes; an admin
-   health-checks route (the admin Health tab reads the team endpoint).
 
 ## Phase 1 UI
 

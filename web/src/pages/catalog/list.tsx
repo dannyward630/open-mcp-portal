@@ -2,6 +2,7 @@
  * Catalog (everyone signed in, with or without a team): the MCP servers
  * teams published, with the owning team, what each offers (approved
  * capabilities only) and its health. Search in ?q=, filtered by the server.
+ * On a phone, what a server offers moves under its name.
  */
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -16,6 +17,7 @@ import { terms } from "../../lib/terms";
 import { Alert } from "@/components/ui/alert/alert";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
 import { TextLink } from "@/components/ui/text-link/text-link";
+import { NARROW_QUERY, useMediaQuery } from "@/lib/bitop-utils";
 import s from "../shared.module.css";
 import { useDebounced } from "../admin/hooks";
 import c from "./catalog.module.css";
@@ -24,7 +26,7 @@ type Server = Schemas["CatalogServer"];
 
 const link = (x: Server) => <Link to="/catalog/$serverId" params={{ serverId: x.id }} />;
 
-const columns: DataTableColumn<Server>[] = [
+const columns = (narrow: boolean): DataTableColumn<Server>[] => [
   {
     id: "name",
     header: "Server",
@@ -32,7 +34,7 @@ const columns: DataTableColumn<Server>[] = [
     rowHeader: true,
     hideable: false,
     sortable: true,
-    cell: (x) => <CellText primary={<TextLink render={link(x)}>{x.name}</TextLink>} secondary={x.teamName} />,
+    cell: (x) => <CellText className={s.compactCell} primary={<TextLink render={link(x)}>{x.name}</TextLink>} secondary={narrow ? `${x.teamName} · ${countsText(x.counts)}` : x.teamName} />,
   },
   {
     id: "description",
@@ -48,7 +50,7 @@ const columns: DataTableColumn<Server>[] = [
       ),
     defaultHiddenNarrow: true,
   },
-  { id: "offers", header: "Offers", accessor: (x) => countsText(x.counts), cell: (x) => <CountsCell counts={x.counts} /> },
+  { id: "offers", header: "Offers", accessor: (x) => countsText(x.counts), defaultHiddenNarrow: true, cell: (x) => <CountsCell counts={x.counts} /> },
   { id: "health", header: "Health", accessor: (x) => healthLabels[x.health.status], sortable: true, cell: (x) => <HealthBadge health={x.health} since={false} /> },
   { ...timeColumn<Server>("publishedAt", "Published", (x) => x.publishedAt), defaultHidden: true },
 ];
@@ -59,6 +61,7 @@ export const gatewaysNote = "The catalog shows what each server offers. To use i
 export function CatalogPage() {
   const { query } = useListFilters();
   const q = useDebounced(query.trim());
+  const narrow = useMediaQuery(NARROW_QUERY);
   const servers = useInfiniteQuery({
     queryKey: [...catalogKey, "list", q],
     queryFn: async ({ pageParam }) => unwrap(await api.GET("/v1/catalog/servers", { params: { query: { q: q || undefined, cursor: pageParam, limit: 50 } } })),
@@ -73,7 +76,7 @@ export function CatalogPage() {
       description="The company's MCP servers: published by the teams that run them, with the capabilities that were approved."
       notices={<Alert tone="info">{gatewaysNote}</Alert>}
       caption="Published MCP servers"
-      columns={columns}
+      columns={columns(narrow)}
       data={items}
       getRowId={(x) => x.id}
       rowLabel={(x) => x.name}

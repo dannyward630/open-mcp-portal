@@ -15,6 +15,7 @@ import { Alert } from "@/components/ui/alert/alert";
 import { Card } from "@/components/ui/card/card";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import type { Facet } from "@/components/ui/filter-bar/filter-bar";
+import { NARROW_QUERY, useMediaQuery } from "@/lib/bitop-utils";
 import { callColumns, callsPrivacy, noCalls, outcomeFacet } from "./calls-table";
 import type { CallOutcome, Gateway, McpCall } from "./labels";
 import type { GatewayAbilities, GatewayScope } from "./scope";
@@ -40,6 +41,7 @@ export function GatewayActivityTab({ gateway, scope, abilities }: Props) {
 
 function CallList({ gateway, scope }: { gateway: Gateway; scope: GatewayScope }) {
   const { values } = useListFilters(facets);
+  const narrow = useMediaQuery(NARROW_QUERY);
   const query = { gateway: gateway.id, outcome: (one(values, "outcome") || undefined) as CallOutcome | undefined, ...rangeWindow(values) };
   const team = gateway.teamSlug ?? (scope.kind === "team" ? scope.team : "");
   const calls = useInfiniteQuery({
@@ -58,7 +60,7 @@ function CallList({ gateway, scope }: { gateway: Gateway; scope: GatewayScope })
       <ListPage<McpCall>
         id="gateway-calls"
         caption="Calls"
-        columns={callColumns()}
+        columns={callColumns({ narrow })}
         data={items}
         getRowId={(c) => String(c.id)}
         rowLabel={(c) => `${c.exposedName ?? c.method} by ${c.principal.displayName || c.principal.email}`}

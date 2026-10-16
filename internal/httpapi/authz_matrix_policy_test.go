@@ -196,6 +196,7 @@ var matrixPolicies = map[string]policy{
 	"adminListMcpServers":      {own: platform, build: func(*mctx) request { return get("/v1/admin/mcp-servers?changes=true") }},
 	"adminGetMcpServer":        {own: platform, build: func(c *mctx) request { return get("/v1/admin/mcp-servers/" + c.e.b.server) }},
 	"adminListMcpCapabilities": {own: platform, build: func(c *mctx) request { return get("/v1/admin/mcp-servers/" + c.e.b.server + "/capabilities") }},
+	"adminListMcpHealthChecks": {own: platform, build: func(c *mctx) request { return get("/v1/admin/mcp-servers/" + c.e.b.server + "/health-checks") }},
 	"adminReviewMcpServer": {own: padmin, build: func(c *mctx) request {
 		return post("/v1/admin/mcp-servers/"+c.server("pending")+"/review", map[string]any{"decision": "approve", "note": "ok"})
 	}},

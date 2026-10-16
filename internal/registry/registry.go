@@ -175,6 +175,7 @@ type ServerView struct {
 	Server          dbgen.McpServer
 	TeamSlug        string
 	TeamName        string
+	TeamStatus      string // its team's: archived teams' servers are out of the catalog and gateways
 	EffectivePolicy string
 	ReviewedByName  string
 	// Counts are listed (not gone) capabilities; Approved the approved ones.
@@ -204,7 +205,7 @@ func views(ctx context.Context, q *dbgen.Queries, rows []dbgen.ListMCPServersRow
 	for i, r := range rows {
 		ids[i], index[r.McpServer.ID] = r.McpServer.ID, i
 		out[i] = ServerView{
-			Server: r.McpServer, TeamSlug: r.TeamSlug, TeamName: r.TeamName, ReviewedByName: r.ReviewedByName,
+			Server: r.McpServer, TeamSlug: r.TeamSlug, TeamName: r.TeamName, TeamStatus: r.TeamStatus, ReviewedByName: r.ReviewedByName,
 			EffectivePolicy: authz.EffectivePolicy(r.TeamPolicyOverride, settings.PublishDefaultPolicy),
 		}
 	}
@@ -238,7 +239,7 @@ func (s *Service) view(ctx context.Context, q *dbgen.Queries, id uuid.UUID) (Ser
 		return ServerView{}, err
 	}
 	vs, err := views(ctx, q, []dbgen.ListMCPServersRow{{McpServer: r.McpServer, TeamSlug: r.TeamSlug, TeamName: r.TeamName,
-		TeamPolicyOverride: r.TeamPolicyOverride, ReviewedByName: r.ReviewedByName}})
+		TeamPolicyOverride: r.TeamPolicyOverride, TeamStatus: r.TeamStatus, ReviewedByName: r.ReviewedByName}})
 	if err != nil {
 		return ServerView{}, err
 	}

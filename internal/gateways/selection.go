@@ -14,6 +14,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-gateway/internal/teams"
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
 )
 
@@ -33,6 +34,9 @@ const (
 	ReasonNotApproved    = "not_approved"
 	ReasonChanged        = "changed"
 	ReasonGone           = "gone"
+	// ReasonTeamArchived: the server's team, or a team gateway's own team,
+	// is archived. Nothing is changed on archive, so unarchiving restores it.
+	ReasonTeamArchived = "team_archived"
 )
 
 // Option sources.
@@ -49,14 +53,23 @@ func Selectable(kind string) bool { return kind == upstream.KindTool || kind == 
 // have no underscores, so the first "__" always ends the slug.
 func ExposedName(serverSlug, name string) string { return serverSlug + "__" + name }
 
+// Archived says which teams involved in serving a capability are archived:
+// a team gateway's own team, and the team that owns the server.
+type Archived struct {
+	GatewayTeam, ServerTeam bool
+}
+
 // Availability says whether a gateway serves a selected capability now,
-// and why not: it must be listed, of a selectable kind, its server enabled,
-// and either a server of the team gateway's own team, or published with the
+// and why not: it must be listed, of a selectable kind, neither the server's
+// team nor a team gateway's own team archived, its server enabled, and
+// either a server of the team gateway's own team, or published with the
 // current definition approved. GatewayStats (SQL) mirrors this rule.
-func Availability(g dbgen.Gateway, c dbgen.McpCapability, s dbgen.McpServer) (bool, string) {
+func Availability(g dbgen.Gateway, c dbgen.McpCapability, s dbgen.McpServer, archived Archived) (bool, string) {
 	switch {
 	case c.GoneAt != nil || !Selectable(c.Kind):
 		return false, ReasonGone
+	case archived.GatewayTeam || archived.ServerTeam:
+		return false, ReasonTeamArchived
 	case !s.Enabled:
 		return false, ReasonServerDisabled
 	case g.OwnerKind == OwnerTeam && g.TeamID.Valid && s.TeamID == g.TeamID.UUID:
@@ -88,14 +101,32 @@ type Selection struct {
 	Items    []Selected
 }
 
+// gatewayTeamArchived reports whether g is a team gateway whose team is
+// archived.
+func gatewayTeamArchived(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway) (bool, error) {
+	if g.OwnerKind != OwnerTeam || !g.TeamID.Valid {
+		return false, nil
+	}
+	t, err := q.GetTeamByID(ctx, g.TeamID.UUID)
+	if err != nil {
+		return false, err
+	}
+	return t.Status != teams.StatusActive, nil
+}
+
 func selection(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway) ([]Selected, error) {
+	ownArchived, err := gatewayTeamArchived(ctx, q, g)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := q.ListGatewaySelection(ctx, g.ID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Selected, len(rows))
 	for i, r := range rows {
-		ok, reason := Availability(g, r.McpCapability, r.McpServer)
+		ok, reason := Availability(g, r.McpCapability, r.McpServer,
+			Archived{GatewayTeam: ownArchived, ServerTeam: r.TeamStatus != teams.StatusActive})
 		out[i] = Selected{Capability: r.McpCapability, Server: r.McpServer, TeamSlug: r.TeamSlug, TeamName: r.TeamName,
 			MinRole: r.MinTeamRole, ExposedName: ExposedName(r.McpServer.Slug, r.McpCapability.Name), Available: ok, Reason: reason}
 	}

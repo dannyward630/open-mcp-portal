@@ -607,6 +607,69 @@ func TestMcpPublishingSelfPublish(t *testing.T) {
 	}
 }
 
+// Changing the default policy or a team's override leaves pending servers
+// pending (no review is made or dropped); under self_publish their owners
+// can simply publish them.
+func TestMcpPolicyChangeKeepsPending(t *testing.T) {
+	e := newRegistryEnv(t)
+	base := toolsTeam + "/mcp-servers"
+	a := e.create(map[string]any{"slug": "alpha", "name": "Alpha", "url": e.fake.URL()}).Server.Id.String()
+	b := e.create(map[string]any{"slug": "beta", "name": "Beta", "url": e.fake.URL()}).Server.Id.String()
+	for _, id := range []string{a, b} {
+		code, ec := e.owner.call("POST", base+"/"+id+"/publish", nil, nil, nil)
+		mustCode(t, "request", code, ec, 200, "")
+	}
+	pending := func(what string, ids ...string) {
+		t.Helper()
+		for _, id := range ids {
+			if sv := e.server(e.member, id); sv.PublishState != "pending" || sv.PublishRequestedAt == nil {
+				t.Fatalf("%s: %s = %+v", what, id, sv)
+			}
+		}
+	}
+
+	// The default becomes self_publish: both stay pending, still reviewable.
+	var st apitypes.PublishingSettings
+	code, ec := e.admin.call("PUT", "/v1/admin/settings/publishing", map[string]any{"defaultPolicy": "self_publish"}, &st, ifMatch(1))
+	mustCode(t, "default self_publish", code, ec, 200, "")
+	pending("after the default changed", a, b)
+	if sv := e.server(e.member, a); sv.EffectivePublishPolicy != "self_publish" {
+		t.Fatalf("effective = %s", sv.EffectivePublishPolicy)
+	}
+	var queue apitypes.McpServerPage
+	if code := e.admin.get("/v1/admin/mcp-servers?publishState=pending", &queue); code != 200 || len(queue.Items) != 2 {
+		t.Fatalf("review queue = %d %d", code, len(queue.Items))
+	}
+	// Its owners publish it themselves (no review needed).
+	var sv apitypes.McpServer
+	code, ec = e.owner.call("POST", base+"/"+a+"/publish", nil, &sv, nil)
+	mustCode(t, "self publish a pending server", code, ec, 200, "")
+	if sv.PublishState != "published" || sv.PendingChanges != 0 {
+		t.Fatalf("published = %+v", sv)
+	}
+	if code, _ := e.catalog(e.outsider, a); code != 200 {
+		t.Fatalf("catalog = %d", code)
+	}
+
+	// A team override back to approval_required leaves the other pending
+	// (and the published one published); a platform admin still reviews it.
+	var tp apitypes.TeamPublishing
+	e.admin.get("/v1/admin/teams/tools/publishing", &tp)
+	code, ec = e.admin.call("PUT", "/v1/admin/teams/tools/publishing", map[string]any{"override": "approval_required"}, nil, ifMatch(tp.Revision))
+	mustCode(t, "override approval_required", code, ec, 200, "")
+	pending("after the override", b)
+	if sv := e.server(e.member, a); sv.PublishState != "published" {
+		t.Fatalf("published server after the override = %+v", sv)
+	}
+	code, ec = e.owner.call("POST", base+"/"+b+"/publish", nil, nil, nil)
+	mustCode(t, "request again", code, ec, 409, "already_pending")
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+b+"/review", map[string]any{"decision": "approve"}, &sv, nil)
+	mustCode(t, "review", code, ec, 200, "")
+	if sv.PublishState != "published" {
+		t.Fatalf("reviewed = %+v", sv)
+	}
+}
+
 // A header value is never returned, logged in the audit log or stored in
 // clear: every response and audit row is searched for it.
 func TestMcpHeaderValueNeverDisclosed(t *testing.T) {

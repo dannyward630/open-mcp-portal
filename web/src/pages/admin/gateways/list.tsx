@@ -15,6 +15,7 @@ import { useFormParam } from "@/components/templates/form-page";
 import { ListPage, useListFilters } from "@/components/templates/list-page";
 import { Button } from "@/components/ui/button/button";
 import type { Facet } from "@/components/ui/filter-bar/filter-bar";
+import { NARROW_QUERY, useMediaQuery } from "@/lib/bitop-utils";
 import { terms } from "@/lib/terms";
 import { one, useDebounced, useIsPlatformAdmin } from "../hooks";
 
@@ -47,6 +48,7 @@ export function AdminGatewaysPage() {
     { id: "team", label: "Team", type: "select", placeholder: "Any team", options: teams.data ?? [] },
   ];
   const { values, query } = useListFilters(facets);
+  const narrow = useMediaQuery(NARROW_QUERY);
   const q = useDebounced(query.trim());
   const ownerKind = one(values, "ownerKind") as OwnerKind | "";
   const team = one(values, "team");
@@ -77,7 +79,7 @@ export function AdminGatewaysPage() {
         }
         primaryAction={create}
         caption={terms.gateways}
-        columns={gatewayColumns(link, { admin: true })}
+        columns={gatewayColumns(link, { admin: true, narrow })}
         data={items}
         getRowId={(x) => x.id}
         rowLabel={(x) => x.name}

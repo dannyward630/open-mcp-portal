@@ -205,6 +205,7 @@ type SigningKey struct {
 	RotatedAt        *time.Time
 	RetireAfter      *time.Time
 	RetiredAt        *time.Time
+	ActivatedAt      *time.Time
 }
 
 type Team struct {

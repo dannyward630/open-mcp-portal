@@ -41,6 +41,10 @@ const (
 // whose role is below its minimum.
 const DeniedRole = "role"
 
+// DeniedGatewayDisabled is why a switched-off gateway serves nobody (a team
+// gateway of an archived team serves nobody either: ReasonTeamArchived).
+const DeniedGatewayDisabled = "gateway_disabled"
+
 var (
 	errNoGrant         = apperr.NotFound("grant_not_found", "Grant not found")
 	errGrantExists     = apperr.Conflict("grant_exists", "The gateway is already granted to them")
@@ -144,6 +148,24 @@ func (s *Service) Offers(ctx context.Context, g dbgen.Gateway, c Caller) ([]Offe
 	return Evaluate(g, items, c), nil
 }
 
+// Unserved says why a gateway serves nobody right now, or "" when it
+// serves: switched off (DeniedGatewayDisabled), or a team gateway whose team
+// is archived (ReasonTeamArchived). Unarchiving the team restores it.
+func (s *Service) Unserved(ctx context.Context, g dbgen.Gateway) (string, error) {
+	return unserved(ctx, s.q, g)
+}
+
+func unserved(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway) (string, error) {
+	if !g.Enabled {
+		return DeniedGatewayDisabled, nil
+	}
+	archived, err := gatewayTeamArchived(ctx, q, g)
+	if err != nil || !archived {
+		return "", err
+	}
+	return ReasonTeamArchived, nil
+}
+
 // Resolve finds a gateway by slug (404 gateway_not_found).
 func (s *Service) Resolve(ctx context.Context, slug string) (dbgen.Gateway, error) {
 	g, err := s.q.GetGatewayBySlug(ctx, slug)
@@ -157,11 +179,15 @@ func (s *Service) Resolve(ctx context.Context, slug string) (dbgen.Gateway, erro
 type Mine struct {
 	View   View
 	Access []string
+	// Groups are the person's groups the gateway is granted to (when Access
+	// includes AccessGroupGrant), sorted.
+	Groups []string
 	// Offered counts the capabilities it offers them now.
 	Offered int64
 }
 
-// ListMine lists the enabled gateways a person may use, by name.
+// ListMine lists the gateways a person may use now, by name: enabled, and
+// for team gateways, of an active team.
 func (s *Service) ListMine(ctx context.Context, u dbgen.User) ([]Mine, error) {
 	rows, err := s.q.ListGatewaysForUser(ctx, dbgen.ListGatewaysForUserParams{UserID: uuid.NullUUID{UUID: u.ID, Valid: true}, Groups: groupsOf(u)})
 	if err != nil {
@@ -177,7 +203,10 @@ func (s *Service) ListMine(ctx context.Context, u dbgen.User) ([]Mine, error) {
 		if err != nil {
 			return nil, err
 		}
-		m := Mine{View: View{Gateway: r.Gateway, TeamSlug: r.TeamSlug, TeamName: r.TeamName}, Access: c.Access}
+		m := Mine{View: View{Gateway: r.Gateway, TeamSlug: r.TeamSlug, TeamName: r.TeamName}, Access: c.Access, Groups: r.GrantGroups}
+		if m.Groups == nil {
+			m.Groups = []string{}
+		}
 		for _, o := range offers {
 			if o.Allowed {
 				m.Offered++
@@ -195,7 +224,9 @@ func (s *Service) GetMine(ctx context.Context, u dbgen.User, id uuid.UUID) (Mine
 	if err != nil {
 		return Mine{}, nil, err
 	}
-	if !g.Enabled {
+	if why, err := unserved(ctx, s.q, g); err != nil {
+		return Mine{}, nil, err
+	} else if why != "" {
 		return Mine{}, nil, errNoGateway
 	}
 	c, err := callerOf(ctx, s.q, g, u)
@@ -204,6 +235,12 @@ func (s *Service) GetMine(ctx context.Context, u dbgen.User, id uuid.UUID) (Mine
 	}
 	if !c.Allowed() {
 		return Mine{}, nil, errNoGateway
+	}
+	groups := []string{}
+	if slices.Contains(c.Access, AccessGroupGrant) {
+		if groups, err = s.q.GatewayGrantGroupsForUser(ctx, dbgen.GatewayGrantGroupsForUserParams{GatewayID: g.ID, Groups: groupsOf(u)}); err != nil {
+			return Mine{}, nil, err
+		}
 	}
 	v, err := view(ctx, s.q, id)
 	if err != nil {
@@ -219,7 +256,7 @@ func (s *Service) GetMine(ctx context.Context, u dbgen.User, id uuid.UUID) (Mine
 			allowed = append(allowed, o)
 		}
 	}
-	return Mine{View: v, Access: c.Access, Offered: int64(len(allowed))}, allowed, nil
+	return Mine{View: v, Access: c.Access, Groups: groups, Offered: int64(len(allowed))}, allowed, nil
 }
 
 // Grants lists a platform gateway's grants (platform admins and auditors);

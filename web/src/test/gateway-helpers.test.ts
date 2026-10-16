@@ -3,8 +3,11 @@ import { ApiError } from "../api/client";
 import { actionLabel, areaOf, areaOptions, targetTypeLabel } from "../components/audit/labels";
 import { clientName, keyPlaceholder, snippet, snippetClients } from "../components/gateways/connect-snippets";
 import { selectionProblem } from "../components/gateways/picker-errors";
+import { callErrorLabel, callErrorLabels, grantCountLabel } from "../components/gateways/labels";
+import { grantSummary } from "../components/gateways/overview-tab";
 import { filterOptions } from "../components/gateways/picker-options";
-import { gatewayOptions } from "./fixtures";
+import { expiryText } from "../pages/account/api-keys";
+import { grant, gatewayOptions, user } from "./fixtures";
 
 const url = "https://mcp.example.com/mcp/support-tools";
 
@@ -91,5 +94,61 @@ describe("gateway audit words", () => {
     expect(areaOptions(false).map((o) => o.value)).not.toContain("api_key.");
     expect(areaOptions(true).map((o) => o.value)).toContain("api_key.");
     expect(areaOptions(false).map((o) => o.value)).toContain("gateway.");
+  });
+});
+
+describe("call error classes", () => {
+  // Every class internal/mcpgw records: refusals, unavailable reasons, invalid requests and the registry's upstream classes.
+  const recorded = [
+    "gateway_disabled", "no_access", "role", "unknown",
+    "server_disabled", "not_published", "not_approved", "changed", "gone", "team_archived",
+    "invalid_params", "invalid_cursor",
+    "unavailable", "auth", "not_found", "rate_limited", "bad_request", "bad_response", "config", "timeout", "too_large", "not_allowed",
+  ];
+
+  it("have a plain label for every class the backend records", () => {
+    for (const code of recorded) {
+      expect(Object.hasOwn(callErrorLabels, code), code).toBe(true);
+      expect(callErrorLabel(code), code).not.toContain("_");
+      expect(callErrorLabel(code), code).not.toBe(code);
+    }
+    expect(callErrorLabel("unknown")).toBe("Not offered by the gateway");
+    expect(callErrorLabel("no_access")).toBe("No access to the gateway");
+    expect(callErrorLabel("role")).toBe("Needs a higher team role");
+  });
+
+  it("humanise a class they don't know, never showing it raw", () => {
+    expect(callErrorLabel("quota_exceeded")).toBe("Quota exceeded");
+    expect(callErrorLabel("upstream.reset-by_peer")).toBe("Upstream reset by peer");
+    expect(callErrorLabel("toString")).toBe("Tostring");
+    expect(callErrorLabel("__")).toBe("Other error");
+  });
+});
+
+describe("grants", () => {
+  it("count in words", () => {
+    expect(grantCountLabel(0)).toBe("No grants");
+    expect(grantCountLabel(1)).toBe("1 grant");
+    expect(grantCountLabel(3)).toBe("3 grants");
+  });
+
+  it("summarise who a gateway is granted to, by kind", () => {
+    const person = grant({ id: "u", subjectKind: "user", team: undefined, user: { id: user().id, email: user().email, displayName: user().displayName, status: "active" } });
+    const group = grant({ id: "g", subjectKind: "group", team: undefined, group: "engineering" });
+    expect(grantSummary([grant(), person, group])).toBe("teams: Platform Tools; people: Una User; SSO groups: engineering");
+    expect(grantSummary([group])).toBe("SSO groups: engineering");
+    expect(grantSummary([])).toBe("");
+  });
+});
+
+describe("API key expiry", () => {
+  const now = new Date(2026, 9, 16, 12, 0);
+  it("counts whole days, never weeks", () => {
+    expect(expiryText(new Date(2026, 9, 23, 12, 0).toISOString(), now)).toBe("in 7 days");
+    expect(expiryText(new Date(2026, 9, 17, 9, 0).toISOString(), now)).toBe("tomorrow");
+    expect(expiryText(new Date(2027, 0, 14, 12, 0).toISOString(), now)).toBe("in 90 days");
+    expect(expiryText(new Date(2026, 9, 13, 12, 0).toISOString(), now)).toBe("3 days ago");
+    expect(expiryText(new Date(2026, 9, 16, 17, 0).toISOString(), now)).toBe("in 5 hours");
+    expect(expiryText(null, now)).toBe("");
   });
 });

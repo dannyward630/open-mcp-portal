@@ -5,12 +5,18 @@
  * Only groups opened by hand are remembered: a group that opened because its
  * page was current closes again when the person moves on, so open groups
  * don't pile up and push the current item out of view.
+ * Groups marked `defaultOpen` (adminSections) start open, until closed by
+ * hand (remembered too).
  * Groups are remembered by label; labels that no longer exist are forgotten.
  */
 import { useCallback, useState } from "react";
 import { adminSections } from "./nav";
 
 const storageKey = "omg.adminNavOpen";
+/** Default-open groups the person closed by hand. */
+const closedKey = "omg.adminNavClosed";
+
+const defaultOpen = new Set(adminSections.flatMap((s) => (s.label && s.defaultOpen ? [s.label] : [])));
 
 /** The remembered open groups that exist now: unknown labels are dropped. */
 export function currentGroups(saved: string[]): string[] {
@@ -18,21 +24,21 @@ export function currentGroups(saved: string[]): string[] {
   return [...new Set(saved)].filter((l) => known.has(l));
 }
 
-function read(): string[] {
+function read(key = storageKey): string[] {
   try {
-    const parsed: unknown = JSON.parse(globalThis.localStorage?.getItem(storageKey) ?? "[]");
+    const parsed: unknown = JSON.parse(globalThis.localStorage?.getItem(key) ?? "[]");
     const saved = Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
     const now = currentGroups(saved);
-    if (now.join("\n") !== saved.join("\n")) write(now);
+    if (now.join("\n") !== saved.join("\n")) write(now, key);
     return now;
   } catch {
     return [];
   }
 }
 
-function write(open: string[]) {
+function write(open: string[], key = storageKey) {
   try {
-    globalThis.localStorage?.setItem(storageKey, JSON.stringify(open));
+    globalThis.localStorage?.setItem(key, JSON.stringify(open));
   } catch {
     // Storage can be unavailable (private mode).
   }
@@ -44,7 +50,8 @@ function write(open: string[]) {
  * it was opened by hand; closing it by hand hides it until the page is in another group.
  */
 export function useAdminGroups(active: string | undefined) {
-  const [saved, setSaved] = useState<string[]>(read);
+  const [saved, setSaved] = useState<string[]>(() => read());
+  const [closedByHand, setClosedByHand] = useState<string[]>(() => read(closedKey));
   const [closed, setClosed] = useState<{ active: string | undefined; closed: boolean }>({ active, closed: false });
   // A state update during render: arriving in another group forgets that the last one was closed by hand.
   if (closed.active !== active) setClosed({ active, closed: false });
@@ -57,8 +64,19 @@ export function useAdminGroups(active: string | undefined) {
         write(next);
         return next;
       });
+      if (defaultOpen.has(label)) {
+        setClosedByHand((list) => {
+          const next = isOpen ? list.filter((l) => l !== label) : [...list.filter((l) => l !== label), label];
+          write(next, closedKey);
+          return next;
+        });
+      }
     },
     [active],
   );
-  return { isOpen: (label: string) => (label === active ? !activeClosed : saved.includes(label)), setOpen };
+  const isOpen = (label: string) => {
+    if (label === active) return !activeClosed;
+    return saved.includes(label) || (defaultOpen.has(label) && !closedByHand.includes(label));
+  };
+  return { isOpen, setOpen };
 }

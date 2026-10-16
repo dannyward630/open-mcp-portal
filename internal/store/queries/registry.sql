@@ -80,15 +80,17 @@ UPDATE mcp_servers SET last_refresh_error = @message WHERE id = @id;
 -- One page of servers ordered by (name, id), with their team and reviewer.
 -- team_id narrows to one team; publish_state to one state; changes_only to
 -- published servers with capabilities waiting for approval; catalog to
--- published, enabled servers. search is LIKE-escaped by the caller.
+-- published, enabled servers of active teams. search is LIKE-escaped by the
+-- caller.
 SELECT sqlc.embed(s), t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+       t.status AS team_status,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
            AS reviewed_by_name
 FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE (sqlc.narg(team_id)::uuid IS NULL OR s.team_id = sqlc.narg(team_id)::uuid)
   AND (sqlc.narg(publish_state)::text IS NULL OR s.publish_state = sqlc.narg(publish_state)::text)
-  AND (NOT @catalog::bool OR (s.publish_state = 'published' AND s.enabled))
+  AND (NOT @catalog::bool OR (s.publish_state = 'published' AND s.enabled AND t.status = 'active'))
   AND (NOT @changes_only::bool OR (s.publish_state = 'published' AND EXISTS (
         SELECT 1 FROM mcp_capabilities c
         WHERE c.server_id = s.id AND c.gone_at IS NULL AND c.approved_fingerprint IS DISTINCT FROM c.fingerprint)))
@@ -102,6 +104,7 @@ LIMIT @page_size;
 
 -- name: GetMCPServerView :one
 SELECT sqlc.embed(s), t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+       t.status AS team_status,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
            AS reviewed_by_name
 FROM mcp_servers s
@@ -201,10 +204,11 @@ WHERE h.server_id = ANY(@server_ids::uuid[])
 ORDER BY h.server_id, h.checked_at DESC, h.id DESC;
 
 -- name: ListMCPServersDueForCheck :many
--- Enabled servers whose latest check is older than due_before (or that
--- have none): the health loop's targets. Several replicas taking turns
--- therefore don't test a server twice in one interval.
+-- Enabled servers of active teams whose latest check is older than
+-- due_before (or that have none): the health loop's targets. Several
+-- replicas taking turns therefore don't test a server twice in one interval.
 SELECT s.* FROM mcp_servers s
-WHERE s.enabled
+JOIN teams t ON t.id = s.team_id
+WHERE s.enabled AND t.status = 'active'
   AND NOT EXISTS (SELECT 1 FROM mcp_health_checks h WHERE h.server_id = s.id AND h.checked_at >= @due_before)
 ORDER BY s.id;

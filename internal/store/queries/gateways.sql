@@ -52,28 +52,32 @@ WHERE g.id = $1;
 
 -- name: GatewayStats :many
 -- Per gateway: selected capabilities, the ones not served right now, and
--- grants. "Served" mirrors gateways.Availability: listed, its server
--- enabled, and either the team gateway's own server or published with the
--- current definition approved.
+-- grants. "Served" mirrors gateways.Availability: listed, the server's team
+-- and a team gateway's own team active, its server enabled, and either the
+-- team gateway's own server or published with the current definition
+-- approved.
 SELECT g.id AS gateway_id,
        (SELECT count(*) FROM gateway_capabilities gc WHERE gc.gateway_id = g.id)::bigint AS capability_count,
        (SELECT count(*)
         FROM gateway_capabilities gc
         JOIN mcp_capabilities c ON c.id = gc.capability_id
         JOIN mcp_servers s ON s.id = c.server_id
+        JOIN teams st ON st.id = s.team_id
         WHERE gc.gateway_id = g.id
-          AND NOT COALESCE(c.gone_at IS NULL AND s.enabled AND c.kind IN ('tool', 'prompt')
+          AND NOT COALESCE(c.gone_at IS NULL AND c.kind IN ('tool', 'prompt')
+                           AND st.status = 'active' AND COALESCE(gt.status, 'active') = 'active' AND s.enabled
                            AND ((g.owner_kind = 'team' AND s.team_id = g.team_id)
                                 OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint)), false)
        )::bigint AS unavailable_count,
        (SELECT count(*) FROM gateway_grants gg WHERE gg.gateway_id = g.id)::bigint AS grant_count
 FROM gateways g
+LEFT JOIN teams gt ON gt.id = g.team_id
 WHERE g.id = ANY(@ids::uuid[]);
 
 -- name: ListGatewaySelection :many
 -- A gateway's selected capabilities with their servers and the servers'
 -- teams, ordered by server and name (tools before prompts).
-SELECT sqlc.embed(c), sqlc.embed(s), gc.min_team_role, t.slug AS team_slug, t.name AS team_name
+SELECT sqlc.embed(c), sqlc.embed(s), gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
 FROM gateway_capabilities gc
 JOIN mcp_capabilities c ON c.id = gc.capability_id
 JOIN mcp_servers s ON s.id = c.server_id
@@ -91,17 +95,18 @@ VALUES (@gateway_id, @capability_id, sqlc.narg(min_team_role), @added_by)
 ON CONFLICT (gateway_id, capability_id) DO UPDATE SET min_team_role = EXCLUDED.min_team_role;
 
 -- name: ListGatewayOptions :many
--- Tools and prompts a gateway may select: listed, of an enabled server, and
--- either a server of team_id (a team gateway's own team; NULL for a
--- platform gateway) or published with the current definition approved.
--- by_ids narrows to ids; search is LIKE-escaped by the caller.
+-- Tools and prompts a gateway may select: listed, of an enabled server of
+-- an active team, and either a server of team_id (a team gateway's own
+-- team; NULL for a platform gateway) or published with the current
+-- definition approved. by_ids narrows to ids; search is LIKE-escaped by the
+-- caller.
 SELECT c.id, c.kind, c.name, c.title, c.description,
        s.id AS server_id, s.slug AS server_slug, s.name AS server_name, s.team_id AS server_team_id,
        t.slug AS team_slug, t.name AS team_name
 FROM mcp_capabilities c
 JOIN mcp_servers s ON s.id = c.server_id
 JOIN teams t ON t.id = s.team_id
-WHERE c.kind IN ('tool', 'prompt') AND c.gone_at IS NULL AND s.enabled
+WHERE c.kind IN ('tool', 'prompt') AND c.gone_at IS NULL AND s.enabled AND t.status = 'active'
   AND ((sqlc.narg(team_id)::uuid IS NOT NULL AND s.team_id = sqlc.narg(team_id)::uuid)
        OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint))
   AND (sqlc.narg(kind)::text IS NULL OR c.kind = sqlc.narg(kind)::text)
@@ -136,6 +141,13 @@ RETURNING *;
 DELETE FROM gateway_grants WHERE id = @id AND gateway_id = @gateway_id
 RETURNING *;
 
+-- name: GatewayGrantGroupsForUser :many
+-- The person's groups a gateway is granted to.
+SELECT DISTINCT gg.group_name::text AS group_name
+FROM gateway_grants gg
+WHERE gg.gateway_id = @gateway_id AND gg.group_name = ANY(@groups::text[])
+ORDER BY 1;
+
 -- name: GatewayGrantKindsForUser :many
 -- How a person reaches a gateway through its grants: their team's grant,
 -- their own, or one of their groups'.
@@ -147,20 +159,24 @@ WHERE gg.gateway_id = @gateway_id
        OR gg.group_name = ANY(@groups::text[]));
 
 -- name: ListGatewaysForUser :many
--- Enabled gateways a person may use: their teams' gateways (with their
--- role) and platform gateways granted to them, their teams or their groups.
+-- Enabled gateways a person may use: their active teams' gateways (with
+-- their role) and platform gateways granted to them, their teams or their
+-- groups, with the groups that match.
 SELECT sqlc.embed(g), COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name,
        COALESCE(m.role, '')::text AS member_role,
        ARRAY(SELECT DISTINCT gg.subject_kind FROM gateway_grants gg
              WHERE gg.gateway_id = g.id
                AND (gg.user_id = @user_id
                     OR gg.team_id IN (SELECT tm.team_id FROM team_members tm WHERE tm.user_id = @user_id)
-                    OR gg.group_name = ANY(@groups::text[])))::text[] AS grant_kinds
+                    OR gg.group_name = ANY(@groups::text[])))::text[] AS grant_kinds,
+       ARRAY(SELECT DISTINCT gg.group_name FROM gateway_grants gg
+             WHERE gg.gateway_id = g.id AND gg.group_name = ANY(@groups::text[])
+             ORDER BY gg.group_name)::text[] AS grant_groups
 FROM gateways g
 LEFT JOIN teams t ON t.id = g.team_id
 LEFT JOIN team_members m ON g.owner_kind = 'team' AND m.team_id = g.team_id AND m.user_id = @user_id
 WHERE g.enabled
-  AND ((g.owner_kind = 'team' AND m.user_id IS NOT NULL)
+  AND ((g.owner_kind = 'team' AND m.user_id IS NOT NULL AND t.status = 'active')
        OR (g.owner_kind = 'platform' AND EXISTS (
             SELECT 1 FROM gateway_grants gg
             WHERE gg.gateway_id = g.id

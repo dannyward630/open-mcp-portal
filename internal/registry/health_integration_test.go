@@ -32,8 +32,9 @@ func testService(t *testing.T) (*Service, func(sql string, args ...any) string) 
 	return s, exec
 }
 
-// The health loop tests enabled servers only, records scheduled checks,
-// skips servers checked recently, and runs on one replica at a time.
+// The health loop tests enabled servers of active teams only, records
+// scheduled checks, skips servers checked recently, and runs on one replica
+// at a time.
 func TestRunHealthChecks(t *testing.T) {
 	s, exec := testService(t)
 	ctx := context.Background()
@@ -43,6 +44,8 @@ func TestRunHealthChecks(t *testing.T) {
 	down := exec(`INSERT INTO mcp_servers (team_id, slug, name, url, timeout_seconds) VALUES ($1, 'down', 'Down', 'http://127.0.0.1:1/mcp', 2)
 		RETURNING id::text`, team)
 	exec(`INSERT INTO mcp_servers (team_id, slug, name, url, enabled) VALUES ($1, 'off', 'Off', $2, false) RETURNING id::text`, team, fake.URL())
+	archived := exec(`INSERT INTO teams (slug, name, status, archived_at) VALUES ('gone', 'Gone', 'archived', now()) RETURNING id::text`)
+	shelved := exec(`INSERT INTO mcp_servers (team_id, slug, name, url) VALUES ($1, 'shelved', 'Shelved', $2) RETURNING id::text`, archived, fake.URL())
 
 	sum, err := s.RunHealthChecks(ctx, 5*time.Minute)
 	if err != nil || sum.Skipped || sum.Servers != 2 || sum.Healthy != 1 || sum.Failed != 1 {
@@ -67,6 +70,14 @@ func TestRunHealthChecks(t *testing.T) {
 	release()
 	if sum, err := s.RunHealthChecks(ctx, time.Nanosecond); err != nil || sum.Servers != 2 {
 		t.Fatalf("after release = %+v, %v", sum, err)
+	}
+	if n := exec(`SELECT count(*)::text FROM mcp_health_checks WHERE server_id = $1`, shelved); n != "0" {
+		t.Fatalf("an archived team's server was checked %s times", n)
+	}
+	// Unarchived, it is checked again.
+	exec(`UPDATE teams SET status = 'active', archived_at = NULL WHERE id = $1 RETURNING id::text`, archived)
+	if sum, err := s.RunHealthChecks(ctx, time.Nanosecond); err != nil || sum.Servers != 3 {
+		t.Fatalf("after unarchiving = %+v, %v", sum, err)
 	}
 	_ = up
 	_ = down

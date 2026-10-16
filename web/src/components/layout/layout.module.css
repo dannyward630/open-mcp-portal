@@ -127,3 +127,13 @@
     flex: none;
   }
 }
+
+/*
+ * The "…" crumb (collapsed middle crumbs on a phone): as wide as its button.
+ * The trail measures each crumb's text to set its floor, and the menu
+ * button's hidden label made that floor far wider than "…", leaving a gap.
+ */
+.crumbs li:has(> button[aria-haspopup="menu"]) {
+  flex-shrink: 0;
+  min-width: auto;
+}

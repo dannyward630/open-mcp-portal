@@ -180,7 +180,7 @@ describe("Admin review", () => {
     "GET /v1/admin/mcp-servers": () => page([server]),
     [`GET /v1/admin/mcp-servers/${serverId}`]: () => server,
     [`GET /v1/admin/mcp-servers/${serverId}/capabilities`]: () => capabilities,
-    [`GET /v1/teams/${team.slug}/mcp-servers/${serverId}/health-checks`]: () => [healthCheck()],
+    [`GET /v1/admin/mcp-servers/${serverId}/health-checks`]: () => [healthCheck()],
     ...extra,
   });
 

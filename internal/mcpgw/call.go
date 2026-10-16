@@ -110,6 +110,9 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 		result = res
 	}
 	encoded, err := json.Marshal(result)
+	if err == nil {
+		encoded, err = scrubMeta(encoded)
+	}
 	if err != nil || len(encoded) > MaxResponseBytes {
 		n := rc.fail(codeInternal, "The server's response is too large")
 		rec.Outcome, rec.ErrorClass = calls.OutcomeTooLarge, upstream.ClassTooLarge
@@ -122,6 +125,47 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 		rec.Outcome = calls.OutcomeToolError
 	}
 	rc.record(rec, n)
+}
+
+// upstreamMetaKeys are _meta entries about the upstream itself that clients
+// of a gateway don't need: the gateway is the server they talk to.
+var upstreamMetaKeys = []string{"io.modelcontextprotocol/serverInfo"}
+
+// scrubMeta removes upstreamMetaKeys from a result's _meta (and an empty
+// _meta), leaving everything else as the upstream sent it.
+func scrubMeta(encoded []byte) ([]byte, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &obj); err != nil {
+		return encoded, nil // not an object: nothing to scrub
+	}
+	raw, ok := obj["_meta"]
+	if !ok {
+		return encoded, nil
+	}
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return encoded, nil
+	}
+	changed := false
+	for _, k := range upstreamMetaKeys {
+		if _, ok := meta[k]; ok {
+			delete(meta, k)
+			changed = true
+		}
+	}
+	if !changed {
+		return encoded, nil
+	}
+	if len(meta) == 0 {
+		delete(obj, "_meta")
+	} else {
+		m, err := json.Marshal(meta)
+		if err != nil {
+			return nil, err
+		}
+		obj["_meta"] = m
+	}
+	return json.Marshal(obj)
 }
 
 // upstreamFailed answers a failed exchange with a JSON-RPC error (the

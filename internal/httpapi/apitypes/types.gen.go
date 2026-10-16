@@ -214,6 +214,7 @@ const (
 	NotApproved    GatewayUnavailableReason = "not_approved"
 	NotPublished   GatewayUnavailableReason = "not_published"
 	ServerDisabled GatewayUnavailableReason = "server_disabled"
+	TeamArchived   GatewayUnavailableReason = "team_archived"
 )
 
 // Valid indicates whether the value is a known member of the GatewayUnavailableReason enum.
@@ -228,6 +229,8 @@ func (e GatewayUnavailableReason) Valid() bool {
 	case NotPublished:
 		return true
 	case ServerDisabled:
+		return true
+	case TeamArchived:
 		return true
 	default:
 		return false
@@ -862,7 +865,7 @@ type Gateway struct {
 	CreatedAt       time.Time `json:"createdAt"`
 	Description     string    `json:"description"`
 
-	// Enabled Turned off, the endpoint answers 404 to everyone
+	// Enabled Turned off, the endpoint answers 404 to everyone. A team gateway of an archived team also answers 404, and its capabilities are unavailable (team_archived), until the team is unarchived
 	Enabled bool `json:"enabled"`
 
 	// GrantCount Platform gateways' grants (0 for team gateways)
@@ -936,7 +939,7 @@ type GatewayCapability struct {
 	TeamSlug string `json:"teamSlug"`
 	Title    string `json:"title"`
 
-	// UnavailableReason server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it.
+	// UnavailableReason server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it. team_archived: the team that owns its server, or the team gateway's own team, is archived (unarchiving restores it).
 	UnavailableReason *GatewayUnavailableReason `json:"unavailableReason,omitempty"`
 }
 
@@ -1019,7 +1022,7 @@ type GatewayPage struct {
 	NextCursor *string   `json:"nextCursor,omitempty"`
 }
 
-// GatewayUnavailableReason server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it.
+// GatewayUnavailableReason server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it. team_archived: the team that owns its server, or the team gateway's own team, is archived (unarchiving restores it).
 type GatewayUnavailableReason string
 
 // GatewayUpdate defines model for GatewayUpdate.
@@ -1328,8 +1331,11 @@ type McpTestResult struct {
 type Me struct {
 	Capabilities Capabilities `json:"capabilities"`
 	CsrfToken    string       `json:"csrfToken"`
-	Teams        []MyTeam     `json:"teams"`
-	User         User         `json:"user"`
+
+	// Groups The caller's IdP groups as of their last sign-in (from OIDC_GROUPS_CLAIM; may be empty). Platform gateways can be granted to them.
+	Groups []string `json:"groups"`
+	Teams  []MyTeam `json:"teams"`
+	User   User     `json:"user"`
 }
 
 // Member defines model for Member.
@@ -1377,15 +1383,18 @@ type MyGateway struct {
 	Access []MyGatewayAccess `json:"access"`
 
 	// CapabilityCount Capabilities it offers the caller right now
-	CapabilityCount int64              `json:"capabilityCount"`
-	Description     string             `json:"description"`
-	Id              openapi_types.UUID `json:"id"`
-	Name            string             `json:"name"`
-	OwnerKind       GatewayOwnerKind   `json:"ownerKind"`
-	Slug            string             `json:"slug"`
-	TeamName        *string            `json:"teamName,omitempty"`
-	TeamSlug        *string            `json:"teamSlug,omitempty"`
-	Url             string             `json:"url"`
+	CapabilityCount int64  `json:"capabilityCount"`
+	Description     string `json:"description"`
+
+	// Groups When access includes group_grant, the caller's IdP groups the gateway is granted to (sorted)
+	Groups    *[]string          `json:"groups,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	OwnerKind GatewayOwnerKind   `json:"ownerKind"`
+	Slug      string             `json:"slug"`
+	TeamName  *string            `json:"teamName,omitempty"`
+	TeamSlug  *string            `json:"teamSlug,omitempty"`
+	Url       string             `json:"url"`
 }
 
 // MyGatewayAccess defines model for MyGatewayAccess.

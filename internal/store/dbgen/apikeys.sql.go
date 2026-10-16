@@ -13,21 +13,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const activeSigningKeyDue = `-- name: ActiveSigningKeyDue :one
-SELECT EXISTS (
-    SELECT 1 FROM signing_keys
-    WHERE state = 'active' AND created_at <= now() - ($1::bigint * '1 second'::interval)
-)::bool
-`
-
-// Whether the signing key is older than max_age_seconds (time to rotate).
-func (q *Queries) ActiveSigningKeyDue(ctx context.Context, maxAgeSeconds int64) (bool, error) {
-	row := q.db.QueryRow(ctx, activeSigningKeyDue, maxAgeSeconds)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const countActiveAPIKeys = `-- name: CountActiveAPIKeys :one
 
 SELECT count(*)::bigint FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
@@ -85,7 +70,7 @@ func (q *Queries) GetAPIKeyByDigest(ctx context.Context, digest string) (GetAPIK
 }
 
 const getActiveSigningKey = `-- name: GetActiveSigningKey :one
-SELECT kid, alg, private_key_cipher, public_jwk, state, created_at, rotated_at, retire_after, retired_at FROM signing_keys WHERE state = 'active'
+SELECT kid, alg, private_key_cipher, public_jwk, state, created_at, rotated_at, retire_after, retired_at, activated_at FROM signing_keys WHERE state = 'active'
 `
 
 func (q *Queries) GetActiveSigningKey(ctx context.Context) (SigningKey, error) {
@@ -101,6 +86,29 @@ func (q *Queries) GetActiveSigningKey(ctx context.Context) (SigningKey, error) {
 		&i.RotatedAt,
 		&i.RetireAfter,
 		&i.RetiredAt,
+		&i.ActivatedAt,
+	)
+	return i, err
+}
+
+const getNextSigningKey = `-- name: GetNextSigningKey :one
+SELECT kid, alg, private_key_cipher, public_jwk, state, created_at, rotated_at, retire_after, retired_at, activated_at FROM signing_keys WHERE state = 'next'
+`
+
+func (q *Queries) GetNextSigningKey(ctx context.Context) (SigningKey, error) {
+	row := q.db.QueryRow(ctx, getNextSigningKey)
+	var i SigningKey
+	err := row.Scan(
+		&i.Kid,
+		&i.Alg,
+		&i.PrivateKeyCipher,
+		&i.PublicJwk,
+		&i.State,
+		&i.CreatedAt,
+		&i.RotatedAt,
+		&i.RetireAfter,
+		&i.RetiredAt,
+		&i.ActivatedAt,
 	)
 	return i, err
 }
@@ -169,17 +177,26 @@ func (q *Queries) InsertAPIKey(ctx context.Context, arg InsertAPIKeyParams) (Api
 }
 
 const insertSigningKey = `-- name: InsertSigningKey :exec
-INSERT INTO signing_keys (kid, private_key_cipher, public_jwk) VALUES ($1, $2, $3)
+INSERT INTO signing_keys (kid, private_key_cipher, public_jwk, state, activated_at)
+VALUES ($1, $2, $3, $4, CASE WHEN $4::text = 'active' THEN now() END)
 `
 
 type InsertSigningKeyParams struct {
 	Kid              string
 	PrivateKeyCipher []byte
 	PublicJwk        json.RawMessage
+	State            string
 }
 
+// state is 'active' (signs at once) or 'next' (published, signs once
+// promoted).
 func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyParams) error {
-	_, err := q.db.Exec(ctx, insertSigningKey, arg.Kid, arg.PrivateKeyCipher, arg.PublicJwk)
+	_, err := q.db.Exec(ctx, insertSigningKey,
+		arg.Kid,
+		arg.PrivateKeyCipher,
+		arg.PublicJwk,
+		arg.State,
+	)
 	return err
 }
 
@@ -223,9 +240,10 @@ func (q *Queries) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]ApiKey, 
 }
 
 const listPublishedSigningKeys = `-- name: ListPublishedSigningKeys :many
-SELECT kid, alg, private_key_cipher, public_jwk, state, created_at, rotated_at, retire_after, retired_at FROM signing_keys WHERE state IN ('active', 'retiring') ORDER BY created_at DESC, kid
+SELECT kid, alg, private_key_cipher, public_jwk, state, created_at, rotated_at, retire_after, retired_at, activated_at FROM signing_keys WHERE state IN ('next', 'active', 'retiring') ORDER BY created_at DESC, kid
 `
 
+// The JWKS: the key that signs, the one that will, and those retiring.
 func (q *Queries) ListPublishedSigningKeys(ctx context.Context) ([]SigningKey, error) {
 	rows, err := q.db.Query(ctx, listPublishedSigningKeys)
 	if err != nil {
@@ -245,6 +263,7 @@ func (q *Queries) ListPublishedSigningKeys(ctx context.Context) ([]SigningKey, e
 			&i.RotatedAt,
 			&i.RetireAfter,
 			&i.RetiredAt,
+			&i.ActivatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -264,6 +283,19 @@ SELECT pg_advisory_xact_lock(hashtextextended('omg.signing-keys', 0))
 func (q *Queries) LockSigningKeys(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockSigningKeys)
 	return err
+}
+
+const promoteNextSigningKey = `-- name: PromoteNextSigningKey :execrows
+UPDATE signing_keys SET state = 'active', activated_at = now() WHERE state = 'next'
+`
+
+// The next key starts signing.
+func (q *Queries) PromoteNextSigningKey(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, promoteNextSigningKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const retireActiveSigningKey = `-- name: RetireActiveSigningKey :execrows
@@ -325,6 +357,42 @@ func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (Api
 		&i.RevokedAt,
 		&i.LastUsedAt,
 	)
+	return i, err
+}
+
+const signingKeyRotationState = `-- name: SigningKeyRotationState :one
+SELECT
+    EXISTS (SELECT 1 FROM signing_keys WHERE state = 'active'
+            AND COALESCE(activated_at, created_at) <= now() - ($1::bigint * '1 second'::interval)
+    )::bool AS prepare_due,
+    EXISTS (SELECT 1 FROM signing_keys WHERE state = 'active'
+            AND COALESCE(activated_at, created_at) <= now() - ($2::bigint * '1 second'::interval)
+    )::bool AS rotate_due,
+    EXISTS (SELECT 1 FROM signing_keys WHERE state = 'next'
+            AND created_at <= now() - ($3::bigint * '1 second'::interval)
+    )::bool AS next_ready
+`
+
+type SigningKeyRotationStateParams struct {
+	PrepareAfterSeconds int64
+	RotateAfterSeconds  int64
+	PublishedSeconds    int64
+}
+
+type SigningKeyRotationStateRow struct {
+	PrepareDue bool
+	RotateDue  bool
+	NextReady  bool
+}
+
+// Where rotation stands, by the database clock: whether the active key has
+// signed for prepare_after_seconds (time to pre-publish its successor) and
+// for rotate_after_seconds (time to replace it), and whether the next key
+// has been published for published_seconds (ready to sign).
+func (q *Queries) SigningKeyRotationState(ctx context.Context, arg SigningKeyRotationStateParams) (SigningKeyRotationStateRow, error) {
+	row := q.db.QueryRow(ctx, signingKeyRotationState, arg.PrepareAfterSeconds, arg.RotateAfterSeconds, arg.PublishedSeconds)
+	var i SigningKeyRotationStateRow
+	err := row.Scan(&i.PrepareDue, &i.RotateDue, &i.NextReady)
 	return i, err
 }
 

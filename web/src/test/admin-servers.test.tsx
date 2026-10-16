@@ -13,7 +13,7 @@ const routes = (role: "platform_admin" | "platform_auditor" = "platform_admin", 
   "GET /v1/admin/mcp-servers": (_b, call) => (call.search.get("publishState") === "pending" ? page([pending]) : page([server, mcpServer({ id: "s2", name: "Wiki search", slug: "wiki" })])),
   [`GET /v1/admin/mcp-servers/${serverId}`]: () => server,
   [`GET /v1/admin/mcp-servers/${serverId}/capabilities`]: () => capabilities,
-  [`GET /v1/teams/${team.slug}/mcp-servers/${serverId}/health-checks`]: () => [healthCheck()],
+  [`GET /v1/admin/mcp-servers/${serverId}/health-checks`]: () => [healthCheck()],
   "GET /v1/admin/teams": () => page([teamSummary()]),
   [`GET /v1/admin/teams/${team.slug}`]: () => teamSummary(),
   [`GET /v1/admin/teams/${team.slug}/publishing`]: () => teamPublishing(),
@@ -92,13 +92,20 @@ describe("Admin → MCP servers", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url === `/v1/admin/mcp-servers/${serverId}/capabilities/${changed.id}/approval`)).toBe(true));
   });
 
-  it("is read-only for auditors: no reviews, settings shown but not editable, health through the team API", async () => {
+  it("is read-only for auditors: no reviews, settings shown but not editable, health through the admin API", async () => {
     mockApi(routes("platform_auditor"));
     const { unmount } = renderApp(`/admin/servers/${serverId}`);
     await screen.findByRole("heading", { level: 1, name: "Service status" });
     expect(screen.queryByRole("button", { name: "Approve…" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Test connection" })).toBeNull();
     unmount();
+
+    const calls = mockApi(routes("platform_auditor"));
+    const health = renderApp(`/admin/servers/${serverId}?tab=health`);
+    expect(await screen.findByRole("table", { name: "Recent checks" })).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.url === `/v1/admin/mcp-servers/${serverId}/health-checks`)).toBe(true));
+    expect(calls.some((c) => c.url.startsWith("/v1/teams/"))).toBe(false);
+    health.unmount();
 
     mockApi(routes("platform_auditor"));
     renderApp(`/admin/servers/${serverId}?tab=settings`);

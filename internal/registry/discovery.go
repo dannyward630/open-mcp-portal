@@ -336,3 +336,15 @@ func (s *Service) HealthChecks(ctx context.Context, a authz.Actor, ref string, i
 	}
 	return s.q.ListMCPHealthChecks(ctx, dbgen.ListMCPHealthChecksParams{ServerID: id, PageSize: maxHealthChecks})
 }
+
+// AdminHealthChecks lists any server's recent checks, newest first
+// (platform admins and auditors).
+func (s *Service) AdminHealthChecks(ctx context.Context, a authz.Actor, id uuid.UUID) ([]dbgen.McpHealthCheck, error) {
+	if !a.CanReadPlatform() {
+		return nil, errPlatformRead
+	}
+	if _, err := anyServer(ctx, s.q, id, false); err != nil {
+		return nil, err
+	}
+	return s.q.ListMCPHealthChecks(ctx, dbgen.ListMCPHealthChecksParams{ServerID: id, PageSize: maxHealthChecks})
+}

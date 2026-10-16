@@ -46,6 +46,7 @@ export const unavailableLabels: Record<UnavailableReason, string> = {
   not_approved: "Not approved",
   changed: "Changed, waiting for approval",
   gone: "No longer listed",
+  team_archived: "Team archived",
 };
 
 export const unavailableHelp: Record<UnavailableReason, string> = {
@@ -54,6 +55,7 @@ export const unavailableHelp: Record<UnavailableReason, string> = {
   not_approved: "Its current definition isn't approved for the catalog.",
   changed: "Its definition changed since it was approved; it's served again once the change is approved.",
   gone: "The server doesn't list it any more.",
+  team_archived: "The owning team is archived. It's served again when the team is unarchived.",
 };
 
 /** Why the person may use a gateway. */
@@ -63,6 +65,12 @@ export const accessLabels: Record<MyAccess, string> = {
   user_grant: "Granted to you",
   group_grant: "Granted to your SSO group",
 };
+
+/** "Granted to your SSO group engineering" when the matching groups are known. */
+export function accessLabel(access: MyAccess, groups?: string[]): string {
+  if (access !== "group_grant" || !groups?.length) return accessLabels[access];
+  return `${groups.length === 1 ? "Granted to your SSO group" : "Granted to your SSO groups"} ${groups.join(", ")}`;
+}
 
 export const outcomeLabels: Record<CallOutcome, string> = {
   ok: "OK",
@@ -95,6 +103,45 @@ export const outcomeTone: Record<CallOutcome, "success" | "warning" | "danger" |
 };
 
 export const callOutcomes = Object.keys(outcomeLabels) as CallOutcome[];
+
+/**
+ * Why a call was refused or failed, in words (McpCall.errorClass). The backend
+ * records: refusals (internal/mcpgw: gateway_disabled, no_access, role,
+ * unknown, or an unavailable reason), invalid requests (invalid_params,
+ * invalid_cursor) and the registry's upstream error classes.
+ */
+export const callErrorLabels: Record<string, string> = {
+  // Refused by the gateway (outcome "denied").
+  gateway_disabled: "Gateway turned off",
+  no_access: "No access to the gateway",
+  role: "Needs a higher team role",
+  unknown: "Not offered by the gateway",
+  ...unavailableLabels,
+  // The client's request.
+  invalid_params: "Invalid parameters",
+  invalid_cursor: "Invalid page cursor",
+  // The server's answer (the registry's error classes).
+  unavailable: "Couldn't reach the server",
+  auth: "Server refused the credentials",
+  not_found: "Server endpoint not found",
+  rate_limited: "Rate limited by the server",
+  bad_request: "Server refused the request",
+  bad_response: "Unexpected response from the server",
+  config: "Server settings problem",
+  timeout: "No answer in time",
+  too_large: "Over 1 MiB",
+  not_allowed: "Server address not allowed",
+};
+
+/** "Gateway turned off" for a known error class; an unknown one humanised ("some_new_class" → "Some new class"). */
+export function callErrorLabel(code: string): string {
+  if (Object.hasOwn(callErrorLabels, code)) return callErrorLabels[code]!;
+  const words = code.replace(/[_\-.]+/g, " ").trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Other error";
+}
+
+/** A platform gateway's grants: "No grants", "1 grant", "3 grants". */
+export const grantCountLabel = (n: number) => (n === 0 ? "No grants" : plural(n, "grant"));
 
 /** "Team gateway" or "Platform gateway". */
 export const ownerKindLabels: Record<Gateway["ownerKind"], string> = { team: "Team gateway", platform: "Platform gateway" };

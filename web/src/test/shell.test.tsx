@@ -92,12 +92,18 @@ describe("app shell", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/users"));
     await waitFor(() => expect(within(portal).getByRole("link", { name: "Admin" })).toHaveAttribute("aria-current", "page"));
     expect(await within(nav).findByRole("link", { name: "Users" })).toHaveAttribute("aria-current", "page");
-    // Groups other than the current page's start collapsed to their headers.
+    // The current page's group is open; the newer groups (Access, Records) start open; the others collapse to their headers.
     expect(within(nav).getByRole("button", { name: "People" })).toHaveAttribute("aria-expanded", "true");
+    expect(within(nav).getByRole("button", { name: "Access" })).toHaveAttribute("aria-expanded", "true");
     const records = within(nav).getByRole("button", { name: "Records" });
-    expect(records).toHaveAttribute("aria-expanded", "false");
-    await u.click(records);
+    expect(records).toHaveAttribute("aria-expanded", "true");
     expect(within(nav).getByRole("link", { name: "Audit log" })).toBeInTheDocument();
+    const catalog = within(nav).getByRole("button", { name: "Catalog" });
+    expect(catalog).toHaveAttribute("aria-expanded", "false");
+    await u.click(catalog);
+    expect(within(nav).getByRole("link", { name: "Publishing" })).toBeInTheDocument();
+    await u.click(records);
+    expect(records).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: /Current workspace/ })).toBeNull();
     expect(screen.getByText("All teams and settings")).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
@@ -109,8 +115,10 @@ describe("app shell", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(`/teams/${team.slug}/settings`));
     await u.click(within(portal).getByRole("link", { name: "Admin" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/teams"));
-    // Only groups opened by hand are remembered.
-    expect(JSON.parse(localStorage.getItem("omg.adminNavOpen") ?? "[]")).toEqual(["Records"]);
+    // Only groups opened or closed by hand are remembered.
+    expect(JSON.parse(localStorage.getItem("omg.adminNavOpen") ?? "[]")).toEqual(["Catalog"]);
+    expect(JSON.parse(localStorage.getItem("omg.adminNavClosed") ?? "[]")).toEqual(["Records"]);
+    expect(within(nav).getByRole("button", { name: "Records" })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows the team breadcrumb and a read-only admin badge for auditors", async () => {

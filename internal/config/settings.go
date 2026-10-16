@@ -122,6 +122,7 @@ var settings = []setting{
 	{key: "ENCRYPTION_KEY_PREVIOUS", secret: true, apply: str(func(c *Config) *string { return &c.EncryptionKeyPrevious })},
 	{key: "API_KEY_PEPPER", secret: true, apply: str(func(c *Config) *string { return &c.APIKeyPepper })},
 	{key: "HEALTH_CHECK_INTERVAL", apply: duration(func(c *Config) *time.Duration { return &c.HealthCheckInterval }, 0, 24*time.Hour)},
+	{key: "SIGNING_KEY_PREPUBLISH", apply: duration(func(c *Config) *time.Duration { return &c.SigningKeyPrepublish }, 0, 7*24*time.Hour)},
 	{key: "SESSION_TTL", apply: duration(func(c *Config) *time.Duration { return &c.SessionTTL }, 5*time.Minute, 30*24*time.Hour)},
 	{key: "TRUSTED_PROXIES", apply: trustedProxies},
 	{key: "REQUESTS_PER_MINUTE", apply: integer(func(c *Config) *int { return &c.RequestsPerMinute }, 1, 1_000_000)},

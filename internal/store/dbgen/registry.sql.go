@@ -137,6 +137,7 @@ func (q *Queries) GetMCPServer(ctx context.Context, id uuid.UUID) (McpServer, er
 
 const getMCPServerView = `-- name: GetMCPServerView :one
 SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+       t.status AS team_status,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
            AS reviewed_by_name
 FROM mcp_servers s
@@ -149,6 +150,7 @@ type GetMCPServerViewRow struct {
 	TeamSlug           string
 	TeamName           string
 	TeamPolicyOverride *string
+	TeamStatus         string
 	ReviewedByName     string
 }
 
@@ -186,6 +188,7 @@ func (q *Queries) GetMCPServerView(ctx context.Context, id uuid.UUID) (GetMCPSer
 		&i.TeamSlug,
 		&i.TeamName,
 		&i.TeamPolicyOverride,
+		&i.TeamStatus,
 		&i.ReviewedByName,
 	)
 	return i, err
@@ -517,13 +520,14 @@ func (q *Queries) ListMCPHealthChecks(ctx context.Context, arg ListMCPHealthChec
 
 const listMCPServers = `-- name: ListMCPServers :many
 SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+       t.status AS team_status,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
            AS reviewed_by_name
 FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE ($1::uuid IS NULL OR s.team_id = $1::uuid)
   AND ($2::text IS NULL OR s.publish_state = $2::text)
-  AND (NOT $3::bool OR (s.publish_state = 'published' AND s.enabled))
+  AND (NOT $3::bool OR (s.publish_state = 'published' AND s.enabled AND t.status = 'active'))
   AND (NOT $4::bool OR (s.publish_state = 'published' AND EXISTS (
         SELECT 1 FROM mcp_capabilities c
         WHERE c.server_id = s.id AND c.gone_at IS NULL AND c.approved_fingerprint IS DISTINCT FROM c.fingerprint)))
@@ -552,13 +556,15 @@ type ListMCPServersRow struct {
 	TeamSlug           string
 	TeamName           string
 	TeamPolicyOverride *string
+	TeamStatus         string
 	ReviewedByName     string
 }
 
 // One page of servers ordered by (name, id), with their team and reviewer.
 // team_id narrows to one team; publish_state to one state; changes_only to
 // published servers with capabilities waiting for approval; catalog to
-// published, enabled servers. search is LIKE-escaped by the caller.
+// published, enabled servers of active teams. search is LIKE-escaped by the
+// caller.
 func (q *Queries) ListMCPServers(ctx context.Context, arg ListMCPServersParams) ([]ListMCPServersRow, error) {
 	rows, err := q.db.Query(ctx, listMCPServers,
 		arg.TeamID,
@@ -608,6 +614,7 @@ func (q *Queries) ListMCPServers(ctx context.Context, arg ListMCPServersParams) 
 			&i.TeamSlug,
 			&i.TeamName,
 			&i.TeamPolicyOverride,
+			&i.TeamStatus,
 			&i.ReviewedByName,
 		); err != nil {
 			return nil, err
@@ -622,14 +629,15 @@ func (q *Queries) ListMCPServers(ctx context.Context, arg ListMCPServersParams) 
 
 const listMCPServersDueForCheck = `-- name: ListMCPServersDueForCheck :many
 SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at FROM mcp_servers s
-WHERE s.enabled
+JOIN teams t ON t.id = s.team_id
+WHERE s.enabled AND t.status = 'active'
   AND NOT EXISTS (SELECT 1 FROM mcp_health_checks h WHERE h.server_id = s.id AND h.checked_at >= $1)
 ORDER BY s.id
 `
 
-// Enabled servers whose latest check is older than due_before (or that
-// have none): the health loop's targets. Several replicas taking turns
-// therefore don't test a server twice in one interval.
+// Enabled servers of active teams whose latest check is older than
+// due_before (or that have none): the health loop's targets. Several
+// replicas taking turns therefore don't test a server twice in one interval.
 func (q *Queries) ListMCPServersDueForCheck(ctx context.Context, dueBefore time.Time) ([]McpServer, error) {
 	rows, err := q.db.Query(ctx, listMCPServersDueForCheck, dueBefore)
 	if err != nil {

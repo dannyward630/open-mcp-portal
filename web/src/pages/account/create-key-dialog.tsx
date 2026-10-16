@@ -3,6 +3,8 @@
  * 90 by default). The secret is shown once, right after, with a warning and
  * a copy button; it's gone when the dialog closes. The person can put it
  * into a gateway's connection snippets there and then, if they choose to.
+ * No toast: the dialog's own "API key created" says so, and a toast would
+ * sit over its Done button on a phone.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
@@ -18,7 +20,6 @@ import { Field, Form } from "@/components/ui/field/field";
 import { Input, NativeSelect } from "@/components/ui/input/input";
 import { Stack } from "@/components/ui/layout/layout";
 import { NumberInput } from "@/components/ui/number-input/number-input";
-import { toast } from "@/components/ui/toast/toast";
 
 const daysProblem = (text: string) => {
   const n = Number(text);
@@ -33,10 +34,7 @@ export function CreateKeyDialog({ onClose }: { onClose: () => void }) {
   const [submitted, setSubmitted] = useState(false);
   const create = useMutation({
     mutationFn: async () => unwrap(await api.POST("/v1/me/api-keys", { body: { name: name.trim(), expiresInDays: Number(days) } })),
-    onSuccess: (created) => {
-      void qc.invalidateQueries({ queryKey: myApiKeysQuery().queryKey });
-      toast.success(`${created.key.name} was created`);
-    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: myApiKeysQuery().queryKey }),
   });
 
   // One Dialog in both states, so it stays open (and keeps focus) when the secret appears.

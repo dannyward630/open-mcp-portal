@@ -44,7 +44,7 @@ export type SettingsPageProps = {
   message?: ReactNode;
   /** Viewers who can't edit get no save bar (and no guard), and a note saying so. */
   canEdit?: boolean;
-  /** The read-only note (default: the viewer's role can't change these settings). */
+  /** The read-only note (default: the viewer's role can't change these settings); null when the page already says so above. */
   readOnlyNote?: ReactNode;
   /** Disable Save, e.g. while a field is invalid. */
   saveDisabled?: boolean;
@@ -84,7 +84,7 @@ export function SettingsPage({
   return (
     <Form noValidate onSubmit={submit} className={className ?? styles.settings}>
       {/* One untitled info notice, worded like the team pages' (VI-20). */}
-      {!canEdit && <Alert tone="info">{readOnlyNote}</Alert>}
+      {!canEdit && readOnlyNote !== null && <Alert tone="info">{readOnlyNote}</Alert>}
       {children}
       <RevisionSaveBar
         open={open}

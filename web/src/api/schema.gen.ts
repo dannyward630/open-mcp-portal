@@ -758,6 +758,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/mcp-servers/{serverId}/health-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: components["parameters"]["ServerIdParam"];
+            };
+            cookie?: never;
+        };
+        /** Any server's recent health checks, newest first (at most 50; platform admins and auditors) */
+        get: operations["adminListMcpHealthChecks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/mcp-servers/{serverId}/review": {
         parameters: {
             query?: never;
@@ -1328,6 +1347,8 @@ export interface components {
         };
         Me: {
             teams: components["schemas"]["MyTeam"][];
+            /** @description The caller's IdP groups as of their last sign-in (from OIDC_GROUPS_CLAIM; may be empty). Platform gateways can be granted to them. */
+            groups: string[];
             user: components["schemas"]["User"];
             csrfToken: string;
             capabilities: components["schemas"]["Capabilities"];
@@ -1771,7 +1792,7 @@ export interface components {
             teamId?: string;
             teamSlug?: string;
             teamName?: string;
-            /** @description Turned off, the endpoint answers 404 to everyone */
+            /** @description Turned off, the endpoint answers 404 to everyone. A team gateway of an archived team also answers 404, and its capabilities are unavailable (team_archived), until the team is unarchived */
             enabled: boolean;
             /**
              * @description The full MCP endpoint, APP_URL + /mcp/{slug}
@@ -1817,10 +1838,10 @@ export interface components {
             enabled?: boolean;
         };
         /**
-         * @description server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it.
+         * @description server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it. team_archived: the team that owns its server, or the team gateway's own team, is archived (unarchiving restores it).
          * @enum {string}
          */
-        GatewayUnavailableReason: "server_disabled" | "not_published" | "not_approved" | "changed" | "gone";
+        GatewayUnavailableReason: "server_disabled" | "not_published" | "not_approved" | "changed" | "gone" | "team_archived";
         GatewayCapability: {
             /** Format: uuid */
             capabilityId: string;
@@ -1921,6 +1942,8 @@ export interface components {
             url: string;
             /** @description Why the caller may use it (at least one) */
             access: components["schemas"]["MyGatewayAccess"][];
+            /** @description When access includes group_grant, the caller's IdP groups the gateway is granted to (sorted) */
+            groups?: string[];
             /**
              * Format: int64
              * @description Capabilities it offers the caller right now
@@ -3378,6 +3401,32 @@ export interface operations {
                 content: {
                     "application/json": {
                         data: components["schemas"]["McpCapability"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListMcpHealthChecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: components["parameters"]["ServerIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Health checks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["McpHealthCheck"][];
                     };
                 };
             };

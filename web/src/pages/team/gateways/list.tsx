@@ -16,6 +16,7 @@ import { useFormParam } from "../../../components/templates/form-page";
 import { ListPage, useListFilters } from "../../../components/templates/list-page";
 import { terms } from "../../../lib/terms";
 import { Button } from "@/components/ui/button/button";
+import { NARROW_QUERY, useMediaQuery } from "@/lib/bitop-utils";
 import { useDebounced } from "../../admin/hooks";
 import { ReadOnlyNotice } from "../access";
 import { useTeam } from "../common";
@@ -26,6 +27,7 @@ export function TeamGatewaysPage() {
   const form = useFormParam();
   const canCreate = isManager && !archived;
   const { query } = useListFilters();
+  const narrow = useMediaQuery(NARROW_QUERY);
   const q = useDebounced(query.trim());
   const gateways = useInfiniteQuery({
     queryKey: [...teamGatewaysKey(slug), "list", q],
@@ -46,7 +48,7 @@ export function TeamGatewaysPage() {
       <ListPage<Gateway>
         id="team-gateways"
         title={terms.gateways}
-        description={`Curated sets of tools and prompts, each at one MCP URL, for ${team.name}'s members.`}
+        description={`Curated sets of tools and prompts, each at one MCP URL, for the members of ${team.name}.`}
         primaryAction={create}
         notices={
           <>
@@ -55,7 +57,7 @@ export function TeamGatewaysPage() {
           </>
         }
         caption={terms.gateways}
-        columns={gatewayColumns(link)}
+        columns={gatewayColumns(link, { narrow })}
         data={items}
         getRowId={(x) => x.id}
         rowLabel={(x) => x.name}

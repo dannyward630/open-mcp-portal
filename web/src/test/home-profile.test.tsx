@@ -47,7 +47,17 @@ describe("profile", () => {
     expect(within(you).getByText("Platform admin")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: team.name })).toHaveAttribute("href", `/teams/${team.slug}`);
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Profile");
+    const groups = screen.getByRole("heading", { name: "Your groups" }).closest("section")!;
+    expect(groups).toHaveTextContent("From your identity provider");
+    expect(within(within(groups).getByRole("list", { name: "Your groups" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["everyone", "engineering"]);
+    expect(within(groups).queryByRole("button")).toBeNull();
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("says when the identity provider sent no groups", async () => {
+    mockApi({ ...shellRoutes("none"), "GET /v1/me": () => ({ ...meFor("none"), groups: [] }) });
+    renderApp("/settings/profile");
+    expect(await screen.findByText("Your identity provider didn't send any groups.")).toBeInTheDocument();
   });
 
   it("explains how to join a team when you have none", async () => {

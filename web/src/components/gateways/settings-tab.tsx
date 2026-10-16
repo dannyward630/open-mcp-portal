@@ -1,8 +1,9 @@
 /*
  * A gateway's Settings tab: name, description and the switch in one form
  * (If-Match on its revision; edits survive a change made elsewhere, AD-01),
- * the slug (never changes) and Delete in the Danger zone. Whoever can't edit
- * reads it, told who can.
+ * the slug (never changes) and Delete in the Danger zone. Saving with the
+ * switch turned off asks first, like Admin's "Disable gateway". Whoever can't
+ * edit reads it, told who can (in Admin, a team gateway's record says so above).
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -28,7 +29,8 @@ type Props = { gateway: Gateway; scope: GatewayScope; abilities: GatewayAbilitie
 
 function readOnlyNote(gateway: Gateway, scope: GatewayScope) {
   if (scope.kind === "team") return "Members can view the gateway's settings. Owners and admins can change them.";
-  if (gateway.ownerKind === "team") return "This is a team gateway: the team's owners and admins change its settings. Platform admins can switch it off from the page header.";
+  // Admin's record of a team gateway already explains who changes it, above the tabs.
+  if (gateway.ownerKind === "team") return null;
   return adminOnly;
 }
 
@@ -37,10 +39,13 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
   const saved = formOf(gateway);
   const [form, setForm, revision] = useRevisionForm(saved, gateway.revision, { labels });
   const [submitted, setSubmitted] = useState(false);
+  // Saving would switch it off: confirmed first (the form as it was when Save was pressed).
+  const [confirmingOff, setConfirmingOff] = useState<Form | null>(null);
   const save = useMutation({
     mutationFn: async () => updateGateway(scope, gateway, { name: form.name.trim(), description: form.description, enabled: form.enabled }),
     onSuccess: (updated) => {
       setSubmitted(false);
+      setConfirmingOff(null);
       storeGateway(qc, updated);
       toast.success("Gateway settings saved", updated.enabled === gateway.enabled ? undefined : updated.enabled ? "The gateway is on." : "The gateway is off: its endpoint answers “not found”.");
     },
@@ -59,7 +64,9 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
       message={nameError ? "Not saved: fix the highlighted field" : undefined}
       onSave={() => {
         setSubmitted(true);
-        if (form.name.trim()) save.mutate();
+        if (!form.name.trim()) return;
+        if (gateway.enabled && !form.enabled) setConfirmingOff(form);
+        else save.mutate();
       }}
       onDiscard={() => {
         setForm(saved);
@@ -83,6 +90,17 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
         />
       </SettingsSection>
       {canEdit && <DeleteGateway gateway={gateway} scope={scope} />}
+      <ConfirmMutationDialog
+        target={confirmingOff}
+        onClose={() => setConfirmingOff(null)}
+        mutation={save}
+        onConfirm={() => save.mutate()}
+        title={`Disable ${gateway.name}?`}
+        description={`Everyone using it loses access at once: its endpoint answers “not found” until it's enabled again. Its capabilities${
+          gateway.ownerKind === "platform" ? " and grants" : ""
+        } stay as they are.`}
+        confirmLabel="Disable gateway"
+      />
     </SettingsPage>
   );
 }

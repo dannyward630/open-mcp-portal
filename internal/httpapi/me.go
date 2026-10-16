@@ -30,7 +30,12 @@ func (a *api) getMe(w http.ResponseWriter, r *http.Request) {
 		httpx.Internal(w, r, err)
 		return
 	}
+	groups := id.User.Groups
+	if groups == nil {
+		groups = []string{}
+	}
 	httpx.JSON(w, http.StatusOK, apitypes.Me{
+		Groups:    groups,
 		User:      toAPIUser(id.User),
 		CsrfToken: id.CSRFToken,
 		Capabilities: apitypes.Capabilities{

@@ -145,11 +145,12 @@ export function CapabilityPicker({ gateway, scope, current, onDone }: Props) {
         }
         actions={
           <Button size="sm" variant="ghost" disabled={save.isPending} onClick={onDone}>
-            {dirty ? "Cancel" : "Done"}
+            Cancel
           </Button>
         }
       >
-        <div className={g.stack}>
+        {/* Room under the last row for the sticky save bar while it's open. */}
+        <div className={g.stack} data-save-bar={dirty || theirs ? "" : undefined}>
           <div className={g.toolbar}>
             <Field label="Search capabilities" hideLabel className={g.search}>
               <Input type="search" placeholder="Name, description or server" value={text} onChange={(e) => setText(e.target.value)} />

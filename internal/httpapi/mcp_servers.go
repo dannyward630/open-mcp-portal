@@ -46,6 +46,7 @@ func (a *api) mcpAdminRoutes() []route {
 		{"GET", "/v1/admin/mcp-servers", a.admin(a.adminListMcpServers)},
 		{"GET", "/v1/admin/mcp-servers/{serverId}", a.admin(a.adminGetMcpServer)},
 		{"GET", "/v1/admin/mcp-servers/{serverId}/capabilities", a.admin(a.adminListMcpCapabilities)},
+		{"GET", "/v1/admin/mcp-servers/{serverId}/health-checks", a.admin(a.adminListMcpHealthChecks)},
 		{"POST", "/v1/admin/mcp-servers/{serverId}/review", a.admin(a.adminReviewMcpServer)},
 		{"PUT", "/v1/admin/mcp-servers/{serverId}/capabilities/{capabilityId}/approval", a.admin(a.adminApproveMcpCapability)},
 		{"GET", "/v1/admin/settings/publishing", a.admin(a.adminGetPublishingSettings)},
@@ -406,6 +407,15 @@ func (a *api) adminListMcpCapabilities(w http.ResponseWriter, r *http.Request) {
 	}
 	caps, err := a.Registry.AdminListCapabilities(r.Context(), a.actor(r), id, kindParam(r))
 	writeList(w, r, caps, err, toAPICapability)
+}
+
+func (a *api) adminListMcpHealthChecks(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "serverId")
+	if !ok {
+		return
+	}
+	checks, err := a.Registry.AdminHealthChecks(r.Context(), a.actor(r), id)
+	writeList(w, r, checks, err, toAPIHealthCheck)
 }
 
 func (a *api) adminReviewMcpServer(w http.ResponseWriter, r *http.Request) {

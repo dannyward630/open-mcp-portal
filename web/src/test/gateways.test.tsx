@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
-import { gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOptions, mcpCall, page, team } from "./fixtures";
+import { gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOptions, mcpCall, myGateway, page, team } from "./fixtures";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 type Role = Schemas["TeamRole"];
@@ -18,6 +18,8 @@ const routes = (role: Role | null = "owner", g = gateway(), extra: Record<string
   [`GET ${base}/${gatewayId}/capabilities`]: () => gatewayCapabilities(),
   [`GET /v1/teams/${team.slug}/gateway-options`]: () => gatewayOptions,
   [`GET /v1/teams/${team.slug}/calls`]: () => page([mcpCall()]),
+  // Members can use the team's gateways (My gateways); staff who aren't members can't.
+  "GET /v1/me/gateways": () => (role ? [myGateway()] : []),
   ...extra,
 });
 
@@ -35,6 +37,7 @@ describe("Team › Gateways list", () => {
     expect(within(row).getByRole("link", { name: "Support tools" })).toHaveAttribute("href", record);
     expect(screen.queryByRole("button", { name: "Create gateway" })).toBeNull();
     expect(screen.getByText("Members can view the team's gateways. Admins and owners can create and change them.")).toBeInTheDocument();
+    expect(screen.getByText(`Curated sets of tools and prompts, each at one MCP URL, for the members of ${team.name}.`)).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -91,6 +94,14 @@ describe("Create gateway", () => {
 });
 
 describe("Gateway › Overview and Connect", () => {
+  it("names an archived owning team as the reason a capability is unavailable", async () => {
+    const archived = gatewayCapability({ available: false, unavailableReason: "team_archived" });
+    mockApi(routes("member", gateway({ unavailableCount: 1 }), { [`GET ${base}/${gatewayId}/capabilities`]: () => gatewayCapabilities([archived]) }));
+    renderApp(record);
+    const list = await screen.findByRole("list", { name: "Unavailable capabilities" });
+    expect(within(list).getByText(/The owning team is archived/)).toBeInTheDocument();
+  });
+
   it("shows the endpoint to copy, the switch, unavailable capabilities and snippets without a secret", async () => {
     const u = userEvent.setup();
     const off = gatewayCapability({ capabilityId: "ffffffff-ffff-4fff-8fff-ffffffffffff", name: "restart", exposedName: "service-status__restart", available: false, unavailableReason: "server_disabled" });
@@ -123,6 +134,24 @@ describe("Gateway › Overview and Connect", () => {
     await u.click(screen.getByRole("tab", { name: "Cursor" }));
     expect((await screen.findByText(/"mcpServers"/)).textContent).toContain('"Authorization": "Bearer <YOUR_API_KEY>"');
     expect(document.body.textContent).not.toMatch(/omcp_[A-Za-z0-9]{12,}/);
+  });
+
+  it("shows platform staff who aren't members who can connect instead of snippets", async () => {
+    mockApi(routes(null, gateway(), {}, "platform_admin"));
+    renderApp(record);
+    expect(await screen.findByText("You can't connect to this gateway yourself.")).toBeInTheDocument();
+    expect(screen.getByText(/Only members of Platform Tools can connect to it/)).toBeInTheDocument();
+    expect(screen.queryByText(/claude mcp add/)).toBeNull();
+  });
+
+  it("says when the gateway is turned off, and who can turn it on", async () => {
+    mockApi(routes("member", gateway({ enabled: false }), { "GET /v1/me/gateways": () => [] }));
+    renderApp(record);
+    const notice = await screen.findByText(/Nobody can use this gateway/);
+    expect(notice).toHaveTextContent("The team's owners and admins, or a platform admin, can turn it on again.");
+    expect(screen.getByText(/The gateway is turned off: nobody can connect to it/)).toBeInTheDocument();
+    expect(screen.queryByText("You can't connect to this gateway yourself.")).toBeNull();
+    expect(screen.queryByText(/claude mcp add/)).toBeNull();
   });
 
   it("shows the not-found page for an unknown gateway", async () => {
@@ -176,6 +205,31 @@ describe("Gateway › Settings", () => {
     await u.click(within(await screen.findByRole("alertdialog", { name: /Delete Support/ })).getByRole("button", { name: "Delete gateway" }));
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === `${base}/${gatewayId}`)).toBe(true));
     expect(await screen.findByRole("heading", { level: 1, name: "Gateways" })).toBeInTheDocument();
+  });
+
+  it("asks before saving the switch turned off, like Admin's Disable gateway", async () => {
+    const u = userEvent.setup();
+    let current = gateway();
+    const calls = mockApi(
+      routes("owner", current, {
+        [`GET ${base}/${gatewayId}`]: () => current,
+        [`PATCH ${base}/${gatewayId}`]: () => (current = gateway({ enabled: false, revision: 8 })),
+      }),
+    );
+    renderApp(`${record}?tab=settings`);
+    await u.click(await screen.findByRole("switch", { name: "Enabled" }));
+    await u.click(screen.getByRole("button", { name: "Save settings" }));
+    let ask = await screen.findByRole("alertdialog", { name: "Disable Support tools?" });
+    expect(ask).toHaveTextContent("Everyone using it loses access at once");
+    await u.click(within(ask).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+
+    await u.click(screen.getByRole("button", { name: "Save settings" }));
+    ask = await screen.findByRole("alertdialog", { name: "Disable Support tools?" });
+    await u.click(within(ask).getByRole("button", { name: "Disable gateway" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({ enabled: false }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
   it("is read-only for editors, who can't delete", async () => {

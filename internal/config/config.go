@@ -53,6 +53,10 @@ type Config struct {
 	// (0: never; one replica at a time).
 	HealthCheckInterval time.Duration
 
+	// SigningKeyPrepublish is how long a new identity signing key is
+	// published in the JWKS before it starts signing.
+	SigningKeyPrepublish time.Duration
+
 	// TrustedProxies are the ingress CIDRs allowed to set X-Forwarded-For.
 	TrustedProxies []netip.Prefix
 
@@ -117,6 +121,7 @@ func Defaults() Config {
 		},
 		SessionTTL:             12 * time.Hour,
 		HealthCheckInterval:    5 * time.Minute,
+		SigningKeyPrepublish:   24 * time.Hour,
 		RequestsPerMinute:      600,
 		LoginAttemptsPerMinute: 20,
 		ShutdownDelay:          5 * time.Second,

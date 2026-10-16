@@ -57,6 +57,7 @@ export const user = (extra: Partial<Schemas["User"]> = {}): Schemas["User"] => (
 export const meFor = (platformRole: PlatformRole = "none", teamRole: TeamRole | null = "owner"): Schemas["Me"] => ({
   user: user({ platformRole }),
   teams: teamRole ? [myTeam(teamRole)] : [],
+  groups: ["everyone", "engineering"],
   csrfToken: "csrf-123",
   capabilities: { platformAdmin: platformRole === "platform_admin", platformAuditor: platformRole === "platform_auditor" },
 });

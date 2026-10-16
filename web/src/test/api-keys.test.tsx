@@ -11,7 +11,7 @@ const created: Schemas["ApiKeyCreated"] = { key: apiKey({ id: "new-key", name: "
 
 const routes = (extra: Record<string, Handler> = {}): Record<string, Handler> => ({
   ...shellRoutes("none", "member"),
-  "GET /v1/me/api-keys": () => [apiKey(), apiKey({ id: "old", name: "Old laptop", status: "revoked", revokedAt: "2026-10-10T10:00:00Z", lastUsedAt: null })],
+  "GET /v1/me/api-keys": () => [apiKey({ expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString() }), apiKey({ id: "old", name: "Old laptop", status: "revoked", revokedAt: "2026-10-10T10:00:00Z", lastUsedAt: null })],
   "GET /v1/me/gateways": () => [myGateway()],
   ...extra,
 });
@@ -25,9 +25,14 @@ describe("API keys", () => {
     const active = (await within(table).findByText("Claude Code on my laptop")).closest("tr")!;
     expect(active).toHaveTextContent("omcp_ab12cd34…");
     expect(active).toHaveTextContent("Active");
+    // Expiry in days with the exact date as its tooltip, never "next week".
+    expect(within(active).getByText("in 7 days")).toHaveAttribute("title", expect.stringMatching(/\d{4}/));
     const revoked = within(table).getByText("Old laptop").closest("tr")!;
     expect(revoked).toHaveTextContent("Revoked");
     expect(revoked).toHaveTextContent("Never");
+    // The status says it's revoked; Expires doesn't repeat it.
+    expect(revoked.textContent?.match(/Revoked/g)).toHaveLength(1);
+    expect(revoked).toHaveTextContent("—");
     // Revoked keys can't be revoked again: no row menu.
     expect(within(revoked).queryByRole("button", { name: /Actions for/ })).toBeNull();
     await waitFor(() => expect(document.title).toBe("API keys · Open MCP Gateway"));
@@ -48,6 +53,8 @@ describe("API keys", () => {
     await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ name: "CI runner", expiresInDays: 90 }));
 
     const shown = await screen.findByRole("dialog", { name: "API key created" });
+    // The dialog says it was created; no toast covers its buttons.
+    expect(screen.queryByText("CI runner was created")).toBeNull();
     expect(within(shown).getByText("Copy this key now.")).toBeInTheDocument();
     expect(within(shown).getByText(/It won't be shown again/)).toBeInTheDocument();
     expect(within(shown).getByText(secret)).toBeInTheDocument();

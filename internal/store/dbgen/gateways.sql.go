@@ -78,6 +78,39 @@ func (q *Queries) DeleteGatewayGrant(ctx context.Context, arg DeleteGatewayGrant
 	return i, err
 }
 
+const gatewayGrantGroupsForUser = `-- name: GatewayGrantGroupsForUser :many
+SELECT DISTINCT gg.group_name::text AS group_name
+FROM gateway_grants gg
+WHERE gg.gateway_id = $1 AND gg.group_name = ANY($2::text[])
+ORDER BY 1
+`
+
+type GatewayGrantGroupsForUserParams struct {
+	GatewayID uuid.UUID
+	Groups    []string
+}
+
+// The person's groups a gateway is granted to.
+func (q *Queries) GatewayGrantGroupsForUser(ctx context.Context, arg GatewayGrantGroupsForUserParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, gatewayGrantGroupsForUser, arg.GatewayID, arg.Groups)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var group_name string
+		if err := rows.Scan(&group_name); err != nil {
+			return nil, err
+		}
+		items = append(items, group_name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const gatewayGrantKindsForUser = `-- name: GatewayGrantKindsForUser :many
 SELECT DISTINCT gg.subject_kind
 FROM gateway_grants gg
@@ -122,13 +155,16 @@ SELECT g.id AS gateway_id,
         FROM gateway_capabilities gc
         JOIN mcp_capabilities c ON c.id = gc.capability_id
         JOIN mcp_servers s ON s.id = c.server_id
+        JOIN teams st ON st.id = s.team_id
         WHERE gc.gateway_id = g.id
-          AND NOT COALESCE(c.gone_at IS NULL AND s.enabled AND c.kind IN ('tool', 'prompt')
+          AND NOT COALESCE(c.gone_at IS NULL AND c.kind IN ('tool', 'prompt')
+                           AND st.status = 'active' AND COALESCE(gt.status, 'active') = 'active' AND s.enabled
                            AND ((g.owner_kind = 'team' AND s.team_id = g.team_id)
                                 OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint)), false)
        )::bigint AS unavailable_count,
        (SELECT count(*) FROM gateway_grants gg WHERE gg.gateway_id = g.id)::bigint AS grant_count
 FROM gateways g
+LEFT JOIN teams gt ON gt.id = g.team_id
 WHERE g.id = ANY($1::uuid[])
 `
 
@@ -140,9 +176,10 @@ type GatewayStatsRow struct {
 }
 
 // Per gateway: selected capabilities, the ones not served right now, and
-// grants. "Served" mirrors gateways.Availability: listed, its server
-// enabled, and either the team gateway's own server or published with the
-// current definition approved.
+// grants. "Served" mirrors gateways.Availability: listed, the server's team
+// and a team gateway's own team active, its server enabled, and either the
+// team gateway's own server or published with the current definition
+// approved.
 func (q *Queries) GatewayStats(ctx context.Context, ids []uuid.UUID) ([]GatewayStatsRow, error) {
 	rows, err := q.db.Query(ctx, gatewayStats, ids)
 	if err != nil {
@@ -407,7 +444,7 @@ SELECT c.id, c.kind, c.name, c.title, c.description,
 FROM mcp_capabilities c
 JOIN mcp_servers s ON s.id = c.server_id
 JOIN teams t ON t.id = s.team_id
-WHERE c.kind IN ('tool', 'prompt') AND c.gone_at IS NULL AND s.enabled
+WHERE c.kind IN ('tool', 'prompt') AND c.gone_at IS NULL AND s.enabled AND t.status = 'active'
   AND (($1::uuid IS NOT NULL AND s.team_id = $1::uuid)
        OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint))
   AND ($2::text IS NULL OR c.kind = $2::text)
@@ -444,10 +481,11 @@ type ListGatewayOptionsRow struct {
 	TeamName     string
 }
 
-// Tools and prompts a gateway may select: listed, of an enabled server, and
-// either a server of team_id (a team gateway's own team; NULL for a
-// platform gateway) or published with the current definition approved.
-// by_ids narrows to ids; search is LIKE-escaped by the caller.
+// Tools and prompts a gateway may select: listed, of an enabled server of
+// an active team, and either a server of team_id (a team gateway's own
+// team; NULL for a platform gateway) or published with the current
+// definition approved. by_ids narrows to ids; search is LIKE-escaped by the
+// caller.
 func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptionsParams) ([]ListGatewayOptionsRow, error) {
 	rows, err := q.db.Query(ctx, listGatewayOptions,
 		arg.TeamID,
@@ -488,7 +526,7 @@ func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptions
 }
 
 const listGatewaySelection = `-- name: ListGatewaySelection :many
-SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, gc.min_team_role, t.slug AS team_slug, t.name AS team_name
+SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
 FROM gateway_capabilities gc
 JOIN mcp_capabilities c ON c.id = gc.capability_id
 JOIN mcp_servers s ON s.id = c.server_id
@@ -503,6 +541,7 @@ type ListGatewaySelectionRow struct {
 	MinTeamRole   *string
 	TeamSlug      string
 	TeamName      string
+	TeamStatus    string
 }
 
 // A gateway's selected capabilities with their servers and the servers'
@@ -561,6 +600,7 @@ func (q *Queries) ListGatewaySelection(ctx context.Context, gatewayID uuid.UUID)
 			&i.MinTeamRole,
 			&i.TeamSlug,
 			&i.TeamName,
+			&i.TeamStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -653,12 +693,15 @@ SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, 
              WHERE gg.gateway_id = g.id
                AND (gg.user_id = $1
                     OR gg.team_id IN (SELECT tm.team_id FROM team_members tm WHERE tm.user_id = $1)
-                    OR gg.group_name = ANY($2::text[])))::text[] AS grant_kinds
+                    OR gg.group_name = ANY($2::text[])))::text[] AS grant_kinds,
+       ARRAY(SELECT DISTINCT gg.group_name FROM gateway_grants gg
+             WHERE gg.gateway_id = g.id AND gg.group_name = ANY($2::text[])
+             ORDER BY gg.group_name)::text[] AS grant_groups
 FROM gateways g
 LEFT JOIN teams t ON t.id = g.team_id
 LEFT JOIN team_members m ON g.owner_kind = 'team' AND m.team_id = g.team_id AND m.user_id = $1
 WHERE g.enabled
-  AND ((g.owner_kind = 'team' AND m.user_id IS NOT NULL)
+  AND ((g.owner_kind = 'team' AND m.user_id IS NOT NULL AND t.status = 'active')
        OR (g.owner_kind = 'platform' AND EXISTS (
             SELECT 1 FROM gateway_grants gg
             WHERE gg.gateway_id = g.id
@@ -674,15 +717,17 @@ type ListGatewaysForUserParams struct {
 }
 
 type ListGatewaysForUserRow struct {
-	Gateway    Gateway
-	TeamSlug   string
-	TeamName   string
-	MemberRole string
-	GrantKinds []string
+	Gateway     Gateway
+	TeamSlug    string
+	TeamName    string
+	MemberRole  string
+	GrantKinds  []string
+	GrantGroups []string
 }
 
-// Enabled gateways a person may use: their teams' gateways (with their
-// role) and platform gateways granted to them, their teams or their groups.
+// Enabled gateways a person may use: their active teams' gateways (with
+// their role) and platform gateways granted to them, their teams or their
+// groups, with the groups that match.
 func (q *Queries) ListGatewaysForUser(ctx context.Context, arg ListGatewaysForUserParams) ([]ListGatewaysForUserRow, error) {
 	rows, err := q.db.Query(ctx, listGatewaysForUser, arg.UserID, arg.Groups)
 	if err != nil {
@@ -710,6 +755,7 @@ func (q *Queries) ListGatewaysForUser(ctx context.Context, arg ListGatewaysForUs
 			&i.TeamName,
 			&i.MemberRole,
 			&i.GrantKinds,
+			&i.GrantGroups,
 		); err != nil {
 			return nil, err
 		}

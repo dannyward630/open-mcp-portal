@@ -106,6 +106,17 @@ func (e *gwEnv) patchServer(s *session, sv apitypes.McpServer, body map[string]a
 	mustCode(e.t, "patch server", code, ec, 200, "")
 }
 
+// setTeamStatus archives ("archived") or unarchives ("active") a team.
+func (e *gwEnv) setTeamStatus(slug, status string) {
+	e.t.Helper()
+	var tv apitypes.TeamView
+	if code := e.admin.get("/v1/admin/teams/"+slug, &tv); code != 200 {
+		e.t.Fatalf("get team = %d", code)
+	}
+	code, ec := e.admin.call("PATCH", "/v1/admin/teams/"+slug, map[string]any{"status": status}, nil, ifMatch(tv.Team.Revision))
+	mustCode(e.t, status+" "+slug, code, ec, 200, "")
+}
+
 // gateway reads a gateway (path: its team or admin URL).
 func (e *gwEnv) gateway(s *session, path string) apitypes.Gateway {
 	e.t.Helper()
@@ -427,15 +438,28 @@ func TestGatewayGrantsAndMyGateways(t *testing.T) {
 		g.Url != e.app.URL+"/mcp/shared" {
 		t.Fatalf("blair: %+v", mine)
 	}
-	if g := myGateways(t, e.owner)["shared"]; access(g) != "team_grant,group_grant" {
+	if g := myGateways(t, e.owner)["shared"]; access(g) != "team_grant,group_grant" || g.Groups == nil || !slices.Equal(*g.Groups, []string{"engineering"}) {
 		t.Fatalf("owner: %+v", g)
+	}
+	if g := myGateways(t, e.member)["shared"]; g.Groups != nil {
+		t.Fatalf("blair has no group grant but groups %v", *g.Groups)
 	}
 	if _, ok := myGateways(t, e.outsider)["shared"]; ok {
 		t.Fatal("casey sees an ungranted gateway")
 	}
 	grant(map[string]any{"subjectKind": "group", "group": "support"})
-	if g := myGateways(t, e.outsider)["shared"]; access(g) != "group_grant" {
+	if g := myGateways(t, e.outsider)["shared"]; access(g) != "group_grant" || g.Groups == nil || !slices.Equal(*g.Groups, []string{"support"}) {
 		t.Fatalf("casey via group: %+v", g)
+	}
+	var detailShared apitypes.MyGatewayDetail
+	if code := e.outsider.get("/v1/me/gateways/"+shared.Id.String(), &detailShared); code != 200 ||
+		detailShared.Gateway.Groups == nil || !slices.Equal(*detailShared.Gateway.Groups, []string{"support"}) {
+		t.Fatalf("casey detail = %d %+v", code, detailShared.Gateway)
+	}
+	// /v1/me returns the stored IdP groups.
+	var me apitypes.Me
+	if code := e.outsider.get("/v1/me", &me); code != 200 || !slices.Equal(me.Groups, []string{"everyone", "support"}) {
+		t.Fatalf("me groups = %d %v", code, me.Groups)
 	}
 
 	// A team gateway is for the team's members; minRole narrows what each sees.
@@ -540,4 +564,165 @@ func TestGatewayCountsMatchAvailability(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("enabled again", 2)
+	e.setTeamStatus("tools", "archived")
+	check("gateway's team archived", 3)
+	e.setTeamStatus("tools", "active")
+	check("unarchived", 2)
+	e.otherFake.Show("check_outage")
+	e.refresh(e.outsider, e.other)
+	check("returned unapproved", 2)
+	e.setTeamStatus("other", "archived")
+	check("server's team archived", 2)
+}
+
+// Archiving a team changes nothing stored, but its servers leave the
+// catalog, gateway options and health loop, other gateways mark their
+// capabilities team_archived, and its own gateways stop serving.
+// Unarchiving restores everything.
+func TestArchivedTeams(t *testing.T) {
+	e := newGwEnv(t, nil)
+	e.publish(e.outsider, e.other)
+	foreign := e.capID(e.outsider, e.other, "tool", "check_outage")
+	whoami := e.capID(e.owner, e.server, "tool", "whoami")
+	ownOther := e.capID(e.outsider, e.other, "tool", "whoami")
+
+	support := e.createGateway(e.owner, toolsTeam+"/gateways", "support")
+	supportPath := toolsTeam + "/gateways/" + support.Id.String()
+	e.mustSetCaps(e.owner, supportPath, sel(whoami, foreign))
+	shared := e.createGateway(e.admin, "/v1/admin/gateways", "shared")
+	sharedPath := "/v1/admin/gateways/" + shared.Id.String()
+	e.mustSetCaps(e.admin, sharedPath, sel(foreign))
+	code, ec := e.admin.call("POST", sharedPath+"/grants", map[string]any{"subjectKind": "group", "group": "everyone"}, nil, nil)
+	mustCode(t, "grant", code, ec, 201, "")
+	otherGw := e.createGateway(e.outsider, "/v1/teams/other/gateways", "other-gw")
+	otherGwPath := "/v1/teams/other/gateways/" + otherGw.Id.String()
+	e.mustSetCaps(e.outsider, otherGwPath, sel(ownOther))
+	casey := newKey(t, e.outsider, "casey")
+
+	optionServers := func(s *session, path string) map[string]bool {
+		t.Helper()
+		var opts []apitypes.GatewayOption
+		if code := s.get(path, &opts); code != 200 {
+			t.Fatalf("%s = %d", path, code)
+		}
+		out := map[string]bool{}
+		for _, o := range opts {
+			out[o.ServerSlug] = true
+		}
+		return out
+	}
+	reasons := func(s *session, path string) map[string]string {
+		t.Helper()
+		var caps apitypes.GatewayCapabilities
+		if code := s.get(path+"/capabilities", &caps); code != 200 {
+			t.Fatalf("%s capabilities = %d", path, code)
+		}
+		out := map[string]string{}
+		unavailable := int64(0)
+		for _, it := range caps.Items {
+			out[it.ExposedName] = "ok"
+			if !it.Available {
+				unavailable++
+				out[it.ExposedName] = string(*it.UnavailableReason)
+			}
+		}
+		if g := e.gateway(e.admin, "/v1/admin/gateways/"+path[strings.LastIndex(path, "/")+1:]); g.UnavailableCount != unavailable {
+			t.Fatalf("%s: stats say %d unavailable, items %d", path, g.UnavailableCount, unavailable)
+		}
+		return out
+	}
+	catalogSlugs := func() map[string]bool {
+		t.Helper()
+		var page apitypes.CatalogServerPage
+		if code := e.member.get("/v1/catalog/servers", &page); code != 200 {
+			t.Fatalf("catalog = %d", code)
+		}
+		out := map[string]bool{}
+		for _, it := range page.Items {
+			out[it.Slug] = true
+		}
+		return out
+	}
+	callOther := func() (int, map[string]any) {
+		t.Helper()
+		code, _, out := rawMCP(t, e.app, "POST", "other-gw", casey.Secret, rpc(1, "tools/call", map[string]any{"name": "other-status__whoami"}), nil)
+		return code, out
+	}
+
+	// Before: everything is served.
+	if !catalogSlugs()["other-status"] || !optionServers(e.owner, toolsTeam+"/gateway-options")["other-status"] ||
+		!optionServers(e.admin, "/v1/admin/gateway-options")["other-status"] {
+		t.Fatal("the published server isn't offered")
+	}
+	if code, _ := callOther(); code != 200 {
+		t.Fatalf("call before archiving = %d", code)
+	}
+
+	e.setTeamStatus("other", "archived")
+	requests := e.otherFake.Requests()
+
+	// The catalog and the options hide its servers.
+	if catalogSlugs()["other-status"] {
+		t.Fatal("an archived team's server is in the catalog")
+	}
+	if code := e.member.get("/v1/catalog/servers/"+e.other.Id.String(), nil); code != 404 {
+		t.Fatalf("catalog detail = %d", code)
+	}
+	if optionServers(e.owner, toolsTeam+"/gateway-options")["other-status"] || optionServers(e.admin, "/v1/admin/gateway-options")["other-status"] {
+		t.Fatal("an archived team's server is offered")
+	}
+	// Other gateways mark its capabilities team_archived; the rest is served.
+	if r := reasons(e.owner, supportPath); r["other-status__check_outage"] != "team_archived" || r["status__whoami"] != "ok" {
+		t.Fatalf("support = %v", r)
+	}
+	if r := reasons(e.admin, sharedPath); r["other-status__check_outage"] != "team_archived" {
+		t.Fatalf("shared = %v", r)
+	}
+	// Its own gateway: every capability unavailable, gone from My gateways,
+	// and its endpoint answers 404 (recorded as denied).
+	if r := reasons(e.outsider, otherGwPath); r["other-status__whoami"] != "team_archived" {
+		t.Fatalf("other-gw = %v", r)
+	}
+	if _, ok := myGateways(t, e.outsider)["other-gw"]; ok {
+		t.Fatal("an archived team's gateway is in My gateways")
+	}
+	if code := e.outsider.get("/v1/me/gateways/"+otherGw.Id.String(), nil); code != 404 {
+		t.Fatalf("my gateway detail = %d", code)
+	}
+	if g := myGateways(t, e.outsider)["shared"]; g.CapabilityCount != 0 {
+		t.Fatalf("shared still offers %d", g.CapabilityCount)
+	}
+	if code, out := callOther(); code != 404 || rpcErrorCode(out) == 0 {
+		t.Fatalf("call after archiving = %d %v", code, out)
+	}
+	if got := e.scalar(`SELECT outcome || ':' || coalesce(error_class, '') FROM mcp_calls ORDER BY id DESC LIMIT 1`); got != "denied:team_archived" {
+		t.Fatalf("recorded %s", got)
+	}
+	// Selected capabilities may stay; new ones can't be added.
+	e.mustSetCaps(e.owner, supportPath, sel(whoami, foreign))
+	if code, raw := e.setCaps(e.admin, sharedPath, sel(foreign, e.capID(e.outsider, e.other, "tool", "search_tickets"))); code != 422 ||
+		errorCode(raw) != "capability_not_selectable" {
+		t.Fatalf("add an archived team's capability = %d %s", code, raw)
+	}
+	if e.otherFake.Requests() != requests {
+		t.Fatal("the archived team's server was contacted")
+	}
+
+	// Unarchiving restores everything.
+	e.setTeamStatus("other", "active")
+	if !catalogSlugs()["other-status"] || !optionServers(e.owner, toolsTeam+"/gateway-options")["other-status"] {
+		t.Fatal("not back in the catalog")
+	}
+	if r := reasons(e.owner, supportPath); r["other-status__check_outage"] != "ok" {
+		t.Fatalf("support after unarchiving = %v", r)
+	}
+	if r := reasons(e.outsider, otherGwPath); r["other-status__whoami"] != "ok" {
+		t.Fatalf("other-gw after unarchiving = %v", r)
+	}
+	if g, ok := myGateways(t, e.outsider)["other-gw"]; !ok || g.CapabilityCount != 1 {
+		t.Fatalf("my gateways after unarchiving = %+v", g)
+	}
+	if code, out := callOther(); code != 200 || out["error"] != nil {
+		t.Fatalf("call after unarchiving = %d %v", code, out)
+	}
 }

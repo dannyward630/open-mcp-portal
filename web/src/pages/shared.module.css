@@ -14,6 +14,17 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * A list's name cell on a phone: narrower than CellText's own floor, so the
+ * list's key column (status, why, outcome) stays in view beside it. Doubled
+ * to outrank the data table's rule.
+ */
+@media (max-width: 37.5rem) {
+  .compactCell.compactCell {
+    min-width: min(8rem, 40vw);
+  }
+}
+
 .mono {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);

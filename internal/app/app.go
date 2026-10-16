@@ -122,6 +122,7 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	gws := gateways.New(pool, cfg.AppURL, log)
 	keys := apikeys.New(pool, pepper)
 	ids := identity.New(pool, box, cfg.AppURL, log)
+	ids.Prepublish = cfg.SigningKeyPrepublish
 	return httpapi.Deps{
 		Config:   cfg,
 		Pool:     pool,

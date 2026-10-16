@@ -1,7 +1,7 @@
 /*
- * Profile (/settings/profile), from the account menu: who the person is as the gateway knows them and their teams.
- * It is reachable for everyone, including people in no team. Nothing here is edited: the name and email come from the
- * sign-in.
+ * Profile (/settings/profile), from the account menu: who the person is as the gateway knows them, their teams and
+ * their SSO groups. It is reachable for everyone, including people in no team. Nothing here is edited: the name, email
+ * and groups come from the sign-in.
  */
 import { Link } from "@tanstack/react-router";
 import { RoleBadge } from "@/components/role-badge";
@@ -21,7 +21,7 @@ export function ProfilePage() {
   const me = useCurrentUser();
   const instance = useInstance();
   const help = useJoinTeamHelp();
-  const { user, teams } = me;
+  const { user, teams, groups } = me;
   return (
     <Stack gap={6} className={s.page}>
       <PageHeader title="Profile" description={`Your account in ${instance.name}. Your name and email come from how you sign in.`} />
@@ -65,6 +65,19 @@ export function ProfilePage() {
                 <span className={a.rowMeta}>
                   <RoleBadge role={t.role} />
                 </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+      <Card title="Your groups" description="From your identity provider, as of your last sign-in. Platform gateways can be shared with them.">
+        {groups.length === 0 ? (
+          <p className={s.muted}>Your identity provider didn't send any groups.</p>
+        ) : (
+          <ul className={a.chips} aria-label="Your groups">
+            {groups.map((g) => (
+              <li key={g}>
+                <Badge size="sm">{g}</Badge>
               </li>
             ))}
           </ul>

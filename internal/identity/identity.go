@@ -5,10 +5,17 @@
 //
 // Signing keys live in signing_keys: the private key sealed with
 // ENCRYPTION_KEY (internal/secrets, bound to the kid), the public key as a
-// JWK. A key is generated on first use. Every RotationPeriod a leader-elected
-// loop (PostgreSQL advisory lock) replaces it; the old key keeps being
-// published at /.well-known/jwks.json for PublishRetiring, far longer than
-// any token it signed lives (TokenTTL), and is then retired.
+// JWK. Their states are next (published, not signing yet), active (signs;
+// one at a time), retiring (published, no longer signing) and retired.
+//
+// The first key, on an empty table, is active at once (on first use or at
+// start-up). After that a leader-elected loop (PostgreSQL advisory lock)
+// creates the next key at least Prepublish before the active key has signed
+// for RotationPeriod, so verifiers that cache the JWKS already know it, and
+// promotes it once the active key is due and the next key has been published
+// for Prepublish. The old key keeps being published at /.well-known/jwks.json
+// for PublishRetiring, far longer than any token it signed lives (TokenTTL),
+// and is then retired.
 package identity
 
 import (
@@ -46,6 +53,9 @@ const (
 	RotationPeriod = 30 * 24 * time.Hour
 	// PublishRetiring is how long a replaced key stays in the JWKS.
 	PublishRetiring = 24 * time.Hour
+	// DefaultPrepublish is how long a new key is published before it signs
+	// (SIGNING_KEY_PREPUBLISH).
+	DefaultPrepublish = 24 * time.Hour
 	// RotationCheckInterval is how often the rotation loop looks.
 	RotationCheckInterval = time.Hour
 	// cacheFor is how long a replica signs with the key it loaded before
@@ -101,8 +111,20 @@ type tokenClaims struct {
 	Client  string   `json:"client,omitempty"`
 }
 
+// Key states.
+const (
+	StateNext     = "next"
+	StateActive   = "active"
+	StateRetiring = "retiring"
+	StateRetired  = "retired"
+)
+
 // Service signs tokens and publishes keys.
 type Service struct {
+	// Prepublish is how long a new key is published before it signs (set
+	// before the rotation loop starts; DefaultPrepublish by default).
+	Prepublish time.Duration
+
 	pool   *pgxpool.Pool
 	q      *dbgen.Queries
 	box    *secrets.Box
@@ -129,7 +151,7 @@ func New(pool *pgxpool.Pool, box *secrets.Box, issuer string, log *slog.Logger) 
 	if pool != nil {
 		q = dbgen.New(pool)
 	}
-	return &Service{pool: pool, q: q, box: box, issuer: issuer, log: log, now: time.Now}
+	return &Service{Prepublish: DefaultPrepublish, pool: pool, q: q, box: box, issuer: issuer, log: log, now: time.Now}
 }
 
 // Issuer is the iss claim (APP_URL).
@@ -199,27 +221,52 @@ func (s *Service) load(row dbgen.SigningKey) (*signingKey, error) {
 	return &signingKey{kid: row.Kid, signer: signer}, nil
 }
 
-// ensureKey creates the first signing key unless one exists.
+// ensureKey makes sure a key signs: unless one is active, it promotes the
+// next key (already published) or, on an empty table, creates the first
+// key, which signs at once.
 func (s *Service) ensureKey(ctx context.Context) error {
 	return store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		if err := q.LockSigningKeys(ctx); err != nil {
 			return err
 		}
-		if _, err := q.GetActiveSigningKey(ctx); err == nil {
-			return nil
-		} else if !errors.Is(store.NotFound(err), store.ErrNotFound) {
-			return err
-		}
-		kid, err := s.insertKey(ctx, q)
-		if err == nil {
-			s.log.InfoContext(ctx, "identity signing key created", "kid", kid)
-		}
+		_, err := firstKey(ctx, q, s)
 		return err
 	})
 }
 
-// insertKey generates and stores a new active key.
-func (s *Service) insertKey(ctx context.Context, q *dbgen.Queries) (string, error) {
+// firstKey runs with the keys locked when no key is active: it promotes
+// the next key if there is one, else creates an active key. It returns what
+// it did.
+func firstKey(ctx context.Context, q *dbgen.Queries, s *Service) (Rotation, error) {
+	var out Rotation
+	if _, err := q.GetActiveSigningKey(ctx); err == nil {
+		return out, nil
+	} else if !errors.Is(store.NotFound(err), store.ErrNotFound) {
+		return out, err
+	}
+	next, err := q.GetNextSigningKey(ctx)
+	switch {
+	case err == nil:
+		if _, err := q.PromoteNextSigningKey(ctx); err != nil {
+			return out, err
+		}
+		out.Promoted = next.Kid
+		s.log.InfoContext(ctx, "identity signing key promoted (no key was active)", "kid", next.Kid)
+	case errors.Is(store.NotFound(err), store.ErrNotFound):
+		if out.Created, err = s.insertKey(ctx, q, StateActive); err != nil {
+			return out, err
+		}
+		out.Promoted = out.Created
+		s.log.InfoContext(ctx, "identity signing key created", "kid", out.Created)
+	default:
+		return out, err
+	}
+	return out, nil
+}
+
+// insertKey generates and stores a new key in state (StateActive or
+// StateNext).
+func (s *Service) insertKey(ctx context.Context, q *dbgen.Queries, state string) (string, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return "", err
@@ -243,11 +290,12 @@ func (s *Service) insertKey(ctx context.Context, q *dbgen.Queries) (string, erro
 	if err != nil {
 		return "", err
 	}
-	return kid, q.InsertSigningKey(ctx, dbgen.InsertSigningKeyParams{Kid: kid, PrivateKeyCipher: sealed, PublicJwk: jwk})
+	return kid, q.InsertSigningKey(ctx, dbgen.InsertSigningKeyParams{Kid: kid, PrivateKeyCipher: sealed, PublicJwk: jwk, State: state})
 }
 
-// JWKS returns the published keys: the active one and those retiring. The
-// first call creates a key if there is none, so the set is never empty.
+// JWKS returns the published keys: the next one (not signing yet), the
+// active one and those retiring. The first call creates a key if there is
+// none, so the set is never empty.
 func (s *Service) JWKS(ctx context.Context) (jose.JSONWebKeySet, error) {
 	if _, err := s.active(ctx); err != nil {
 		return jose.JSONWebKeySet{}, err
@@ -269,14 +317,39 @@ func (s *Service) JWKS(ctx context.Context) (jose.JSONWebKeySet, error) {
 
 // Rotation is what one rotation pass did.
 type Rotation struct {
-	Skipped bool   // another replica holds the lock
-	Created string // the kid of a new key
-	Retired int64  // keys no longer published
+	Skipped  bool   // another replica holds the lock
+	Created  string // the kid of a new key (next, or the first active key)
+	Promoted string // the kid of the key that started signing
+	Retired  int64  // keys no longer published
 }
 
-// Rotate runs one pass if no other replica is: it creates the first key,
-// replaces a key older than RotationPeriod (the old one is published for
-// PublishRetiring more), and retires keys whose publication ended.
+// Plan is what a rotation pass does to the keys, given where rotation
+// stands.
+type Plan struct {
+	CreateNext, Promote bool
+}
+
+// PlanRotation decides a pass from the keys' states (the first key, on an
+// empty table, is handled separately): with no next key, create one once
+// the active key is due to be prepared (prepublish before its rotation
+// time); with one, promote it once the active key is due and the next key
+// has been published long enough. A next key that isn't ready yet delays
+// the rotation rather than signing before verifiers could have seen it.
+func PlanRotation(hasNext, prepareDue, rotateDue, nextReady bool) Plan {
+	if !hasNext {
+		return Plan{CreateNext: prepareDue}
+	}
+	return Plan{Promote: rotateDue && nextReady}
+}
+
+func seconds(d time.Duration) int64 { return int64(d / time.Second) }
+
+// Rotate runs one pass if no other replica is: it retires keys whose
+// publication ended, creates the first key on an empty table (it signs at
+// once), creates the next key Prepublish (plus one check interval, so a
+// pass that runs late still leaves Prepublish) before the active key has
+// signed for RotationPeriod, and then promotes it: the old key stops signing
+// and is published for PublishRetiring more.
 func (s *Service) Rotate(ctx context.Context) (Rotation, error) {
 	release, ok, err := store.TryAdvisoryLockText(ctx, s.pool, rotationLockKey)
 	if err != nil {
@@ -286,38 +359,69 @@ func (s *Service) Rotate(ctx context.Context) (Rotation, error) {
 		return Rotation{Skipped: true}, nil
 	}
 	defer release()
+	prepublish := max(s.Prepublish, 0)
+	prepareAfter := max(RotationPeriod-prepublish-RotationCheckInterval, 0)
 	var out Rotation
 	err = store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		if err := q.LockSigningKeys(ctx); err != nil {
 			return err
 		}
-		var err error
-		if out.Retired, err = q.RetireExpiredSigningKeys(ctx); err != nil {
+		retired, err := q.RetireExpiredSigningKeys(ctx)
+		if err != nil {
 			return err
 		}
 		cur, err := q.GetActiveSigningKey(ctx)
-		switch {
-		case errors.Is(store.NotFound(err), store.ErrNotFound):
-		case err != nil:
+		if errors.Is(store.NotFound(err), store.ErrNotFound) {
+			out, err = firstKey(ctx, q, s)
+			out.Retired = retired
 			return err
-		default:
-			due, err := q.ActiveSigningKeyDue(ctx, int64(RotationPeriod/time.Second))
-			if err != nil || !due {
+		} else if err != nil {
+			return err
+		}
+		out.Retired = retired
+		_, err = q.GetNextSigningKey(ctx)
+		hasNext := err == nil
+		if err != nil && !errors.Is(store.NotFound(err), store.ErrNotFound) {
+			return err
+		}
+		st, err := q.SigningKeyRotationState(ctx, dbgen.SigningKeyRotationStateParams{
+			PrepareAfterSeconds: seconds(prepareAfter), RotateAfterSeconds: seconds(RotationPeriod), PublishedSeconds: seconds(prepublish),
+		})
+		if err != nil {
+			return err
+		}
+		plan := PlanRotation(hasNext, st.PrepareDue, st.RotateDue, st.NextReady)
+		if plan.CreateNext {
+			if out.Created, err = s.insertKey(ctx, q, StateNext); err != nil {
 				return err
 			}
-			if _, err := q.RetireActiveSigningKey(ctx, dbgen.RetireActiveSigningKeyParams{
-				Kid: cur.Kid, PublishedSeconds: int64(PublishRetiring / time.Second),
-			}); err != nil {
-				return err
+			// Without pre-publication the new key may sign in this pass.
+			if prepublish == 0 && st.RotateDue {
+				plan.Promote = true
 			}
 		}
-		out.Created, err = s.insertKey(ctx, q)
-		return err
+		if !plan.Promote {
+			return nil
+		}
+		if _, err := q.RetireActiveSigningKey(ctx, dbgen.RetireActiveSigningKeyParams{
+			Kid: cur.Kid, PublishedSeconds: seconds(PublishRetiring),
+		}); err != nil {
+			return err
+		}
+		next, err := q.GetNextSigningKey(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err := q.PromoteNextSigningKey(ctx); err != nil {
+			return err
+		}
+		out.Promoted = next.Kid
+		return nil
 	})
 	if err != nil {
 		return Rotation{}, err
 	}
-	if out.Created != "" {
+	if out.Promoted != "" {
 		s.mu.Lock()
 		s.cached = nil
 		s.mu.Unlock()
@@ -335,8 +439,8 @@ func (s *Service) RotationLoop(ctx context.Context, log *slog.Logger) {
 		switch {
 		case err != nil && ctx.Err() == nil:
 			log.Warn("identity key rotation failed", "err", err)
-		case r.Created != "" || r.Retired > 0:
-			log.Info("identity signing keys rotated", "created", r.Created, "retired", r.Retired)
+		case r.Created != "" || r.Promoted != "" || r.Retired > 0:
+			log.Info("identity signing keys rotated", "created", r.Created, "promoted", r.Promoted, "retired", r.Retired)
 		}
 		select {
 		case <-ctx.Done():

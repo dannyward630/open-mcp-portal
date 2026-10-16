@@ -11,8 +11,8 @@
 //
 // Every request is authenticated with a personal API key (Authorization:
 // Bearer omcp_...) and re-checks everything before it lists or calls: the key
-// and its person are active, the gateway is enabled and the person may use
-// it, and each capability is still selected, served (Availability) and
+// and its person are active, the gateway is enabled (and a team gateway's
+// team not archived) and the person may use it, and each capability is still selected, served (Availability) and
 // allowed to their role. A refused call looks like an unknown tool or
 // prompt, is recorded as denied and never reaches the server. Calls are
 // forwarded through internal/upstream (address guard, the server's timeout,
@@ -302,8 +302,9 @@ func recorded(method string) bool {
 }
 
 // resolveGateway finds the gateway and checks the person may use it. An
-// unknown or disabled gateway, or one they may not use, is 404 (recorded
-// as denied for lists and calls of an existing gateway).
+// unknown or disabled gateway, a team gateway of an archived team, or one
+// they may not use, is 404 (recorded as denied for lists and calls of an
+// existing gateway).
 func (rc *request) resolveGateway(slug string) bool {
 	ctx := rc.r.Context()
 	g, err := rc.h.Gateways.Resolve(ctx, slug)
@@ -316,10 +317,12 @@ func (rc *request) resolveGateway(slug string) bool {
 		return false
 	}
 	rc.gateway = g
-	denied := ""
-	if !g.Enabled {
-		denied = "gateway_disabled"
-	} else {
+	denied, err := rc.h.Gateways.Unserved(ctx, g)
+	if err != nil {
+		rc.internal(err)
+		return false
+	}
+	if denied == "" {
 		c, err := rc.h.Gateways.CallerOf(ctx, g, rc.principal.User)
 		if err != nil {
 			rc.internal(err)

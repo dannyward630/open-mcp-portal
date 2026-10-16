@@ -32,6 +32,22 @@ func TestDefaultsAndEnvOverride(t *testing.T) {
 	}
 }
 
+func TestSigningKeyPrepublish(t *testing.T) {
+	c, err := LoadFrom("", env(map[string]string{}))
+	if err != nil || c.SigningKeyPrepublish != 24*time.Hour {
+		t.Fatalf("default = %s %v", c.SigningKeyPrepublish, err)
+	}
+	if c, err = LoadFrom("", env(map[string]string{"SIGNING_KEY_PREPUBLISH": "48h"})); err != nil || c.SigningKeyPrepublish != 48*time.Hour {
+		t.Fatalf("48h = %s %v", c.SigningKeyPrepublish, err)
+	}
+	if _, err := LoadFrom("", env(map[string]string{"SIGNING_KEY_PREPUBLISH": "30d"})); err == nil {
+		t.Fatal("an invalid duration was accepted")
+	}
+	if _, err := LoadFrom("", env(map[string]string{"SIGNING_KEY_PREPUBLISH": "200h"})); err == nil {
+		t.Fatal("more than 7 days was accepted")
+	}
+}
+
 func TestFileThenEnvPrecedenceAndSecretFiles(t *testing.T) {
 	dir := t.TempDir()
 	secret := filepath.Join(dir, "secret")

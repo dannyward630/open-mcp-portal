@@ -13,6 +13,7 @@ const platform = myGateway({
   teamName: undefined,
   url: "https://mcp.example.com/mcp/company-tools",
   access: ["team_grant", "user_grant", "group_grant"],
+  groups: ["engineering"],
   capabilityCount: 3,
 });
 
@@ -36,7 +37,7 @@ describe("My gateways", () => {
     const shared = within(table).getByText("Company tools").closest("tr")!;
     expect(shared).toHaveTextContent("Granted to your team");
     expect(shared).toHaveTextContent("Granted to you");
-    expect(shared).toHaveTextContent("Granted to your SSO group");
+    expect(within(shared).getByText("Granted to your SSO group engineering")).toBeInTheDocument();
     expect(shared).toHaveTextContent("3 capabilities");
     await waitFor(() => expect(document.title).toBe("My gateways · Open MCP Gateway"));
     expect(await axe(container)).toHaveNoViolations();

@@ -14,7 +14,7 @@ import { Time } from "@/components/ui/time/time";
 import s from "../../pages/shared.module.css";
 import { HealthBadge } from "./badges";
 import { failureDetail, failureText, type McpServer } from "./labels";
-import { healthChecksQuery } from "./scope";
+import { type ServerScope, healthChecksQuery } from "./scope";
 import m from "./servers.module.css";
 
 type Check = Schemas["McpHealthCheck"];
@@ -54,8 +54,8 @@ const columns: DataTableColumn<Check>[] = [
   },
 ];
 
-export function HealthTab({ server }: { server: McpServer }) {
-  const checks = useQuery(healthChecksQuery(server.teamSlug, server.id));
+export function HealthTab({ server, scope }: { server: McpServer; scope: ServerScope }) {
+  const checks = useQuery(healthChecksQuery(scope, server.id));
   return (
     <Card title="Recent checks" description={<HealthBadge health={server.health} />}>
       <ListPage<Check>
