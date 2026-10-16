@@ -60,7 +60,7 @@ export function GatewayCapabilitiesTab({ gateway, scope, abilities }: Props) {
             title="No capabilities selected yet."
             description={
               abilities.canEdit
-                ? "Choose the tools and prompts this gateway offers. Until then, clients that connect see nothing."
+                ? "Choose the tools, prompts and resources this gateway offers. Until then, clients that connect see nothing."
                 : roles
                   ? "The team's owners and admins choose what this gateway offers."
                   : "Platform admins choose what this gateway offers."

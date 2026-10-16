@@ -134,14 +134,20 @@ func (e CapabilityKind) Valid() bool {
 
 // Defines values for GatewayCapabilityKind.
 const (
-	GatewayCapabilityKindPrompt GatewayCapabilityKind = "prompt"
-	GatewayCapabilityKindTool   GatewayCapabilityKind = "tool"
+	GatewayCapabilityKindPrompt           GatewayCapabilityKind = "prompt"
+	GatewayCapabilityKindResource         GatewayCapabilityKind = "resource"
+	GatewayCapabilityKindResourceTemplate GatewayCapabilityKind = "resource_template"
+	GatewayCapabilityKindTool             GatewayCapabilityKind = "tool"
 )
 
 // Valid indicates whether the value is a known member of the GatewayCapabilityKind enum.
 func (e GatewayCapabilityKind) Valid() bool {
 	switch e {
 	case GatewayCapabilityKindPrompt:
+		return true
+	case GatewayCapabilityKindResource:
+		return true
+	case GatewayCapabilityKindResourceTemplate:
 		return true
 	case GatewayCapabilityKindTool:
 		return true
@@ -632,8 +638,11 @@ func (e ListTeamAuditParamsActorKind) Valid() bool {
 
 // ApiKey defines model for ApiKey.
 type ApiKey struct {
-	CreatedAt  time.Time          `json:"createdAt"`
-	ExpiresAt  *time.Time         `json:"expiresAt,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Gateways The gateways the key is limited to, by name. Empty means every gateway its owner can use. A deleted gateway stays listed (exists false); a key whose gateways are all gone works nowhere.
+	Gateways   []ApiKeyGateway    `json:"gateways"`
 	Id         openapi_types.UUID `json:"id"`
 	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
 	Name       string             `json:"name"`
@@ -652,6 +661,9 @@ type ApiKeyCreate struct {
 	// ExpiresInDays Keys always expire
 	ExpiresInDays *int32 `json:"expiresInDays,omitempty"`
 
+	// GatewayIds Limit the key to these gateways, each one the caller can use now. Absent or empty means every gateway the caller can use. A limit never widens access.
+	GatewayIds *[]openapi_types.UUID `json:"gatewayIds,omitempty"`
+
 	// Name Example: Claude Code on my laptop
 	Name string `json:"name"`
 }
@@ -662,6 +674,16 @@ type ApiKeyCreated struct {
 
 	// Secret The full key, shown only now. Send it as Authorization Bearer to /mcp/{slug}.
 	Secret string `json:"secret"`
+}
+
+// ApiKeyGateway defines model for ApiKeyGateway.
+type ApiKeyGateway struct {
+	Exists bool               `json:"exists"`
+	Id     openapi_types.UUID `json:"id"`
+	Name   string             `json:"name"`
+
+	// Slug The gateway's slug (as it was when the key was created, once deleted)
+	Slug string `json:"slug"`
 }
 
 // AuditActor Who made the change, resolved when the log is read
@@ -918,12 +940,12 @@ type GatewayCapability struct {
 	CapabilityId openapi_types.UUID `json:"capabilityId"`
 	Description  string             `json:"description"`
 
-	// ExposedName The name clients see, {serverSlug}__{name}
+	// ExposedName What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri} for resources and resource templates
 	//
 	// Example: service-status__check_outage
 	ExposedName string `json:"exposedName"`
 
-	// Kind Phase 3 serves tools and prompts; resources come later
+	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
 	Kind GatewayCapabilityKind `json:"kind"`
 
 	// MinRole Team gateways only; the lowest team role that may use it (null = every member)
@@ -943,7 +965,7 @@ type GatewayCapability struct {
 	UnavailableReason *GatewayUnavailableReason `json:"unavailableReason,omitempty"`
 }
 
-// GatewayCapabilityKind Phase 3 serves tools and prompts; resources come later
+// GatewayCapabilityKind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
 type GatewayCapabilityKind string
 
 // GatewayCapabilitySelection defines model for GatewayCapabilitySelection.
@@ -994,14 +1016,18 @@ type GatewayGrantSubjectKind string
 type GatewayOption struct {
 	CapabilityId openapi_types.UUID `json:"capabilityId"`
 	Description  string             `json:"description"`
-	ExposedName  string             `json:"exposedName"`
 
-	// Kind Phase 3 serves tools and prompts; resources come later
-	Kind       GatewayCapabilityKind `json:"kind"`
-	Name       string                `json:"name"`
-	ServerId   openapi_types.UUID    `json:"serverId"`
-	ServerName string                `json:"serverName"`
-	ServerSlug string                `json:"serverSlug"`
+	// ExposedName What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and templates
+	ExposedName string `json:"exposedName"`
+
+	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+	Kind GatewayCapabilityKind `json:"kind"`
+
+	// Name The name the server uses (a resource's URI, a template's URI template)
+	Name       string             `json:"name"`
+	ServerId   openapi_types.UUID `json:"serverId"`
+	ServerName string             `json:"serverName"`
+	ServerSlug string             `json:"serverSlug"`
 
 	// Source team: the gateway team's own server; catalog: a published server
 	Source   GatewayOptionSource `json:"source"`
@@ -1012,6 +1038,12 @@ type GatewayOption struct {
 
 // GatewayOptionSource team: the gateway team's own server; catalog: a published server
 type GatewayOptionSource string
+
+// GatewayOptionPage defines model for GatewayOptionPage.
+type GatewayOptionPage struct {
+	Items      []GatewayOption `json:"items"`
+	NextCursor *string         `json:"nextCursor,omitempty"`
+}
 
 // GatewayOwnerKind defines model for GatewayOwnerKind.
 type GatewayOwnerKind string
@@ -1091,15 +1123,19 @@ type Invite struct {
 type McpCall struct {
 	// ClientName clientInfo.name from initialize, when sent
 	ClientName *string `json:"clientName,omitempty"`
+
+	// ErrorClass Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason
 	ErrorClass *string `json:"errorClass,omitempty"`
 
-	// ExposedName The tool or prompt name the client used (absent for list calls)
+	// ExposedName The tool or prompt name, or the exposed resource URI, the client used (absent for list calls)
 	ExposedName *string `json:"exposedName,omitempty"`
 	Gateway     CallRef `json:"gateway"`
 	Id          int64   `json:"id"`
 	LatencyMs   int32   `json:"latencyMs"`
 
-	// Method Example: tools/call
+	// Method tools/list, tools/call, prompts/list, prompts/get, resources/list, resources/templates/list or resources/read
+	//
+	// Example: tools/call
 	Method     string    `json:"method"`
 	OccurredAt time.Time `json:"occurredAt"`
 
@@ -1643,6 +1679,15 @@ type CursorParam = string
 // GatewayIdParam defines model for GatewayIdParam.
 type GatewayIdParam = openapi_types.UUID
 
+// GatewayOptionKindParam Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+type GatewayOptionKindParam = GatewayCapabilityKind
+
+// GatewayOptionLimitParam defines model for GatewayOptionLimitParam.
+type GatewayOptionLimitParam = int
+
+// GatewayOptionServerParam defines model for GatewayOptionServerParam.
+type GatewayOptionServerParam = openapi_types.UUID
+
 // IfMatchHeader defines model for IfMatchHeader.
 type IfMatchHeader = string
 
@@ -1668,6 +1713,11 @@ type AuditPageReply struct {
 
 // ErrorReply defines model for ErrorReply.
 type ErrorReply = ErrorResponse
+
+// GatewayOptionPageReply defines model for GatewayOptionPageReply.
+type GatewayOptionPageReply struct {
+	Data GatewayOptionPage `json:"data"`
+}
 
 // HealthReply defines model for HealthReply.
 type HealthReply struct {
@@ -1748,8 +1798,15 @@ type AdminListCallsParams struct {
 // AdminListGatewayOptionsParams defines parameters for AdminListGatewayOptions.
 type AdminListGatewayOptionsParams struct {
 	// Q Case-insensitive substring match
-	Q    *SearchParam           `form:"q,omitempty" json:"q,omitempty"`
-	Kind *GatewayCapabilityKind `form:"kind,omitempty" json:"kind,omitempty"`
+	Q    *SearchParam            `form:"q,omitempty" json:"q,omitempty"`
+	Kind *GatewayOptionKindParam `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Server Only this MCP server's capabilities (server ID)
+	Server *GatewayOptionServerParam `form:"server,omitempty" json:"server,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam             `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *GatewayOptionLimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // AdminListGatewaysParams defines parameters for AdminListGateways.
@@ -1918,8 +1975,15 @@ type ListTeamCallsParams struct {
 // ListTeamGatewayOptionsParams defines parameters for ListTeamGatewayOptions.
 type ListTeamGatewayOptionsParams struct {
 	// Q Case-insensitive substring match
-	Q    *SearchParam           `form:"q,omitempty" json:"q,omitempty"`
-	Kind *GatewayCapabilityKind `form:"kind,omitempty" json:"kind,omitempty"`
+	Q    *SearchParam            `form:"q,omitempty" json:"q,omitempty"`
+	Kind *GatewayOptionKindParam `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Server Only this MCP server's capabilities (server ID)
+	Server *GatewayOptionServerParam `form:"server,omitempty" json:"server,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam             `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *GatewayOptionLimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListTeamGatewaysParams defines parameters for ListTeamGateways.

@@ -96,12 +96,18 @@ func (a *api) toAPIMyGateway(m gateways.Mine) apitypes.MyGateway {
 	return out
 }
 
-func toAPIKey(k dbgen.ApiKey, now time.Time) apitypes.ApiKey {
+func toAPIKey(v apikeys.View, now time.Time) apitypes.ApiKey {
+	k := v.Key
 	exp := k.ExpiresAt
-	return apitypes.ApiKey{
+	out := apitypes.ApiKey{
 		Id: k.ID, Name: k.Name, Prefix: k.Prefix, Status: apitypes.ApiKeyStatus(apikeys.Status(k, now)),
 		CreatedAt: k.CreatedAt, ExpiresAt: &exp, LastUsedAt: k.LastUsedAt, RevokedAt: k.RevokedAt,
+		Gateways: make([]apitypes.ApiKeyGateway, len(v.Gateways)),
 	}
+	for i, g := range v.Gateways {
+		out.Gateways[i] = apitypes.ApiKeyGateway{Id: g.ID, Slug: g.Slug, Name: g.Name, Exists: g.Exists}
+	}
+	return out
 }
 
 func toAPICall(r dbgen.ListMCPCallsRow) apitypes.McpCall {

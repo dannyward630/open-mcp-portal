@@ -335,6 +335,7 @@ export const apiKey = (extra: Partial<Schemas["ApiKey"]> = {}): Schemas["ApiKey"
   expiresAt: "2026-12-30T10:00:00Z",
   lastUsedAt: "2026-10-15T10:00:00Z",
   revokedAt: null,
+  gateways: [],
   ...extra,
 });
 
@@ -354,3 +355,23 @@ export const mcpCall = (extra: Partial<Schemas["McpCall"]> = {}): Schemas["McpCa
   requestId: "req-call-1",
   ...extra,
 });
+
+/**
+ * gateway-options as the server answers it: searched (q), filtered (kind, server) and paged (limit, cursor:
+ * the index to continue from), in the order given.
+ */
+export function optionsPage(options: Schemas["GatewayOption"][], search: URLSearchParams): Schemas["GatewayOptionPage"] {
+  const q = (search.get("q") ?? "").toLowerCase();
+  const kind = search.get("kind");
+  const server = search.get("server");
+  const matching = options.filter(
+    (o) =>
+      (!kind || o.kind === kind) &&
+      (!server || o.serverId === server) &&
+      (!q || [o.name, o.title, o.serverName, o.serverSlug].some((v) => v.toLowerCase().includes(q))),
+  );
+  const start = Number(search.get("cursor") ?? 0);
+  const limit = Number(search.get("limit") ?? 100);
+  const items = matching.slice(start, start + limit);
+  return { items, nextCursor: start + limit < matching.length ? String(start + limit) : null };
+}

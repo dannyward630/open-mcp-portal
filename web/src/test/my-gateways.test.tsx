@@ -66,6 +66,22 @@ describe("My gateways", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  it("lists resources and templates with their exposed URIs", async () => {
+    const resource = gatewayCapability({ capabilityId: "r1", kind: "resource", name: "status://services", exposedName: "omcp://service-status/status://services", title: "Services" });
+    const template = gatewayCapability({
+      capabilityId: "r2",
+      kind: "resource_template",
+      name: "status://services/{service}",
+      exposedName: "omcp://service-status/status://services/{service}",
+      title: "Service status",
+    });
+    mockApi(routes({ [`GET /v1/me/gateways/${gatewayId}`]: () => ({ gateway: myGateway(), capabilities: [gatewayCapability(), resource, template] }) }));
+    renderApp(`/gateways/${gatewayId}`);
+    expect(await screen.findByRole("listitem", { name: "resource: omcp://service-status/status://services" })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "resource template: omcp://service-status/status://services/{service}" })).toBeInTheDocument();
+    expect(screen.getByText(/resources as omcp:\/\/server\/uri/)).toBeInTheDocument();
+  });
+
   it("shows the not-found page for a gateway the person can't use", async () => {
     mockApi(routes({ [`GET /v1/me/gateways/${gatewayId}`]: () => Reply.error(404, "not_found") }));
     renderApp(`/gateways/${gatewayId}`);

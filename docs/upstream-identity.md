@@ -1,8 +1,8 @@
 # Verifying the gateway's identity token
 
-When a person calls a tool or gets a prompt through a gateway, the gateway forwards the request to your MCP server with a short-lived **identity token**: a JWT signed by the gateway that says who is calling, through which gateway and for which tool ([decisions](decisions.md) 7 and 19). Verify it before you trust it. The token is the only credential from the caller that reaches your server. The gateway never forwards the client's own API key or OAuth token.
+When a person calls a tool, gets a prompt or reads a resource through a gateway, the gateway forwards the request to your MCP server with a short-lived **identity token**: a JWT signed by the gateway that says who is calling, through which gateway and for which tool ([decisions](decisions.md) 7 and 19). Verify it before you trust it. The token is the only credential from the caller that reaches your server. The gateway never forwards the client's own API key or OAuth token.
 
-Lists (`tools/list`, `prompts/list`) are served from the definitions approved in the gateway, so your server only receives calls (`tools/call`, `prompts/get`). Each call also performs the MCP handshake again, because the gateway is stateless.
+Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`) are served from the definitions approved in the gateway, so your server only receives calls (`tools/call`, `prompts/get`, `resources/read`). A read arrives with your own URI (the gateway strips its `omcp://{server-slug}/` prefix). Each call also performs the MCP handshake again, because the gateway is stateless.
 
 ## Where the token arrives
 
@@ -32,6 +32,7 @@ The claims:
 | `teams` | Slugs of the teams they belong to |
 | `gateway` | The gateway's slug |
 | `tool` / `prompt` | The exposed name of the tool (`tools/call`) or prompt (`prompts/get`), `{server-slug}__{name}` |
+| `resource` | The exposed URI read (`resources/read`): `omcp://{server-slug}/{your-uri}`, for example `omcp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set |
 | `client` | The MCP client's `clientInfo.name` when the request carried it, otherwise the name of the person's API key |
 | `jti` | A unique ID for the token (useful in your logs) |
 

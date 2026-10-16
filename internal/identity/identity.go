@@ -97,18 +97,20 @@ type Claims struct {
 	Gateway  string   // the gateway's slug
 	Tool     string   // the exposed tool name (tools/call)
 	Prompt   string   // the exposed prompt name (prompts/get)
+	Resource string   // the exposed resource URI read (resources/read)
 	Client   string   // clientInfo.name when known, else the API key's name
 }
 
 // tokenClaims are the private claims of a token.
 type tokenClaims struct {
-	Email   string   `json:"email,omitempty"`
-	Name    string   `json:"name,omitempty"`
-	Teams   []string `json:"teams"`
-	Gateway string   `json:"gateway"`
-	Tool    string   `json:"tool,omitempty"`
-	Prompt  string   `json:"prompt,omitempty"`
-	Client  string   `json:"client,omitempty"`
+	Email    string   `json:"email,omitempty"`
+	Name     string   `json:"name,omitempty"`
+	Teams    []string `json:"teams"`
+	Gateway  string   `json:"gateway"`
+	Tool     string   `json:"tool,omitempty"`
+	Prompt   string   `json:"prompt,omitempty"`
+	Resource string   `json:"resource,omitempty"`
+	Client   string   `json:"client,omitempty"`
 }
 
 // Key states.
@@ -175,7 +177,7 @@ func (s *Service) Sign(ctx context.Context, c Claims) (string, error) {
 	if teams == nil {
 		teams = []string{}
 	}
-	priv := tokenClaims{Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Client: c.Client}
+	priv := tokenClaims{Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Resource: c.Resource, Client: c.Client}
 	return jwt.Signed(k.signer).Claims(reg).Claims(priv).Serialize()
 }
 

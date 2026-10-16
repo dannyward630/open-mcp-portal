@@ -18,13 +18,15 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
 )
 
-// Selections: which tools and prompts a gateway exposes, and whether each
-// is served right now.
+// Selections: which tools, prompts, resources and resource templates a
+// gateway exposes, and whether each is served right now.
 
 // Selection limits.
 const (
 	MaxSelection = 200
-	MaxOptions   = 1000
+	// DefaultOptionPage and MaxOptionPage bound a page of gateway-options.
+	DefaultOptionPage = 100
+	MaxOptionPage     = 500
 )
 
 // Why a selected capability isn't served (the API's GatewayUnavailableReason).
@@ -45,9 +47,16 @@ const (
 	SourceCatalog = "catalog"
 )
 
-// Selectable reports whether a capability kind may be selected (Phase 3:
-// tools and prompts; resources come later).
-func Selectable(kind string) bool { return kind == upstream.KindTool || kind == upstream.KindPrompt }
+// Selectable reports whether a capability kind may be selected: tools,
+// prompts, resources and resource templates (templates also need
+// TemplateSupported).
+func Selectable(kind string) bool {
+	switch kind {
+	case upstream.KindTool, upstream.KindPrompt, upstream.KindResource, upstream.KindResourceTemplate:
+		return true
+	}
+	return false
+}
 
 // ExposedName is the name clients see: {serverSlug}__{name}. Server slugs
 // have no underscores, so the first "__" always ends the slug.
@@ -90,9 +99,11 @@ type Selected struct {
 	Server             dbgen.McpServer
 	TeamSlug, TeamName string // the server's team
 	MinRole            *string
-	ExposedName        string
-	Available          bool
-	Reason             string // when not Available
+	// ExposedName is the name (tools, prompts) or URI (resources,
+	// templates) clients see.
+	ExposedName string
+	Available   bool
+	Reason      string // when not Available
 }
 
 // Selection is a gateway's selection with its revision.
@@ -128,7 +139,7 @@ func selection(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway) ([]Select
 		ok, reason := Availability(g, r.McpCapability, r.McpServer,
 			Archived{GatewayTeam: ownArchived, ServerTeam: r.TeamStatus != teams.StatusActive})
 		out[i] = Selected{Capability: r.McpCapability, Server: r.McpServer, TeamSlug: r.TeamSlug, TeamName: r.TeamName,
-			MinRole: r.MinTeamRole, ExposedName: ExposedName(r.McpServer.Slug, r.McpCapability.Name), Available: ok, Reason: reason}
+			MinRole: r.MinTeamRole, ExposedName: Exposed(r.McpCapability.Kind, r.McpServer.Slug, r.McpCapability.Name), Available: ok, Reason: reason}
 	}
 	return out, nil
 }
@@ -142,26 +153,55 @@ type Option struct {
 
 func checkKind(kind *string) error {
 	if kind != nil && !Selectable(*kind) {
-		return apperr.Invalid("invalid_kind", "kind must be tool or prompt")
+		return apperr.Invalid("invalid_kind", "kind must be tool, prompt, resource or resource_template")
 	}
 	return nil
 }
 
+// OptionParams filter and page gateway-options by (server name, server ID,
+// name, ID).
+type OptionParams struct {
+	Search, Kind *string
+	Server       *uuid.UUID
+	After        *OptionCursor
+	// Limit is the page size (the caller asks for one more to see whether
+	// another page follows).
+	Limit int32
+}
+
+// OptionCursor is the sort key of the last option of a page.
+type OptionCursor struct {
+	ServerName string
+	ServerID   uuid.UUID
+	Name       string
+	ID         uuid.UUID
+}
+
 // options lists what a gateway of teamID (uuid.Nil: a platform gateway) may
-// select; ids narrows to those capabilities.
-func options(ctx context.Context, q *dbgen.Queries, teamID uuid.UUID, search, kind *string, ids []uuid.UUID) ([]Option, error) {
-	p := dbgen.ListGatewayOptionsParams{Kind: kind, PageSize: MaxOptions, Ids: []uuid.UUID{}}
-	if teamID != uuid.Nil {
-		p.TeamID = uuid.NullUUID{UUID: teamID, Valid: true}
+// select; ids narrows to those capabilities (and ignores p).
+func options(ctx context.Context, q *dbgen.Queries, teamID uuid.UUID, p OptionParams, ids []uuid.UUID) ([]Option, error) {
+	qp := dbgen.ListGatewayOptionsParams{Kind: p.Kind, PageSize: p.Limit, Ids: []uuid.UUID{}}
+	if qp.PageSize <= 0 {
+		qp.PageSize = DefaultOptionPage
 	}
-	if search != nil {
-		escaped := store.EscapeLike(*search)
-		p.Search = &escaped
+	if teamID != uuid.Nil {
+		qp.TeamID = uuid.NullUUID{UUID: teamID, Valid: true}
+	}
+	if p.Server != nil {
+		qp.ServerID = uuid.NullUUID{UUID: *p.Server, Valid: true}
+	}
+	if p.Search != nil {
+		escaped := store.EscapeLike(*p.Search)
+		qp.Search = &escaped
+	}
+	if a := p.After; a != nil {
+		qp.AfterServerName, qp.AfterServerID = &a.ServerName, uuid.NullUUID{UUID: a.ServerID, Valid: true}
+		qp.AfterName, qp.AfterID = &a.Name, uuid.NullUUID{UUID: a.ID, Valid: true}
 	}
 	if ids != nil {
-		p.ByIds, p.Ids, p.PageSize = true, ids, int32(len(ids))
+		qp = dbgen.ListGatewayOptionsParams{TeamID: qp.TeamID, ByIds: true, Ids: ids, PageSize: int32(len(ids))}
 	}
-	rows, err := q.ListGatewayOptions(ctx, p)
+	rows, err := q.ListGatewayOptions(ctx, qp)
 	if err != nil {
 		return nil, err
 	}
@@ -171,9 +211,14 @@ func options(ctx context.Context, q *dbgen.Queries, teamID uuid.UUID, search, ki
 		if teamID != uuid.Nil && r.ServerTeamID == teamID {
 			src = SourceTeam
 		}
-		out[i] = Option{ListGatewayOptionsRow: r, Source: src, ExposedName: ExposedName(r.ServerSlug, r.Name)}
+		out[i] = Option{ListGatewayOptionsRow: r, Source: src, ExposedName: Exposed(r.Kind, r.ServerSlug, r.Name)}
 	}
 	return out, nil
+}
+
+// Cursor is the option's sort key, to continue after it.
+func (o Option) Cursor() OptionCursor {
+	return OptionCursor{ServerName: o.ServerName, ServerID: o.ServerID, Name: o.Name, ID: o.ID}
 }
 
 // TeamSelection returns a team gateway's selection (members; platform
@@ -207,7 +252,7 @@ func (s *Service) AdminSelection(ctx context.Context, a authz.Actor, id uuid.UUI
 
 // TeamOptions lists what the team's gateways may select (team owners and
 // admins).
-func (s *Service) TeamOptions(ctx context.Context, a authz.Actor, ref string, search, kind *string) ([]Option, error) {
+func (s *Service) TeamOptions(ctx context.Context, a authz.Actor, ref string, p OptionParams) ([]Option, error) {
 	ta, err := access(ctx, s.q, a, ref)
 	if err != nil {
 		return nil, err
@@ -215,22 +260,22 @@ func (s *Service) TeamOptions(ctx context.Context, a authz.Actor, ref string, se
 	if err := authz.CheckGatewayEdit(ta.role); err != nil {
 		return nil, err
 	}
-	if err := checkKind(kind); err != nil {
+	if err := checkKind(p.Kind); err != nil {
 		return nil, err
 	}
-	return options(ctx, s.q, ta.team.ID, search, kind, nil)
+	return options(ctx, s.q, ta.team.ID, p, nil)
 }
 
 // AdminOptions lists what platform gateways may select (platform admins
 // and auditors).
-func (s *Service) AdminOptions(ctx context.Context, a authz.Actor, search, kind *string) ([]Option, error) {
+func (s *Service) AdminOptions(ctx context.Context, a authz.Actor, p OptionParams) ([]Option, error) {
 	if !a.CanReadPlatform() {
 		return nil, errPlatformRead
 	}
-	if err := checkKind(kind); err != nil {
+	if err := checkKind(p.Kind); err != nil {
 		return nil, err
 	}
-	return options(ctx, s.q, uuid.Nil, search, kind, nil)
+	return options(ctx, s.q, uuid.Nil, p, nil)
 }
 
 // SelectionInput is one capability of a new selection.
@@ -282,6 +327,33 @@ func (s *Service) AdminSetSelection(ctx context.Context, a authz.Actor, id uuid.
 	return out, err
 }
 
+// Why a capability can't be selected (capability_not_selectable's
+// details.reasons).
+const (
+	// NotSelectableUnsupportedTemplate: a resource template with RFC 6570
+	// expressions other than {var} and {+var}.
+	NotSelectableUnsupportedTemplate = "unsupported_template"
+	// NotSelectableNotOffered: anything else gateway-options doesn't offer
+	// (another team's private server, not approved, gone, unknown).
+	NotSelectableNotOffered = "not_offered"
+)
+
+// notSelectable is 422 capability_not_selectable for refused, saying why
+// for each (details.reasons).
+func notSelectable(ctx context.Context, q *dbgen.Queries, refused []uuid.UUID) error {
+	reasons := map[string]string{}
+	msg := "Some capabilities can't be selected for this gateway: another team's private server, not approved, gone, or unknown"
+	for _, id := range refused {
+		reasons[id.String()] = NotSelectableNotOffered
+		c, err := q.GetCapability(ctx, id)
+		if err == nil && c.Kind == upstream.KindResourceTemplate && !TemplateSupported(c.Name) {
+			reasons[id.String()] = NotSelectableUnsupportedTemplate
+			msg = "Some capabilities can't be selected for this gateway. Resource templates may only use {var} and {+var} expressions"
+		}
+	}
+	return unprocessable("capability_not_selectable", msg, map[string]any{"capabilityIds": refused, "reasons": reasons})
+}
+
 func unprocessable(code, msg string, details any) error {
 	e := apperr.New(http.StatusUnprocessableEntity, code, msg)
 	e.Details = details
@@ -305,8 +377,8 @@ func audited(items []Selected) []map[string]any {
 // locked). New capabilities must be offered by the gateway's options;
 // capabilities already selected may stay even when they aren't served right
 // now (a catalog server that left the catalog), since every call re-checks
-// them. minRole is for team gateways only, and exposed names must be
-// distinct (case-insensitively, across tools and prompts). Audited as
+// them. minRole is for team gateways only, and exposed names and URIs must
+// be distinct (case-insensitively, across every kind). Audited as
 // gateway.capabilities_set.
 func setSelection(ctx context.Context, q *dbgen.Queries, a authz.Actor, g dbgen.Gateway, items []SelectionInput, expectedRevision int64) (Selection, error) {
 	if g.Revision != expectedRevision {
@@ -348,7 +420,7 @@ func setSelection(ctx context.Context, q *dbgen.Queries, a authz.Actor, g dbgen.
 		names[id] = it.ExposedName
 	}
 	if len(added) > 0 {
-		offered, err := options(ctx, q, teamOf(g), nil, nil, added)
+		offered, err := options(ctx, q, teamOf(g), OptionParams{}, added)
 		if err != nil {
 			return Selection{}, err
 		}
@@ -363,9 +435,7 @@ func setSelection(ctx context.Context, q *dbgen.Queries, a authz.Actor, g dbgen.
 			}
 		}
 		if len(refused) > 0 {
-			return Selection{}, unprocessable("capability_not_selectable",
-				"Some capabilities can't be selected for this gateway: another team's private server, not approved, gone, or not a tool or prompt",
-				map[string]any{"capabilityIds": refused})
+			return Selection{}, notSelectable(ctx, q, refused)
 		}
 	}
 	exposed := map[string]bool{}
@@ -373,7 +443,7 @@ func setSelection(ctx context.Context, q *dbgen.Queries, a authz.Actor, g dbgen.
 	for _, it := range items {
 		n := strings.ToLower(names[it.CapabilityID])
 		if exposed[n] {
-			return Selection{}, unprocessable("name_clash", "Two selected capabilities expose the same name",
+			return Selection{}, unprocessable("name_clash", "Two selected capabilities expose the same name or URI",
 				map[string]any{"exposedName": names[it.CapabilityID]})
 		}
 		exposed[n] = true

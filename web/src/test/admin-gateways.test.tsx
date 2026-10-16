@@ -2,7 +2,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
-import { gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOptions, grant, mcpCall, mcpServer, myGateway, page, platformGateway, team, teamSummary, user } from "./fixtures";
+import { gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOptions, optionsPage, grant, mcpCall, mcpServer, myGateway, page, platformGateway, team, teamSummary, user } from "./fixtures";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 type Staff = "platform_admin" | "platform_auditor";
@@ -15,7 +15,7 @@ const routes = (role: Staff = "platform_admin", g = platformGateway(), extra: Re
   [`GET ${one}`]: () => g,
   [`GET ${one}/capabilities`]: () => gatewayCapabilities([gatewayCapability({ minRole: null })]),
   [`GET ${one}/grants`]: () => [grant(), grant({ id: "g-user", subjectKind: "user", team: undefined, user: { id: user().id, email: user().email, displayName: user().displayName, status: "active" } }), grant({ id: "g-group", subjectKind: "group", team: undefined, group: "engineering" })],
-  "GET /v1/admin/gateway-options": () => gatewayOptions.filter((o) => o.source === "catalog"),
+  "GET /v1/admin/gateway-options": (_b, call) => optionsPage(gatewayOptions.filter((o) => o.source === "catalog"), call.search),
   "GET /v1/admin/teams": () => page([teamSummary()]),
   "GET /v1/admin/users": () => page([user()]),
   "GET /v1/admin/calls": () => page([mcpCall()]),

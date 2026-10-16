@@ -1,0 +1,214 @@
+# open-mcp-gateway serve: the management API, the embedded web UI, the MCP
+# endpoint /mcp/{slug} and the background loops, on :8088 (/healthz,
+# /readyz on the same port). One Deployment is the whole application: it
+# is stateless and every replica shares PostgreSQL. The health-check and
+# signing-key rotation loops take a PostgreSQL advisory lock, so only one
+# replica runs each at a time.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-mcp-gateway
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: open-mcp-gateway
+        app.kubernetes.io/component: gateway
+        app.kubernetes.io/part-of: open-mcp-gateway
+    spec:
+      serviceAccountName: open-mcp-gateway
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # On SIGTERM the server fails /readyz, waits SHUTDOWN_DELAY (10s) for
+      # load balancers to notice, then gives in-flight requests
+      # SHUTDOWN_TIMEOUT (125s; MCP calls may wait up to 120s upstream).
+      # This must exceed both together; raise them together.
+      terminationGracePeriodSeconds: 150
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      # Replicas spread over nodes (one per node while there are enough;
+      # nodes whose taints the pod does not tolerate are not counted) and,
+      # best effort, over zones.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: open-mcp-gateway
+              app.kubernetes.io/component: gateway
+          matchLabelKeys: [pod-template-hash]
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: open-mcp-gateway
+              app.kubernetes.io/component: gateway
+          matchLabelKeys: [pod-template-hash]
+      initContainers:
+        # Applies pending migrations before the new version serves traffic.
+        # A PostgreSQL advisory lock serialises concurrent runs, so every
+        # starting pod may run it; only the first does any work. It needs
+        # only DATABASE_URL (and APP_URL, for the safety checks).
+        - name: migrate
+          image: ghcr.io/ncecere/open-mcp-gateway
+          imagePullPolicy: IfNotPresent
+          args: [migrate]
+          envFrom:
+            - configMapRef:
+                name: open-mcp-gateway-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: open-mcp-gateway-runtime
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      containers:
+        - name: gateway
+          image: ghcr.io/ncecere/open-mcp-gateway
+          imagePullPolicy: IfNotPresent
+          args: [serve]
+          envFrom:
+            - configMapRef:
+                name: open-mcp-gateway-config
+          # Secret values come from open-mcp-gateway-runtime (docs/deploy.md,
+          # "Secrets"). A missing required key stops the pod from starting
+          # (CreateContainerConfigError) rather than starting half-configured.
+          env:
+            - name: MIGRATE_ON_START
+              value: "false"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: open-mcp-gateway-runtime
+                  key: DATABASE_URL
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-mcp-gateway-runtime
+                  key: ENCRYPTION_KEY
+            # Only while rotating ENCRYPTION_KEY: the old key, still accepted
+            # for reads.
+            - name: ENCRYPTION_KEY_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: open-mcp-gateway-runtime
+                  key: ENCRYPTION_KEY_PREVIOUS
+                  optional: true
+            - name: API_KEY_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: open-mcp-gateway-runtime
+                  key: API_KEY_PEPPER
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: open-mcp-gateway-runtime
+                  key: OIDC_CLIENT_SECRET
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+          ports:
+            - name: http
+              containerPort: 8088
+              protocol: TCP
+          # The listener opens only after Postgres answers (the process waits
+          # up to 3 minutes for it) and the schema is current.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 48
+          # /readyz: Postgres answers within 2s and the pod is not draining.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          # /healthz never checks dependencies, so a database outage does
+          # not restart the pods.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: open-mcp-gateway
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  # One pod at a time, whatever the replica count; pods that are not ready
+  # never block a node drain.
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/component: gateway

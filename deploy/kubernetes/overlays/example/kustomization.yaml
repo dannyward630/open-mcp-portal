@@ -1,0 +1,68 @@
+# Example install: the base in its own namespace behind an NGINX Ingress
+# with cert-manager TLS, an external (managed) PostgreSQL and an OIDC
+# provider. httproute.yaml is the Gateway API alternative to ingress.yaml.
+#
+# Copy this directory into your own GitOps repository, replace every
+# example.org value and the image digest, and create the secret
+# open-mcp-gateway-runtime first (docs/deploy.md, "Secrets").
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: open-mcp-gateway
+
+resources:
+  - namespace.yaml
+  - ../../base
+  - ingress.yaml
+  # Gateway API instead of an Ingress: replace ingress.yaml with
+  # - httproute.yaml
+
+# Pin by digest (never a mutable tag).
+images:
+  - name: ghcr.io/ncecere/open-mcp-gateway
+    newTag: v0.1.0
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+configMapGenerator:
+  - name: open-mcp-gateway-config
+    behavior: merge
+    literals:
+      - APP_URL=https://mcp.example.org
+      - OIDC_ISSUER=https://idp.example.org
+      - OIDC_CLIENT_ID=open-mcp-gateway
+      - OIDC_ALLOWED_EMAIL_DOMAINS=example.org
+      # The ingress controller's pod network, so client IPs are logged and
+      # rate-limited correctly.
+      - TRUSTED_PROXIES=10.0.0.0/8
+      - ORG_NAME=Example Corp
+      - SUPPORT_URL=https://help.example.org
+
+patches:
+  # The ingress controller's namespace.
+  - target:
+      kind: NetworkPolicy
+      name: open-mcp-gateway-ingress
+    patch: |-
+      - op: replace
+        path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
+        value: ingress-nginx
+  # The managed PostgreSQL's address only.
+  - target:
+      kind: NetworkPolicy
+      name: open-mcp-gateway-egress-postgres
+    patch: |-
+      - op: replace
+        path: /spec/egress/0/to
+        value:
+          - ipBlock:
+              cidr: 192.0.2.10/32
+  # An MCP server registered on https://mcp.example.com:8443 needs its port.
+  - target:
+      kind: NetworkPolicy
+      name: open-mcp-gateway-egress-https
+    patch: |-
+      - op: add
+        path: /spec/egress/0/ports/-
+        value:
+          protocol: TCP
+          port: 8443

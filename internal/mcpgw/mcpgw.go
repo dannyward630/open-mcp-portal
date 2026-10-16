@@ -5,16 +5,19 @@
 // POST carrying one JSON-RPC message and is answered with one JSON
 // response (GET and DELETE are 405: there are no sessions and no server
 // stream). It implements initialize, ping, tools/list, tools/call,
-// prompts/list and prompts/get; other methods are "method not found",
-// including server/discover, so clients of the 2026-07-28 protocol fall back
-// to initialize.
+// prompts/list, prompts/get, and (when the gateway selects resources or
+// resource templates) resources/list, resources/templates/list and
+// resources/read; other methods are "method not found", including
+// resources/subscribe and server/discover, so clients of the 2026-07-28
+// protocol fall back to initialize.
 //
 // Every request is authenticated with a personal API key (Authorization:
 // Bearer omcp_...) and re-checks everything before it lists or calls: the key
-// and its person are active, the gateway is enabled (and a team gateway's
-// team not archived) and the person may use it, and each capability is still selected, served (Availability) and
-// allowed to their role. A refused call looks like an unknown tool or
-// prompt, is recorded as denied and never reaches the server. Calls are
+// and its person are active, the key may be used on this gateway, the
+// gateway is enabled (and a team gateway's team not archived) and the person
+// may use it, and each capability is still selected, served (Availability)
+// and allowed to their role. A refused call looks like an unknown tool,
+// prompt or resource, is recorded as denied and never reaches the server. Calls are
 // forwarded through internal/upstream (address guard, the server's timeout,
 // 1 MiB bounds, the server's static header) with a signed identity
 // (internal/identity) and never the client's credential. Lists are served
@@ -81,6 +84,8 @@ const (
 	codeMethodNotFound = -32601
 	codeInvalidParams  = -32602
 	codeInternal       = -32603
+	// codeResourceNotFound is MCP's "resource not found".
+	codeResourceNotFound = -32002
 	// codeRefused is the implementation-defined code of HTTP-level refusals
 	// (no credential, unknown gateway).
 	codeRefused = -32001
@@ -94,7 +99,14 @@ const (
 	methodToolsCall   = "tools/call"
 	methodPromptsList = "prompts/list"
 	methodPromptsGet  = "prompts/get"
+	methodResources   = "resources/list"
+	methodTemplates   = "resources/templates/list"
+	methodRead        = "resources/read"
 )
+
+// DeniedKeyScope is why a request with a key limited to other gateways is
+// refused.
+const DeniedKeyScope = "key_scope"
 
 var slugRE = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$`)
 
@@ -295,16 +307,16 @@ type request struct {
 
 func recorded(method string) bool {
 	switch method {
-	case methodToolsList, methodToolsCall, methodPromptsList, methodPromptsGet:
+	case methodToolsList, methodToolsCall, methodPromptsList, methodPromptsGet, methodResources, methodTemplates, methodRead:
 		return true
 	}
 	return false
 }
 
-// resolveGateway finds the gateway and checks the person may use it. An
-// unknown or disabled gateway, a team gateway of an archived team, or one
-// they may not use, is 404 (recorded as denied for lists and calls of an
-// existing gateway).
+// resolveGateway finds the gateway and checks the key and the person may
+// use it. An unknown or disabled gateway, a team gateway of an archived
+// team, one the key is not limited to, or one they may not use, is 404
+// (recorded as denied for lists and calls of an existing gateway).
 func (rc *request) resolveGateway(slug string) bool {
 	ctx := rc.r.Context()
 	g, err := rc.h.Gateways.Resolve(ctx, slug)
@@ -317,8 +329,10 @@ func (rc *request) resolveGateway(slug string) bool {
 		return false
 	}
 	rc.gateway = g
-	denied, err := rc.h.Gateways.Unserved(ctx, g)
-	if err != nil {
+	denied := ""
+	if !rc.principal.InScope(g.ID) {
+		denied = DeniedKeyScope
+	} else if denied, err = rc.h.Gateways.Unserved(ctx, g); err != nil {
 		rc.internal(err)
 		return false
 	}
@@ -382,16 +396,22 @@ func (rc *request) clientName() string {
 	return ""
 }
 
-// requestedName is params.name of a call (bounded), for records.
+// requestedName is params.name of a call, or params.uri of a read, for
+// records (bounded by calls.Record).
 func (rc *request) requestedName() string {
-	if rc.msg.Method != methodToolsCall && rc.msg.Method != methodPromptsGet {
-		return ""
-	}
 	var p struct {
 		Name string `json:"name"`
+		URI  string `json:"uri"`
 	}
-	_ = json.Unmarshal(rc.msg.Params, &p)
-	return p.Name
+	switch rc.msg.Method {
+	case methodToolsCall, methodPromptsGet:
+		_ = json.Unmarshal(rc.msg.Params, &p)
+		return p.Name
+	case methodRead:
+		_ = json.Unmarshal(rc.msg.Params, &p)
+		return p.URI
+	}
+	return ""
 }
 
 // record stores the exchange's metadata (never its arguments or result).
@@ -431,9 +451,43 @@ func (rc *request) dispatch() {
 		rc.call(upstream.KindTool)
 	case methodPromptsGet:
 		rc.call(upstream.KindPrompt)
+	case methodResources, methodTemplates, methodRead:
+		has, err := rc.hasResources()
+		switch {
+		case err != nil:
+			rc.internal(err)
+		case !has:
+			rc.methodNotFound()
+		case rc.msg.Method == methodResources:
+			rc.list(upstream.KindResource, "resources")
+		case rc.msg.Method == methodTemplates:
+			rc.list(upstream.KindResourceTemplate, "resourceTemplates")
+		default:
+			rc.read()
+		}
 	default:
-		rc.fail(codeMethodNotFound, "Method not found: "+clip(rc.msg.Method, 100))
+		rc.methodNotFound()
 	}
+}
+
+func (rc *request) methodNotFound() {
+	rc.fail(codeMethodNotFound, "Method not found: "+clip(rc.msg.Method, 100))
+}
+
+// hasResources reports whether the gateway selects any resource or
+// resource template (whether or not served now): only then does it
+// advertise and serve the resources methods.
+func (rc *request) hasResources() (bool, error) {
+	all, err := rc.h.Gateways.Offers(rc.r.Context(), rc.gateway, rc.caller)
+	if err != nil {
+		return false, err
+	}
+	for _, o := range all {
+		if gateways.IsResourceKind(o.Capability.Kind) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func clip(s string, n int) string {
@@ -445,7 +499,8 @@ func clip(s string, n int) string {
 }
 
 // initialize negotiates the protocol version (the client's when supported,
-// else the newest) and advertises tools and prompts only.
+// else the newest) and advertises tools and prompts, and resources when the
+// gateway selects any (no subscriptions).
 func (rc *request) initialize() {
 	var p struct {
 		ProtocolVersion string `json:"protocolVersion"`
@@ -458,13 +513,20 @@ func (rc *request) initialize() {
 	if slices.Contains(protocolVersions, p.ProtocolVersion) {
 		version = p.ProtocolVersion
 	}
+	caps := map[string]any{
+		"tools":   map[string]any{"listChanged": false},
+		"prompts": map[string]any{"listChanged": false},
+	}
+	if has, err := rc.hasResources(); err != nil {
+		rc.internal(err)
+		return
+	} else if has {
+		caps["resources"] = map[string]any{"listChanged": false, "subscribe": false}
+	}
 	rc.reply(map[string]any{
 		"protocolVersion": version,
-		"capabilities": map[string]any{
-			"tools":   map[string]any{"listChanged": false},
-			"prompts": map[string]any{"listChanged": false},
-		},
-		"serverInfo": map[string]any{"name": rc.gateway.Slug, "title": rc.gateway.Name, "version": buildinfo.Version},
+		"capabilities":    caps,
+		"serverInfo":      map[string]any{"name": rc.gateway.Slug, "title": rc.gateway.Name, "version": buildinfo.Version},
 	})
 }
 
@@ -484,20 +546,30 @@ func (rc *request) offers(kind string) ([]gateways.Offer, error) {
 	return out, nil
 }
 
-// listed is a stored definition with the exposed name.
+// listed is a stored definition with the exposed name (tools, prompts) or
+// URI (resources: uri, templates: uriTemplate); a resource's own name,
+// title, description and mimeType stay as approved.
 func listed(o gateways.Offer) (json.RawMessage, error) {
 	def := map[string]json.RawMessage{}
 	if err := json.Unmarshal(o.Capability.Definition, &def); err != nil {
 		return nil, err
 	}
-	name, _ := json.Marshal(o.ExposedName)
-	def["name"] = name
+	exposed, _ := json.Marshal(o.ExposedName)
+	switch o.Capability.Kind {
+	case upstream.KindResource:
+		def["uri"] = exposed
+	case upstream.KindResourceTemplate:
+		def["uriTemplate"] = exposed
+	default:
+		def["name"] = exposed
+	}
 	delete(def, "_meta")
 	return json.Marshal(def)
 }
 
-// list serves tools/list or prompts/list from the approved definitions,
-// paged by size; the cursor is the last exposed name of the page.
+// list serves tools/list, prompts/list, resources/list or
+// resources/templates/list from the approved definitions, paged by size;
+// the cursor is the last exposed name (or URI) of the page.
 func (rc *request) list(kind, key string) {
 	var p struct {
 		Cursor string `json:"cursor"`

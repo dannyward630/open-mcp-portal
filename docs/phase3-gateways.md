@@ -36,8 +36,8 @@ it may use, and every upstream call carries a signed identity of the user. Calls
 
 - Streamable HTTP, stateless; `POST` only at first (`GET`/`DELETE` → 405). JSON responses; upstream SSE streams
   are relayed for `tools/call`.
-- Methods: `initialize`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`.
-  *Proposed:* resources and resource templates come in a follow-up (URI rewriting needs care).
+- Methods: `initialize`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, and (follow-up, see
+  "Resources" under "As built") `resources/list`, `resources/templates/list`, `resources/read`.
 - Exposed names: `{server-slug}__{name}` for tools and prompts; titles and descriptions as approved.
 - Every list and every call re-checks: credential valid, user active, gateway enabled, caller granted, capability
   still selected, role satisfied, server enabled, and either team-owned (team gateway) or published with the
@@ -107,12 +107,18 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
 (signing keys, JWKS, rotation loop), `internal/apikeys`, `internal/calls`, migration `00004_gateways.sql`. Server authors:
 [upstream-identity.md](upstream-identity.md). Where this differs from or adds to the design above:
 
+- **Gateway options** (`GET /v1/teams/{team}/gateway-options`, `GET /v1/admin/gateway-options`) answer a page
+  `GatewayOptionPage {items, nextCursor}`, ordered by server name, server ID, name, ID (keyset cursor). Parameters: `q`
+  (name, title, server name or slug), `kind` (`tool`, `prompt`, `resource`, `resource_template`), `server` (server ID),
+  `cursor`, `limit` (default 100, at most 500). The picker searches on the server (debounced), filters by kind and
+  server, and loads more by cursor; the selection is kept apart from what is loaded, so it survives paging and search.
 - **Selection.** New capabilities must be offered by gateway-options; capabilities **already selected may stay** in a
   `PUT` even while unavailable (for example a catalog server that left the catalog), since every call re-checks them.
-  Exposed names must be unique **case-insensitively and across tools and prompts** (`422 name_clash`). Other errors:
-  `400 duplicate_capability`, `400 invalid_role`, `422 min_role_not_allowed` (minRole on a platform gateway; the contract
-  only says "must be absent"), `422 too_many`, `422 capability_not_selectable` (`details.capabilityIds`).
-- **Availability order:** `gone` (also any non-tool/prompt), `team_archived` (the server's team, or a team gateway's
+  Exposed names and exposed URIs must be unique **case-insensitively and across every kind** (`422 name_clash`). Other
+  errors: `400 duplicate_capability`, `400 invalid_role`, `422 min_role_not_allowed` (minRole on a platform gateway; the
+  contract only says "must be absent"), `422 too_many`, `422 capability_not_selectable` (`details.capabilityIds`, and
+  `details.reasons` mapping each ID to `unsupported_template` or `not_offered`).
+- **Availability order:** `gone` (also any kind that can't be selected), `team_archived` (the server's team, or a team gateway's
   own team, is archived), `server_disabled`, then for catalog capabilities `not_published`, `not_approved`, `changed`.
   A team gateway's own servers need no approval. `GatewayStats` (SQL) mirrors the Go rule; a test checks they agree.
 - **Archived teams.** Archiving changes no data, so unarchiving restores everything. While a team is archived its team
@@ -145,11 +151,54 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
   private key is erased (migration `00005_signing_key_next`).
 - **API keys.** `omcp_` + 43 URL-safe characters; HMAC-SHA256 with `API_KEY_PEPPER` (32 bytes base64, required by
   `serve`, the `.env.example` value refused off loopback). Revoking a revoked key is a no-op `200`.
+- **API key scopes** (follow-up; migration `00006_gateway_resources_key_scopes`, table `api_key_gateways`).
+  `ApiKeyCreate.gatewayIds` (optional, at most 50, `400 too_many_gateways` beyond; duplicates collapse) limits a key to
+  those gateways. Each must be one the creator can use when the key is created (exists, enabled, a team gateway's team
+  active, and access), otherwise `422 gateway_not_usable` with `details.gatewayIds`. Empty or absent: every gateway the
+  owner can use. `ApiKey.gateways` lists `{id, slug, name, exists}` by name (empty = all). On `/mcp/{slug}` a key used
+  outside its scope is `404`, recorded `denied` with error class `key_scope` (checked before the gateway's switch and
+  the owner's access). A scope never widens access: the owner's access is checked on every request as before. The
+  scope entry has no foreign key, so deleting a gateway leaves it (shown with `exists: false` and the slug and name as
+  they were); a key whose gateways are all gone works nowhere, and Account › API keys warns about it. The create
+  dialog has an optional "Limit to gateways" multi-select of My gateways; after creation, "Connect a gateway" offers
+  only the key's gateways. `api_key.create` (after) and `api_key.revoke` (before) audit `gatewayIds`.
 - **Audit.** `gateway.create/update/delete/capabilities_set` (target `gateway`, team set for team gateways),
   `gateway.grant_add/grant_remove` (target `gateway_grant`), `api_key.create/revoke` (target `api_key`), all with live
   labels.
-- **Not built yet:** resources, the protected-resource metadata endpoint (Phase 4), payload capture (`capture_payloads`
-  stays false), rate limits on `/mcp`.
+- **Not built yet:** the protected-resource metadata endpoint (Phase 4), payload capture (`capture_payloads` stays
+  false), rate limits on `/mcp`, resource subscriptions.
 
 Results relayed from upstream servers have `_meta["io.modelcontextprotocol/serverInfo"]` removed: clients talk to the
 gateway, and the upstream's own name and version are not theirs to see. Other `_meta` entries pass through unchanged.
+
+### Resources and resource templates (follow-up to decision 18)
+
+Kinds `resource` and `resource_template` are selectable under the same rules as tools and prompts (own team's
+servers; approved capabilities of published servers), with the same availability, minimum roles and re-checks.
+
+- **Exposed URIs** (*proposed default*): a resource `status://services` of server `status` is
+  `omcp://status/status://services`; a template gets the same literal prefix before the original template, so its
+  RFC 6570 variables are unchanged: `omcp://status/status://services/{service}`. Server slugs can't contain `/` or
+  `:`, so the slug always ends at the first `/` after `omcp://`. Exposed URIs share the name-clash rule with names.
+- **Supported templates:** RFC 6570 level 1 simple `{var}` and level 2 reserved `{+var}` expressions, one variable
+  each. Templates with any other operator (`{#…}`, `{/…}`, `{?…}`, `{.…}`, `{;…}`, `{&…}`), several variables or
+  modifiers aren't offered by gateway-options, and selecting one is `422 capability_not_selectable` with reason
+  `unsupported_template` (`gateways.TemplateSupported`; the SQL in `ListGatewayOptions` uses the same pattern).
+- **Matching** (`gateways.MatchTemplate`): literals match exactly; `{var}` matches one or more unreserved characters or
+  percent-encoded octets, `{+var}` also reserved characters (`:/?#[]@!$&'()*+,;=`). No variable may be empty, and no
+  matched value may contain a `.` or `..` path segment, also when written `%2e` or separated by `%2f` / `%5c`.
+- **Runtime:** `initialize` advertises `resources` (`subscribe: false`, `listChanged: false`) when the gateway selects
+  any resource or template; otherwise the resources methods are "method not found". `resources/list` and
+  `resources/templates/list` serve the approved definitions (name, title, description, mimeType, annotations as
+  approved) with `uri` / `uriTemplate` rewritten, paged like the other lists. `resources/read` strips the prefix, finds
+  the server by slug and allows the read only if the original URI equals a selected resource's URI or matches a
+  selected template, for that caller, right now; anything else is JSON-RPC `-32002 Resource not found`, recorded
+  `denied` (`unknown`, or the capability's reason such as `role`) and never sent upstream. An allowed read is forwarded
+  with the identity JWT (claim `resource` = the exposed URI read; see [upstream-identity.md](upstream-identity.md)),
+  and the result's `contents[].uri` are rewritten to the exposed form. The 1 MiB bound and the `_meta` serverInfo
+  scrub apply. A server's own `-32002` passes through (outcome `bad_request`, class `not_found`).
+  `resources/subscribe` and `resources/unsubscribe` are "method not found".
+- **Records:** `mcp_calls.method` accepts the three resources methods (migration `00006`); `exposed_name` is the
+  exposed URI the client asked for.
+- **UI:** the picker, the gateway's Capabilities tab and My gateways list resources and templates with their exposed
+  URI and kind.

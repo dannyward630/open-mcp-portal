@@ -23,6 +23,14 @@ type ApiKey struct {
 	LastUsedAt *time.Time
 }
 
+type ApiKeyGateway struct {
+	ApiKeyID    uuid.UUID
+	GatewayID   uuid.UUID
+	GatewaySlug string
+	GatewayName string
+	AddedAt     time.Time
+}
+
 type AuditLog struct {
 	ID          int64
 	OccurredAt  time.Time

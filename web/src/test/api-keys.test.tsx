@@ -75,6 +75,43 @@ describe("API keys", () => {
     expect(document.body.textContent).not.toContain(secret);
   });
 
+  it("limits a new key to chosen gateways, and offers only those to connect", async () => {
+    const u = userEvent.setup();
+    const other = myGateway({ id: "g-other", slug: "company-tools", name: "Company tools", ownerKind: "platform", url: "https://mcp.example.com/mcp/company-tools" });
+    const scoped: Schemas["ApiKeyCreated"] = { key: apiKey({ id: "new-key", name: "CI runner", gateways: [{ id: "g-other", slug: "company-tools", name: "Company tools", exists: true }] }), secret };
+    const calls = mockApi(routes({ "GET /v1/me/gateways": () => [myGateway(), other], "POST /v1/me/api-keys": () => new Reply(201, { data: scoped }) }));
+    renderApp("/settings/api-keys");
+    await u.click(await screen.findByRole("button", { name: "Create API key" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create API key" });
+    await u.type(within(dialog).getByRole("textbox", { name: "Name" }), "CI runner");
+    await u.click(within(dialog).getByRole("combobox", { name: /Limit to gateways/ }));
+    await u.click(await screen.findByRole("option", { name: /Company tools/ }));
+    // Closing the list leaves the dialog open.
+    await u.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("option", { name: /Company tools/ })).toBeNull());
+    expect(within(dialog).getByText("The key works only on these gateways, and only while you can use them.")).toBeInTheDocument();
+    await u.click(within(dialog).getByRole("button", { name: "Create key" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ name: "CI runner", expiresInDays: 90, gatewayIds: ["g-other"] }));
+    const shown = await screen.findByRole("dialog", { name: "API key created" });
+    const choice = within(shown).getByRole("combobox", { name: "Connect a gateway" });
+    expect(within(choice).getAllByRole("option").map((o) => o.textContent)).toEqual(["Company tools"]);
+    expect(within(shown).getByText(/claude mcp add/).textContent).toContain("https://mcp.example.com/mcp/company-tools");
+  });
+
+  it("shows where each key works, and warns about a key whose gateways are all gone", async () => {
+    const limited = apiKey({ id: "k2", name: "Scoped", gateways: [{ id: "g1", slug: "support-tools", name: "Support tools", exists: true }] });
+    const stranded = apiKey({ id: "k3", name: "Stranded", gateways: [{ id: "g2", slug: "old", name: "Old gateway", exists: false }] });
+    mockApi(routes({ "GET /v1/me/api-keys": () => [apiKey(), limited, stranded] }));
+    renderApp("/settings/api-keys");
+    const table = await screen.findByRole("table", { name: "API keys" });
+    expect((await within(table).findByText("Claude Code on my laptop")).closest("tr")).toHaveTextContent("All my gateways");
+    expect(within(table).getByText("Scoped").closest("tr")).toHaveTextContent("Support tools");
+    const row = within(table).getByText("Stranded").closest("tr")!;
+    expect(row).toHaveTextContent("Old gateway (deleted)");
+    expect(row).toHaveTextContent("Works nowhere");
+    expect(screen.getByText("Stranded works nowhere")).toBeInTheDocument();
+  });
+
   it("checks the expiry and shows a refusal", async () => {
     const u = userEvent.setup();
     mockApi(routes({ "POST /v1/me/api-keys": () => Reply.error(409, "too_many_keys", "You have 20 active keys. Revoke one first.") }));

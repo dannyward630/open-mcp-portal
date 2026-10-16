@@ -1634,9 +1634,10 @@ paths:
       - gateways
       operationId: setTeamGatewayCapabilities
       summary: Replace the gateway's selection (team owners and admins); If-Match is the gateway's revision
-      description: 422 capability_not_selectable (details.capabilityIds) when a capability is not offered by gateway-options
-        (another team's private server, unapproved, gone, or a resource). 422 too_many (at most 200). 422 name_clash
-        (details.exposedName) when two selected capabilities expose the same name.
+      description: 422 capability_not_selectable (details.capabilityIds, and details.reasons mapping each to
+        unsupported_template or not_offered) when a capability is not offered by gateway-options (another team's
+        private server, unapproved, gone, or a resource template with unsupported expressions). 422 too_many (at
+        most 200). 422 name_clash (details.exposedName) when two selected capabilities expose the same name or URI.
       parameters:
       - $ref: '#/components/parameters/IfMatchHeader'
       requestBody:
@@ -1680,29 +1681,20 @@ paths:
       - gateways
       operationId: listTeamGatewayOptions
       summary: Capabilities a team gateway may select (team owners and admins)
-      description: Tools and prompts of the team's own enabled servers (any publish state, listed), plus approved,
-        listed tools and prompts of published, enabled servers of other teams.
+      description: Tools, prompts, resources and resource templates of the team's own enabled servers (any publish
+        state, listed), plus approved, listed ones of published, enabled servers of other teams. Resource templates
+        that use RFC 6570 expressions other than {var} and {+var} are left out (they can't be matched safely).
       parameters:
       - $ref: '#/components/parameters/SearchParam'
-      - name: kind
-        in: query
-        required: false
-        schema:
-          $ref: '#/components/schemas/GatewayCapabilityKind'
+      - $ref: '#/components/parameters/GatewayOptionKindParam'
+      - $ref: '#/components/parameters/GatewayOptionServerParam'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/GatewayOptionLimitParam'
       responses:
         '200':
-          description: Options ordered by server and name (at most 1000)
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - data
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/GatewayOption'
+          $ref: '#/components/responses/GatewayOptionPageReply'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
         '403':
           $ref: '#/components/responses/ErrorReply'
         '404':
@@ -1957,27 +1949,19 @@ paths:
       - admin
       operationId: adminListGatewayOptions
       summary: Capabilities a platform gateway may select (platform admins and auditors)
+      description: Approved, listed tools, prompts, resources and resource templates of published, enabled servers.
+        Resource templates that use RFC 6570 expressions other than {var} and {+var} are left out.
       parameters:
       - $ref: '#/components/parameters/SearchParam'
-      - name: kind
-        in: query
-        required: false
-        schema:
-          $ref: '#/components/schemas/GatewayCapabilityKind'
+      - $ref: '#/components/parameters/GatewayOptionKindParam'
+      - $ref: '#/components/parameters/GatewayOptionServerParam'
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/GatewayOptionLimitParam'
       responses:
         '200':
-          description: Options ordered by server and name (at most 1000)
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - data
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/GatewayOption'
+          $ref: '#/components/responses/GatewayOptionPageReply'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
         '403':
           $ref: '#/components/responses/ErrorReply'
   /v1/admin/gateways/{gatewayId}/grants:
@@ -2161,7 +2145,9 @@ paths:
       - api-keys
       operationId: createMyApiKey
       summary: Create a personal API key (browser session only); the secret is shown once
-      description: 409 too_many_keys (at most 20 active keys per person). An API key can't create keys.
+      description: 409 too_many_keys (at most 20 active keys per person). 400 too_many_gateways (more than 50
+        gatewayIds). 422 gateway_not_usable (details.gatewayIds) when a gateway in gatewayIds doesn't exist, is
+        switched off or the caller can't use it now. An API key can't create keys.
       requestBody:
         required: true
         content:
@@ -2185,6 +2171,8 @@ paths:
         '401':
           $ref: '#/components/responses/ErrorReply'
         '409':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
           $ref: '#/components/responses/ErrorReply'
   /v1/me/api-keys/{keyId}:
     parameters:
@@ -2343,6 +2331,29 @@ components:
       required: false
       schema:
         $ref: '#/components/schemas/CapabilityKind'
+    GatewayOptionKindParam:
+      name: kind
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/GatewayCapabilityKind'
+    GatewayOptionServerParam:
+      name: server
+      in: query
+      required: false
+      description: Only this MCP server's capabilities (server ID)
+      schema:
+        type: string
+        format: uuid
+    GatewayOptionLimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
     GatewayIdParam:
       name: gatewayId
       in: path
@@ -2420,6 +2431,17 @@ components:
             properties:
               data:
                 $ref: '#/components/schemas/Ok'
+    GatewayOptionPageReply:
+      description: A page of options ordered by server name, then name
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - data
+            properties:
+              data:
+                $ref: '#/components/schemas/GatewayOptionPage'
     McpCallPageReply:
       description: A page of calls, newest first
       content:
@@ -3645,7 +3667,10 @@ components:
       enum:
       - tool
       - prompt
-      description: Phase 3 serves tools and prompts; resources come later
+      - resource
+      - resource_template
+      description: 'Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and
+        resource templates as omcp://{serverSlug}/{uriTemplate}'
     Gateway:
       type: object
       required:
@@ -3804,7 +3829,8 @@ components:
           description: The name the server uses
         exposedName:
           type: string
-          description: The name clients see, {serverSlug}__{name}
+          description: 'What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri} for
+            resources and resource templates'
           example: service-status__check_outage
         title:
           type: string
@@ -3893,12 +3919,27 @@ components:
           $ref: '#/components/schemas/GatewayCapabilityKind'
         name:
           type: string
+          description: The name the server uses (a resource's URI, a template's URI template)
         exposedName:
           type: string
+          description: 'What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and
+            templates'
         title:
           type: string
         description:
           type: string
+    GatewayOptionPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayOption'
+        nextCursor:
+          type: string
+          nullable: true
     GatewayGrantSubjectKind:
       type: string
       enum:
@@ -4033,6 +4074,7 @@ components:
       - prefix
       - createdAt
       - status
+      - gateways
       properties:
         id:
           type: string
@@ -4063,6 +4105,30 @@ components:
           type: string
           format: date-time
           nullable: true
+        gateways:
+          type: array
+          description: The gateways the key is limited to, by name. Empty means every gateway its owner can use. A
+            deleted gateway stays listed (exists false); a key whose gateways are all gone works nowhere.
+          items:
+            $ref: '#/components/schemas/ApiKeyGateway'
+    ApiKeyGateway:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - exists
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: The gateway's slug (as it was when the key was created, once deleted)
+        name:
+          type: string
+        exists:
+          type: boolean
     ApiKeyCreate:
       type: object
       required:
@@ -4080,6 +4146,14 @@ components:
           maximum: 365
           default: 90
           description: Keys always expire
+        gatewayIds:
+          type: array
+          maxItems: 50
+          description: Limit the key to these gateways, each one the caller can use now. Absent or empty means every
+            gateway the caller can use. A limit never widens access.
+          items:
+            type: string
+            format: uuid
     ApiKeyCreated:
       type: object
       required:
@@ -4126,10 +4200,12 @@ components:
           format: date-time
         method:
           type: string
+          description: tools/list, tools/call, prompts/list, prompts/get, resources/list, resources/templates/list or
+            resources/read
           example: tools/call
         exposedName:
           type: string
-          description: The tool or prompt name the client used (absent for list calls)
+          description: The tool or prompt name, or the exposed resource URI, the client used (absent for list calls)
         gateway:
           $ref: '#/components/schemas/CallRef'
         server:
@@ -4143,6 +4219,8 @@ components:
           $ref: '#/components/schemas/McpCallOutcome'
         errorClass:
           type: string
+          description: 'Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key
+            is limited to other gateways), gateway_disabled or an unavailability reason'
         latencyMs:
           type: integer
           format: int32

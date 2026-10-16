@@ -39,6 +39,26 @@ func (c *Client) CallTool(ctx context.Context, t Target, name string, args json.
 	return res, time.Since(start), nil
 }
 
+// ReadResource reads a resource (by its URI on the server).
+func (c *Client) ReadResource(ctx context.Context, t Target, uri string) (*mcp.ReadResourceResult, time.Duration, error) {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(ctx, t.Timeout)
+	defer cancel()
+	sess, err := c.open(ctx, t)
+	if err != nil {
+		return nil, time.Since(start), err
+	}
+	defer sess.close()
+	res, err := sess.cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
+	if err != nil {
+		return nil, time.Since(start), c.classify(ctx, t, sess.ex, err)
+	}
+	if res.Contents == nil {
+		res.Contents = []*mcp.ResourceContents{}
+	}
+	return res, time.Since(start), nil
+}
+
 // GetPrompt gets a prompt from the server with the client's arguments.
 func (c *Client) GetPrompt(ctx context.Context, t Target, name string, args map[string]string) (*mcp.GetPromptResult, time.Duration, error) {
 	start := time.Now()

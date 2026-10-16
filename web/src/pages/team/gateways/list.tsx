@@ -48,7 +48,7 @@ export function TeamGatewaysPage() {
       <ListPage<Gateway>
         id="team-gateways"
         title={terms.gateways}
-        description={`Curated sets of tools and prompts, each at one MCP URL, for the members of ${team.name}.`}
+        description={`Curated sets of tools, prompts and resources, each at one MCP URL, for the members of ${team.name}.`}
         primaryAction={create}
         notices={
           <>

@@ -31,6 +31,25 @@ FROM api_keys k
 JOIN users u ON u.id = k.user_id
 WHERE k.digest = $1;
 
+-- name: InsertAPIKeyGateway :exec
+INSERT INTO api_key_gateways (api_key_id, gateway_id, gateway_slug, gateway_name)
+VALUES (@api_key_id, @gateway_id, @gateway_slug, @gateway_name);
+
+-- name: ListAPIKeyGatewayIDs :many
+-- The gateways a key is limited to (none: every gateway its owner may use).
+SELECT gateway_id FROM api_key_gateways WHERE api_key_id = $1;
+
+-- name: ListAPIKeyGateways :many
+-- The scopes of keys, with each gateway's current slug and name while it
+-- exists (otherwise as they were when the key was created).
+SELECT kg.api_key_id, kg.gateway_id,
+       COALESCE(g.slug, kg.gateway_slug)::text AS slug, COALESCE(g.name, kg.gateway_name)::text AS name,
+       (g.id IS NOT NULL)::bool AS gateway_exists
+FROM api_key_gateways kg
+LEFT JOIN gateways g ON g.id = kg.gateway_id
+WHERE kg.api_key_id = ANY(@key_ids::uuid[])
+ORDER BY kg.api_key_id, 4, kg.gateway_id;
+
 -- name: TouchAPIKey :exec
 -- Records a use, at most once a minute.
 UPDATE api_keys SET last_used_at = now()

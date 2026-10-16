@@ -211,46 +211,47 @@ func TestGatewaySelectionRules(t *testing.T) {
 		t.Fatalf("outsider read = %d", code)
 	}
 
-	// Options: the team's own server (tools and prompts, no resources), and
-	// nothing of another team's private server.
-	var opts []apitypes.GatewayOption
-	if code := e.owner.get(toolsTeam+"/gateway-options", &opts); code != 200 {
+	// Options: the team's own server (tools, prompts, resources and
+	// templates), and nothing of another team's private server.
+	var optPage apitypes.GatewayOptionPage
+	if code := e.owner.get(toolsTeam+"/gateway-options", &optPage); code != 200 {
 		t.Fatalf("options = %d", code)
 	}
 	names := []string{}
-	for _, o := range opts {
+	for _, o := range optPage.Items {
 		names = append(names, o.ExposedName)
 		if o.Source != "team" || o.ServerSlug != "status" {
 			t.Errorf("option %+v", o)
 		}
 	}
 	slices.Sort(names)
-	want := []string{"status__check_outage", "status__create_ticket", "status__echo", "status__incident_summary", "status__search_tickets", "status__whoami"}
-	if !slices.Equal(names, want) {
+	want := []string{"omcp://status/status://services", "omcp://status/status://services/{service}", "status__check_outage",
+		"status__create_ticket", "status__echo", "status__incident_summary", "status__search_tickets", "status__whoami"}
+	if !slices.Equal(names, want) || optPage.NextCursor != nil {
 		t.Fatalf("options = %v, want %v", names, want)
 	}
 	if code := e.member.get(toolsTeam+"/gateway-options", nil); code != 403 {
 		t.Fatalf("member options = %d", code)
 	}
-	if code := e.owner.get(toolsTeam+"/gateway-options?kind=resource", nil); code != 400 {
-		t.Fatalf("resource kind = %d", code)
+	if code := e.owner.get(toolsTeam+"/gateway-options?kind=sampling", nil); code != 400 {
+		t.Fatalf("unknown kind = %d", code)
 	}
 
-	// Another team's private server, a resource, and an unknown ID are refused.
+	// Another team's private server and an unknown ID are refused.
 	foreign := e.capID(e.outsider, e.other, "tool", "check_outage")
-	resource := e.capID(e.owner, e.server, "resource", "status://services")
-	for what, id := range map[string]string{"foreign private": foreign, "resource": resource, "unknown": "7f1d5c64-1f3c-4c3e-9a51-9f6a4e0f8b10"} {
+	for what, id := range map[string]string{"foreign private": foreign, "unknown": "7f1d5c64-1f3c-4c3e-9a51-9f6a4e0f8b10"} {
 		code, raw := e.setCaps(e.owner, gwPath, sel(id))
-		if code != 422 || errorCode(raw) != "capability_not_selectable" || !strings.Contains(string(raw), id) {
+		if code != 422 || errorCode(raw) != "capability_not_selectable" || !strings.Contains(string(raw), id) ||
+			!strings.Contains(string(raw), `"not_offered"`) {
 			t.Errorf("%s: %d %s", what, code, raw)
 		}
 	}
 
 	// Once published (and approved), the other team's server is in the catalog.
 	e.publish(e.outsider, e.other)
-	opts = nil
-	e.owner.get(toolsTeam+"/gateway-options?q=other", &opts)
-	if len(opts) == 0 || opts[0].Source != "catalog" || opts[0].TeamSlug != "other" {
+	optPage = apitypes.GatewayOptionPage{}
+	e.owner.get(toolsTeam+"/gateway-options?q=other", &optPage)
+	if opts := optPage.Items; len(opts) == 0 || opts[0].Source != "catalog" || opts[0].TeamSlug != "other" {
 		t.Fatalf("catalog options = %+v", opts)
 	}
 	// A capability it adds after approval isn't approved: not selectable.
@@ -601,12 +602,12 @@ func TestArchivedTeams(t *testing.T) {
 
 	optionServers := func(s *session, path string) map[string]bool {
 		t.Helper()
-		var opts []apitypes.GatewayOption
-		if code := s.get(path, &opts); code != 200 {
+		var page apitypes.GatewayOptionPage
+		if code := s.get(path, &page); code != 200 {
 			t.Fatalf("%s = %d", path, code)
 		}
 		out := map[string]bool{}
-		for _, o := range opts {
+		for _, o := range page.Items {
 			out[o.ServerSlug] = true
 		}
 		return out

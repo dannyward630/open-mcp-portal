@@ -1,0 +1,132 @@
+# NetworkPolicies for the gateway pods only (podSelector on the
+# open-mcp-gateway labels), so the base can share a namespace. Once any
+# policy selects a pod, everything not allowed by some policy is denied;
+# open-mcp-gateway-default-deny makes that explicit.
+#
+# Overlays commonly patch:
+#   open-mcp-gateway-ingress         the ingress controller's namespace
+#                                    (placeholder: ingress-controller)
+#   open-mcp-gateway-egress-postgres narrow TCP 5432 to where Postgres runs
+#   open-mcp-gateway-egress-dns      if cluster DNS is not kube-dns in
+#                                    kube-system
+# and add egress for MCP servers or an OIDC provider on ports other than
+# 443 (open-mcp-gateway-egress-https allows TCP 443 only).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-mcp-gateway-default-deny
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+  policyTypes: [Ingress, Egress]
+---
+# Traffic from the ingress controller (or Gateway API implementation) to the
+# app port. Patch the namespace to the controller's (for example
+# ingress-nginx, traefik). Kubelet probes are not affected by this policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-mcp-gateway-ingress
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/component: gateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-controller
+      ports:
+        - protocol: TCP
+          port: 8088
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-mcp-gateway-egress-dns
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# PostgreSQL on TCP 5432, in the cluster (any namespace) or outside it (a
+# managed database). Narrow it in the overlay: the Postgres namespace and
+# pod labels, or the database's address as an ipBlock.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-mcp-gateway-egress-postgres
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+        - ipBlock:
+            cidr: 0.0.0.0/0
+        - ipBlock:
+            cidr: ::/0
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# HTTPS to anywhere: upstream MCP servers and the OIDC provider. The
+# gateway's own SSRF guard still applies whatever this allows: outside
+# development it only connects to public addresses, never private,
+# loopback or link-local ones, and it never uses an HTTP(S) proxy. MCP
+# servers registered on another port (for example https://mcp.example.com:8443)
+# need an extra egress rule for that port in the overlay.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-mcp-gateway-egress-https
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/component: gateway
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+        - ipBlock:
+            cidr: ::/0
+      ports:
+        - protocol: TCP
+          port: 443

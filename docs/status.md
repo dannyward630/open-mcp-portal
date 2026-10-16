@@ -44,7 +44,7 @@ Last updated: 2026-10-16.
     team/user/group, `/v1/me/gateways` reasons, an SDK-client end-to-end run (JWT verified against the JWKS, aud =
     server URL, never the API key), nine refusals between list and call that never reach the server, key rotation, and
     a sentinel check that arguments/results are absent from `mcp_calls`, audit and logs.
-  - Gaps: resources; OAuth protected-resource metadata (Phase 4); no rate limit on `/mcp`; no SSE relay (calls are
+  - Gaps: resource subscriptions; OAuth protected-resource metadata (Phase 4); no rate limit on `/mcp`; no SSE relay (calls are
     buffered within 1 MiB); `server/discover` (2026-07-28 stateless protocol) answered "method not found".
   - Follow-ups done (not yet browser-checked): archived teams stop serving (their team gateways answer 404, their
     servers leave the catalog, gateway-options and health loop, other gateways show `team_archived`; unarchive
@@ -54,6 +54,19 @@ Last updated: 2026-10-16.
     policy changes leave pending servers pending (documented in [registry.md](registry.md), tested).
     Contract changes: `GatewayUnavailableReason` + `team_archived`, `Me.groups` (required), `MyGateway.groups`
     (optional), the admin health-checks operation.
+  - Follow-ups done (not yet browser-checked): gateway-options paged (`GatewayOptionPage`, `cursor`/`limit`
+    100–500/`q`/`kind`/`server`; the picker searches on the server, filters by kind and server, loads more);
+    resources and resource templates (exposed as `omcp://{serverSlug}/{uri}`, RFC 6570 `{var}`/`{+var}` templates,
+    `resources/list|templates/list|read`, JWT claim `resource`); API keys limited to gateways (`gatewayIds`,
+    `ApiKey.gateways`, error class `key_scope`). Migration `00006_gateway_resources_key_scopes`. See
+    [phase3-gateways.md](phase3-gateways.md) "As built".
+
+- **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
+  demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
+  example overlay in `deploy/kubernetes` (one Deployment with a migrate init container, Service, PDB, NetworkPolicies,
+  ServiceAccount), `make k8s-validate` (kustomize + kubeconform). Guide: [deploy.md](deploy.md). Verified: image
+  `migrate` + `serve` in production mode (https APP_URL, OIDC, fresh keys) against a scratch database, `/healthz`,
+  `/readyz`, `doctor`, SIGTERM drain; demo discovered the fake server's capabilities; `k8s-validate` passes.
 
 ## Differences from Grounded (deliberate)
 
@@ -79,8 +92,8 @@ make test && make web-test
 ## Next steps
 
 1. Phase 4: OAuth for MCP clients (protected-resource metadata at the URL `/mcp` already advertises), service accounts.
-2. Phase 3 follow-ups: `gateway-options` has no paging past 1000; resources; API keys can't be scoped to gateways.
-3. `make docker`; Kubernetes manifests later (Phase 6).
+2. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, metrics; see [deploy.md](deploy.md)
+   "Not covered yet".
 
 ## Phase 1 UI
 

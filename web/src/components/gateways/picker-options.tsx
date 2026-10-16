@@ -1,28 +1,49 @@
 /*
  * The picker's options grouped by server (with where each server comes
  * from: the team's own or the catalog), each a checkbox named by the name
- * clients will see; on team gateways a selected one gets a minimum team role.
+ * (tools, prompts) or URI (resources, templates) clients will see; on team
+ * gateways a selected one gets a minimum team role.
  */
 import { Badge } from "@/components/ui/badge/badge";
 import { Checkbox } from "@/components/ui/checkbox/checkbox";
 import { NativeSelect } from "@/components/ui/input/input";
 import { SourceBadge } from "./badges";
 import { groupBy } from "./capability-list";
-import { type GatewayKind, type GatewayOption, gatewayKindLabels, minRoleChoices, minRoleLabels, type TeamRole } from "./labels";
+import { type Gateway, type GatewayCapability, type GatewayKind, type GatewayOption, gatewayKindLabels, minRoleChoices, minRoleLabels, type TeamRole } from "./labels";
 import g from "./gateways.module.css";
 
 /** The selection: capability ID → minimum role ("" = every member). */
 export type PickerSelection = Record<string, TeamRole | "">;
 
-/** Options matching the search text (name, title, description, server, team) and the kind. */
-export function filterOptions(options: GatewayOption[], text: string, kind: GatewayKind | "", only?: PickerSelection) {
+/** Options matching the search text (name, title, description, server, team), the kind and the server ("" = any). */
+export function filterOptions(options: GatewayOption[], text: string, kind: GatewayKind | "", only?: PickerSelection, server = "") {
   const q = text.trim().toLowerCase();
   return options.filter(
     (o) =>
       (!kind || o.kind === kind) &&
+      (!server || o.serverId === server) &&
       (!only || o.capabilityId in only) &&
       (!q || [o.exposedName, o.title, o.description, o.serverName, o.serverSlug, o.teamName].some((v) => v.toLowerCase().includes(q))),
   );
+}
+
+/** A selected capability as an option (for selected ones not on a loaded page). */
+export function optionOf(c: GatewayCapability, gateway: Pick<Gateway, "ownerKind" | "teamSlug">): GatewayOption {
+  const own = gateway.ownerKind === "team" && c.teamSlug === gateway.teamSlug;
+  return {
+    capabilityId: c.capabilityId,
+    serverId: c.serverId,
+    serverSlug: c.serverSlug,
+    serverName: c.serverName,
+    teamSlug: c.teamSlug,
+    teamName: c.teamSlug,
+    source: own ? "team" : "catalog",
+    kind: c.kind,
+    name: c.name,
+    exposedName: c.exposedName,
+    title: c.title,
+    description: c.description,
+  };
 }
 
 type Props = {

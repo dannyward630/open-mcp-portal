@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
 	"github.com/ncecere/open-mcp-gateway/internal/auth"
 	"github.com/ncecere/open-mcp-gateway/internal/calls"
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
@@ -237,13 +238,71 @@ func (a *api) setTeamGatewayCapabilities(w http.ResponseWriter, r *http.Request)
 	a.writeSelection(w, r, s, err)
 }
 
-func (a *api) listTeamGatewayOptions(w http.ResponseWriter, r *http.Request) {
+// optionParams reads gateway-options' ?q=, ?kind=, ?server=, ?cursor= and
+// ?limit= (default 100, at most 500).
+func optionParams(w http.ResponseWriter, r *http.Request) (gateways.OptionParams, int32, bool) {
+	p := gateways.OptionParams{Kind: kindParam(r)}
+	limit := int32(gateways.DefaultOptionPage)
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > gateways.MaxOptionPage {
+			httpx.Error(w, http.StatusBadRequest, "invalid_limit", "limit must be between 1 and 500")
+			return p, 0, false
+		}
+		limit = int32(n)
+	}
 	q, ok := search(w, r)
+	if !ok {
+		return p, 0, false
+	}
+	p.Search, p.Limit = q, limit+1
+	if v := r.URL.Query().Get("server"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "invalid_server", "server must be an ID")
+			return p, 0, false
+		}
+		p.Server = &id
+	}
+	keys, ok := decodeCursor(w, r, 4)
+	if !ok {
+		return p, 0, false
+	}
+	if keys != nil {
+		serverID, err1 := uuid.Parse(keys[1])
+		id, err2 := uuid.Parse(keys[3])
+		if err1 != nil || err2 != nil {
+			httpx.Error(w, http.StatusBadRequest, "invalid_cursor", "Invalid cursor")
+			return p, 0, false
+		}
+		p.After = &gateways.OptionCursor{ServerName: keys[0], ServerID: serverID, Name: keys[2], ID: id}
+	}
+	return p, limit, true
+}
+
+func writeOptionPage(w http.ResponseWriter, r *http.Request, opts []gateways.Option, err error, limit int32) {
+	if failed(w, r, err) {
+		return
+	}
+	page := apitypes.GatewayOptionPage{Items: []apitypes.GatewayOption{}}
+	if len(opts) > int(limit) {
+		opts = opts[:limit]
+		c := opts[len(opts)-1].Cursor()
+		page.NextCursor = encodeCursor(c.ServerName, c.ServerID.String(), c.Name, c.ID.String())
+	}
+	for _, o := range opts {
+		page.Items = append(page.Items, toAPIGatewayOption(o))
+	}
+	httpx.JSON(w, http.StatusOK, page)
+}
+
+func (a *api) listTeamGatewayOptions(w http.ResponseWriter, r *http.Request) {
+	p, limit, ok := optionParams(w, r)
 	if !ok {
 		return
 	}
-	opts, err := a.Gateways.TeamOptions(r.Context(), a.actor(r), r.PathValue("team"), q, kindParam(r))
-	writeList(w, r, opts, err, toAPIGatewayOption)
+	opts, err := a.Gateways.TeamOptions(r.Context(), a.actor(r), r.PathValue("team"), p)
+	writeOptionPage(w, r, opts, err, limit)
 }
 
 func (a *api) adminListGateways(w http.ResponseWriter, r *http.Request) {
@@ -333,12 +392,12 @@ func (a *api) adminSetGatewayCapabilities(w http.ResponseWriter, r *http.Request
 }
 
 func (a *api) adminListGatewayOptions(w http.ResponseWriter, r *http.Request) {
-	q, ok := search(w, r)
+	p, limit, ok := optionParams(w, r)
 	if !ok {
 		return
 	}
-	opts, err := a.Gateways.AdminOptions(r.Context(), a.actor(r), q, kindParam(r))
-	writeList(w, r, opts, err, toAPIGatewayOption)
+	opts, err := a.Gateways.AdminOptions(r.Context(), a.actor(r), p)
+	writeOptionPage(w, r, opts, err, limit)
 }
 
 func (a *api) adminListGatewayGrants(w http.ResponseWriter, r *http.Request) {
@@ -406,7 +465,7 @@ func (a *api) getMyGateway(w http.ResponseWriter, r *http.Request) {
 func (a *api) listMyApiKeys(w http.ResponseWriter, r *http.Request) {
 	keys, err := a.APIKeys.List(r.Context(), a.actor(r))
 	now := time.Now()
-	writeList(w, r, keys, err, func(k dbgen.ApiKey) apitypes.ApiKey { return toAPIKey(k, now) })
+	writeList(w, r, keys, err, func(k apikeys.View) apitypes.ApiKey { return toAPIKey(k, now) })
 }
 
 func (a *api) createMyApiKey(w http.ResponseWriter, r *http.Request) {
@@ -419,11 +478,15 @@ func (a *api) createMyApiKey(w http.ResponseWriter, r *http.Request) {
 	if in.ExpiresInDays != nil && days == 0 {
 		days = -1 // explicit 0 is invalid, not the default
 	}
-	c, err := a.APIKeys.Create(r.Context(), a.actor(r), in.Name, days)
+	ci := apikeys.CreateInput{Name: in.Name, Days: days}
+	if in.GatewayIds != nil {
+		ci.GatewayIDs = *in.GatewayIds
+	}
+	c, err := a.APIKeys.Create(r.Context(), a.actor(r), ci)
 	if failed(w, r, err) {
 		return
 	}
-	httpx.JSON(w, http.StatusCreated, apitypes.ApiKeyCreated{Key: toAPIKey(c.Key, time.Now()), Secret: c.Secret})
+	httpx.JSON(w, http.StatusCreated, apitypes.ApiKeyCreated{Key: toAPIKey(c.View, time.Now()), Secret: c.Secret})
 }
 
 func (a *api) revokeMyApiKey(w http.ResponseWriter, r *http.Request) {

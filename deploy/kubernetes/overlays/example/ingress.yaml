@@ -1,0 +1,40 @@
+# Ingress for ingress-nginx with cert-manager. The host must match APP_URL;
+# TLS terminates here (APP_URL is https).
+#
+# - Timeouts: an MCP call waits up to 120s for its upstream server (the
+#   per-server maximum), so reads must be allowed for longer than nginx's
+#   60s default. Responses are plain JSON today; SSE relays are planned, so
+#   response buffering is already off and the timeout has headroom.
+# - Body size: MCP requests are capped at 1 MiB by the gateway.
+# - No sticky sessions: /mcp/{slug} is stateless; any replica serves any
+#   request. Browser sessions live in PostgreSQL.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: open-mcp-gateway
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+  annotations:
+    cert-manager.io/cluster-issuer: example-issuer
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [mcp.example.org]
+      secretName: open-mcp-gateway-tls
+  rules:
+    - host: mcp.example.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: open-mcp-gateway
+                port:
+                  name: http

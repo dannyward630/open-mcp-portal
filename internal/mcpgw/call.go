@@ -75,7 +75,11 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 		rc.upstreamFailed(rec, err)
 		return
 	}
-	token, err := rc.identityToken(kind, o)
+	who := identityFor{tool: o.ExposedName}
+	if kind == upstream.KindPrompt {
+		who = identityFor{prompt: o.ExposedName}
+	}
+	token, err := rc.identityToken(who, o)
 	if err != nil {
 		rc.internal(err)
 		return
@@ -109,6 +113,12 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 		}
 		result = res
 	}
+	rc.relay(rec, result, isError)
+}
+
+// relay answers with a server's result (without upstreamMetaKeys, at most
+// MaxResponseBytes) and records the exchange.
+func (rc *request) relay(rec calls.Call, result any, isError bool) {
 	encoded, err := json.Marshal(result)
 	if err == nil {
 		encoded, err = scrubMeta(encoded)
@@ -185,13 +195,21 @@ func (rc *request) upstreamFailed(rec calls.Call, err error) {
 		rec.Outcome = calls.OutcomeTooLarge
 	case ue.RPCCode == codeInvalidParams:
 		code, rec.Outcome = codeInvalidParams, calls.OutcomeBadRequest
+	case ue.RPCCode == codeResourceNotFound:
+		code, rec.Outcome, rec.ErrorClass = codeResourceNotFound, calls.OutcomeBadRequest, upstream.ClassNotFound
 	}
 	n := rc.fail(code, ue.Message)
 	rc.record(rec, n)
 }
 
+// identityFor is what a token is for: the exposed tool or prompt name, or
+// the exposed resource URI read (exactly one).
+type identityFor struct {
+	tool, prompt, resource string
+}
+
 // identityToken signs who is calling, for the server's URL.
-func (rc *request) identityToken(kind string, o gateways.Offer) (string, error) {
+func (rc *request) identityToken(what identityFor, o gateways.Offer) (string, error) {
 	u := rc.principal.User
 	teamRows, err := dbgen.New(rc.h.Pool).ListTeamsForUser(rc.r.Context(), u.ID)
 	if err != nil {
@@ -206,11 +224,6 @@ func (rc *request) identityToken(kind string, o gateways.Offer) (string, error) 
 		client = rc.principal.Key.Name
 	}
 	c := identity.Claims{Audience: o.Server.URL, Subject: u.ID.String(), Email: u.Email, Name: u.DisplayName, Teams: slugs,
-		Gateway: rc.gateway.Slug, Client: client}
-	if kind == upstream.KindPrompt {
-		c.Prompt = o.ExposedName
-	} else {
-		c.Tool = o.ExposedName
-	}
+		Gateway: rc.gateway.Slug, Client: client, Tool: what.tool, Prompt: what.prompt, Resource: what.resource}
 	return rc.h.Identity.Sign(rc.r.Context(), c)
 }

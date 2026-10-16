@@ -1,6 +1,8 @@
 /*
- * Create API key: a name and how many days it lasts (keys always expire;
- * 90 by default). The secret is shown once, right after, with a warning and
+ * Create API key: a name, how many days it lasts (keys always expire;
+ * 90 by default) and, optionally, the gateways it is limited to (picked
+ * from My gateways; none means every gateway the person can use). The
+ * secret is shown once, right after, with a warning and
  * a copy button; it's gone when the dialog closes. The person can put it
  * into a gateway's connection snippets there and then, if they choose to.
  * No toast: the dialog's own "API key created" says so, and a toast would
@@ -14,12 +16,16 @@ import { ConnectSection } from "../../components/gateways/connect";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { Button } from "@/components/ui/button/button";
 import { Checkbox } from "@/components/ui/checkbox/checkbox";
+import { Combobox } from "@/components/ui/combobox/combobox";
 import { CopyField } from "@/components/ui/copy-field/copy-field";
 import { Dialog, DialogClose } from "@/components/ui/dialog/dialog";
 import { Field, Form } from "@/components/ui/field/field";
 import { Input, NativeSelect } from "@/components/ui/input/input";
 import { Stack } from "@/components/ui/layout/layout";
 import { NumberInput } from "@/components/ui/number-input/number-input";
+
+/** The most gateways a key can be limited to (the API's maxItems). */
+const maxKeyGateways = 50;
 
 const daysProblem = (text: string) => {
   const n = Number(text);
@@ -31,9 +37,16 @@ export function CreateKeyDialog({ onClose }: { onClose: () => void }) {
   const formId = useId();
   const [name, setName] = useState("");
   const [days, setDays] = useState("90");
+  const [gatewayIds, setGatewayIds] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const gateways = useQuery(myGatewaysQuery());
   const create = useMutation({
-    mutationFn: async () => unwrap(await api.POST("/v1/me/api-keys", { body: { name: name.trim(), expiresInDays: Number(days) } })),
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/v1/me/api-keys", {
+          body: { name: name.trim(), expiresInDays: Number(days), ...(gatewayIds.length > 0 ? { gatewayIds } : {}) },
+        }),
+      ),
     onSuccess: () => void qc.invalidateQueries({ queryKey: myApiKeysQuery().queryKey }),
   });
 
@@ -77,6 +90,25 @@ export function CreateKeyDialog({ onClose }: { onClose: () => void }) {
         <Field label="Expires after (days)" description="Keys always expire: from 1 to 365 days. Create a new one when it does." error={daysError}>
           <NumberInput value={days} onValueChange={setDays} maximumFractionDigits={0} unit="days" />
         </Field>
+        <Field
+          label="Limit to gateways (optional)"
+          description={
+            gatewayIds.length > 0
+              ? "The key works only on these gateways, and only while you can use them."
+              : "Leave empty to use the key on every gateway you can use. A limit never gives you more access."
+          }
+        >
+          <Combobox
+            multiple
+            items={(gateways.data ?? []).map((g) => ({ value: g.id, label: g.name, hint: g.slug }))}
+            value={gatewayIds}
+            onValueChange={(v) => setGatewayIds(v.slice(0, maxKeyGateways))}
+            placeholder={gateways.data?.length === 0 ? "You can't use any gateway yet" : "All my gateways"}
+            listLabel="My gateways"
+            chipsLabel="Chosen gateways"
+            emptyText="No gateway matches."
+          />
+        </Field>
         <ErrorAlert error={create.error} title="Couldn't create the key" />
       </Form>
     </Dialog>
@@ -86,7 +118,9 @@ export function CreateKeyDialog({ onClose }: { onClose: () => void }) {
 /** The secret once, and the choice to put it into a gateway's snippets. */
 function SecretView({ created }: { created: Schemas["ApiKeyCreated"] }) {
   const gateways = useQuery(myGatewaysQuery());
-  const list = gateways.data ?? [];
+  // A limited key only works on its gateways: offer only those.
+  const scope = new Set(created.key.gateways.filter((g) => g.exists).map((g) => g.id));
+  const list = (gateways.data ?? []).filter((g) => created.key.gateways.length === 0 || scope.has(g.id));
   const [gatewayId, setGatewayId] = useState("");
   const [fill, setFill] = useState(false);
   const chosen = list.find((g) => g.id === gatewayId) ?? list[0];

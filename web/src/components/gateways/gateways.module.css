@@ -159,6 +159,19 @@
   max-width: 24rem;
 }
 
+.serverFilter {
+  flex: 0 1 14rem;
+  min-width: 10rem;
+}
+
+.loadMore {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
 .count {
   margin-inline-start: auto;
   font-size: var(--font-size-sm);

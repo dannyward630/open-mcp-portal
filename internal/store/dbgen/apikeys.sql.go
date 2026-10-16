@@ -176,6 +176,28 @@ func (q *Queries) InsertAPIKey(ctx context.Context, arg InsertAPIKeyParams) (Api
 	return i, err
 }
 
+const insertAPIKeyGateway = `-- name: InsertAPIKeyGateway :exec
+INSERT INTO api_key_gateways (api_key_id, gateway_id, gateway_slug, gateway_name)
+VALUES ($1, $2, $3, $4)
+`
+
+type InsertAPIKeyGatewayParams struct {
+	ApiKeyID    uuid.UUID
+	GatewayID   uuid.UUID
+	GatewaySlug string
+	GatewayName string
+}
+
+func (q *Queries) InsertAPIKeyGateway(ctx context.Context, arg InsertAPIKeyGatewayParams) error {
+	_, err := q.db.Exec(ctx, insertAPIKeyGateway,
+		arg.ApiKeyID,
+		arg.GatewayID,
+		arg.GatewaySlug,
+		arg.GatewayName,
+	)
+	return err
+}
+
 const insertSigningKey = `-- name: InsertSigningKey :exec
 INSERT INTO signing_keys (kid, private_key_cipher, public_jwk, state, activated_at)
 VALUES ($1, $2, $3, $4, CASE WHEN $4::text = 'active' THEN now() END)
@@ -198,6 +220,77 @@ func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyPara
 		arg.State,
 	)
 	return err
+}
+
+const listAPIKeyGatewayIDs = `-- name: ListAPIKeyGatewayIDs :many
+SELECT gateway_id FROM api_key_gateways WHERE api_key_id = $1
+`
+
+// The gateways a key is limited to (none: every gateway its owner may use).
+func (q *Queries) ListAPIKeyGatewayIDs(ctx context.Context, apiKeyID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listAPIKeyGatewayIDs, apiKeyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var gateway_id uuid.UUID
+		if err := rows.Scan(&gateway_id); err != nil {
+			return nil, err
+		}
+		items = append(items, gateway_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAPIKeyGateways = `-- name: ListAPIKeyGateways :many
+SELECT kg.api_key_id, kg.gateway_id,
+       COALESCE(g.slug, kg.gateway_slug)::text AS slug, COALESCE(g.name, kg.gateway_name)::text AS name,
+       (g.id IS NOT NULL)::bool AS gateway_exists
+FROM api_key_gateways kg
+LEFT JOIN gateways g ON g.id = kg.gateway_id
+WHERE kg.api_key_id = ANY($1::uuid[])
+ORDER BY kg.api_key_id, 4, kg.gateway_id
+`
+
+type ListAPIKeyGatewaysRow struct {
+	ApiKeyID      uuid.UUID
+	GatewayID     uuid.UUID
+	Slug          string
+	Name          string
+	GatewayExists bool
+}
+
+// The scopes of keys, with each gateway's current slug and name while it
+// exists (otherwise as they were when the key was created).
+func (q *Queries) ListAPIKeyGateways(ctx context.Context, keyIds []uuid.UUID) ([]ListAPIKeyGatewaysRow, error) {
+	rows, err := q.db.Query(ctx, listAPIKeyGateways, keyIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAPIKeyGatewaysRow{}
+	for rows.Next() {
+		var i ListAPIKeyGatewaysRow
+		if err := rows.Scan(
+			&i.ApiKeyID,
+			&i.GatewayID,
+			&i.Slug,
+			&i.Name,
+			&i.GatewayExists,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAPIKeys = `-- name: ListAPIKeys :many

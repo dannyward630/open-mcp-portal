@@ -64,7 +64,7 @@ SELECT g.id AS gateway_id,
         JOIN mcp_servers s ON s.id = c.server_id
         JOIN teams st ON st.id = s.team_id
         WHERE gc.gateway_id = g.id
-          AND NOT COALESCE(c.gone_at IS NULL AND c.kind IN ('tool', 'prompt')
+          AND NOT COALESCE(c.gone_at IS NULL AND c.kind IN ('tool', 'prompt', 'resource', 'resource_template')
                            AND st.status = 'active' AND COALESCE(gt.status, 'active') = 'active' AND s.enabled
                            AND ((g.owner_kind = 'team' AND s.team_id = g.team_id)
                                 OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint)), false)
@@ -76,14 +76,15 @@ WHERE g.id = ANY(@ids::uuid[]);
 
 -- name: ListGatewaySelection :many
 -- A gateway's selected capabilities with their servers and the servers'
--- teams, ordered by server and name (tools before prompts).
+-- teams, ordered by server and name (tools, prompts, resources, templates).
 SELECT sqlc.embed(c), sqlc.embed(s), gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
 FROM gateway_capabilities gc
 JOIN mcp_capabilities c ON c.id = gc.capability_id
 JOIN mcp_servers s ON s.id = c.server_id
 JOIN teams t ON t.id = s.team_id
 WHERE gc.gateway_id = @gateway_id
-ORDER BY s.name, s.id, CASE c.kind WHEN 'tool' THEN 0 ELSE 1 END, c.name;
+ORDER BY s.name, s.id,
+         CASE c.kind WHEN 'tool' THEN 0 WHEN 'prompt' THEN 1 WHEN 'resource' THEN 2 ELSE 3 END, c.name;
 
 -- name: RemoveGatewayCapabilitiesExcept :exec
 DELETE FROM gateway_capabilities
@@ -95,28 +96,36 @@ VALUES (@gateway_id, @capability_id, sqlc.narg(min_team_role), @added_by)
 ON CONFLICT (gateway_id, capability_id) DO UPDATE SET min_team_role = EXCLUDED.min_team_role;
 
 -- name: ListGatewayOptions :many
--- Tools and prompts a gateway may select: listed, of an enabled server of
--- an active team, and either a server of team_id (a team gateway's own
--- team; NULL for a platform gateway) or published with the current
--- definition approved. by_ids narrows to ids; search is LIKE-escaped by the
--- caller.
+-- One page of the tools, prompts, resources and resource templates a
+-- gateway may select, ordered by (server name, server id, name, id):
+-- listed, of an enabled server of an active team, and either a server of
+-- team_id (a team gateway's own team; NULL for a platform gateway) or
+-- published with the current definition approved. Resource templates must
+-- use only RFC 6570 level 1-2 {var} and {+var} expressions (the same rule as
+-- gateways.TemplateSupported). by_ids narrows to ids; server_id to one
+-- server; search is LIKE-escaped by the caller.
 SELECT c.id, c.kind, c.name, c.title, c.description,
        s.id AS server_id, s.slug AS server_slug, s.name AS server_name, s.team_id AS server_team_id,
        t.slug AS team_slug, t.name AS team_name
 FROM mcp_capabilities c
 JOIN mcp_servers s ON s.id = c.server_id
 JOIN teams t ON t.id = s.team_id
-WHERE c.kind IN ('tool', 'prompt') AND c.gone_at IS NULL AND s.enabled AND t.status = 'active'
+WHERE c.kind IN ('tool', 'prompt', 'resource', 'resource_template') AND c.gone_at IS NULL AND s.enabled AND t.status = 'active'
+  AND (c.kind <> 'resource_template' OR c.name ~ '^([^{}]|\{\+?[A-Za-z0-9_]([A-Za-z0-9_.]|%[0-9A-Fa-f]{2})*\})*$')
   AND ((sqlc.narg(team_id)::uuid IS NOT NULL AND s.team_id = sqlc.narg(team_id)::uuid)
        OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint))
   AND (sqlc.narg(kind)::text IS NULL OR c.kind = sqlc.narg(kind)::text)
+  AND (sqlc.narg(server_id)::uuid IS NULL OR s.id = sqlc.narg(server_id)::uuid)
   AND (NOT @by_ids::bool OR c.id = ANY(@ids::uuid[]))
   AND (sqlc.narg(search)::text IS NULL
        OR c.name ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'
        OR c.title ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'
        OR s.name ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'
        OR s.slug ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\')
-ORDER BY s.name, s.id, CASE c.kind WHEN 'tool' THEN 0 ELSE 1 END, c.name
+  AND (sqlc.narg(after_server_name)::text IS NULL
+       OR (s.name, s.id, c.name, c.id) > (sqlc.narg(after_server_name)::text, sqlc.narg(after_server_id)::uuid,
+                                          sqlc.narg(after_name)::text, sqlc.narg(after_id)::uuid))
+ORDER BY s.name, s.id, c.name, c.id
 LIMIT @page_size;
 
 -- name: ListGatewayGrants :many
@@ -184,3 +193,10 @@ WHERE g.enabled
                    OR gg.team_id IN (SELECT tm.team_id FROM team_members tm WHERE tm.user_id = @user_id)
                    OR gg.group_name = ANY(@groups::text[])))))
 ORDER BY g.name, g.id;
+
+-- name: GetCapability :one
+SELECT * FROM mcp_capabilities WHERE id = $1;
+
+-- name: ListUsableGatewayCandidates :many
+-- Gateways by ID, for checking which a person may use (API key scopes).
+SELECT * FROM gateways WHERE id = ANY(@ids::uuid[]);

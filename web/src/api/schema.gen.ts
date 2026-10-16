@@ -923,7 +923,7 @@ export interface paths {
         get: operations["listTeamGatewayCapabilities"];
         /**
          * Replace the gateway's selection (team owners and admins); If-Match is the gateway's revision
-         * @description 422 capability_not_selectable (details.capabilityIds) when a capability is not offered by gateway-options (another team's private server, unapproved, gone, or a resource). 422 too_many (at most 200). 422 name_clash (details.exposedName) when two selected capabilities expose the same name.
+         * @description 422 capability_not_selectable (details.capabilityIds, and details.reasons mapping each to unsupported_template or not_offered) when a capability is not offered by gateway-options (another team's private server, unapproved, gone, or a resource template with unsupported expressions). 422 too_many (at most 200). 422 name_clash (details.exposedName) when two selected capabilities expose the same name or URI.
          */
         put: operations["setTeamGatewayCapabilities"];
         post?: never;
@@ -945,7 +945,7 @@ export interface paths {
         };
         /**
          * Capabilities a team gateway may select (team owners and admins)
-         * @description Tools and prompts of the team's own enabled servers (any publish state, listed), plus approved, listed tools and prompts of published, enabled servers of other teams.
+         * @description Tools, prompts, resources and resource templates of the team's own enabled servers (any publish state, listed), plus approved, listed ones of published, enabled servers of other teams. Resource templates that use RFC 6570 expressions other than {var} and {+var} are left out (they can't be matched safely).
          */
         get: operations["listTeamGatewayOptions"];
         put?: never;
@@ -1054,7 +1054,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Capabilities a platform gateway may select (platform admins and auditors) */
+        /**
+         * Capabilities a platform gateway may select (platform admins and auditors)
+         * @description Approved, listed tools, prompts, resources and resource templates of published, enabled servers. Resource templates that use RFC 6570 expressions other than {var} and {+var} are left out.
+         */
         get: operations["adminListGatewayOptions"];
         put?: never;
         post?: never;
@@ -1172,7 +1175,7 @@ export interface paths {
         put?: never;
         /**
          * Create a personal API key (browser session only); the secret is shown once
-         * @description 409 too_many_keys (at most 20 active keys per person). An API key can't create keys.
+         * @description 409 too_many_keys (at most 20 active keys per person). 400 too_many_gateways (more than 50 gatewayIds). 422 gateway_not_usable (details.gatewayIds) when a gateway in gatewayIds doesn't exist, is switched off or the caller can't use it now. An API key can't create keys.
          */
         post: operations["createMyApiKey"];
         delete?: never;
@@ -1769,10 +1772,10 @@ export interface components {
         /** @enum {string} */
         GatewayOwnerKind: "team" | "platform";
         /**
-         * @description Phase 3 serves tools and prompts; resources come later
+         * @description Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
          * @enum {string}
          */
-        GatewayCapabilityKind: "tool" | "prompt";
+        GatewayCapabilityKind: "tool" | "prompt" | "resource" | "resource_template";
         Gateway: {
             /** Format: uuid */
             id: string;
@@ -1855,7 +1858,7 @@ export interface components {
             /** @description The name the server uses */
             name: string;
             /**
-             * @description The name clients see, {serverSlug}__{name}
+             * @description What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri} for resources and resource templates
              * @example service-status__check_outage
              */
             exposedName: string;
@@ -1894,10 +1897,16 @@ export interface components {
              */
             source: "team" | "catalog";
             kind: components["schemas"]["GatewayCapabilityKind"];
+            /** @description The name the server uses (a resource's URI, a template's URI template) */
             name: string;
+            /** @description What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and templates */
             exposedName: string;
             title: string;
             description: string;
+        };
+        GatewayOptionPage: {
+            items: components["schemas"]["GatewayOption"][];
+            nextCursor?: string | null;
         };
         /** @enum {string} */
         GatewayGrantSubjectKind: "team" | "user" | "group";
@@ -1971,6 +1980,16 @@ export interface components {
             lastUsedAt?: string | null;
             /** Format: date-time */
             revokedAt?: string | null;
+            /** @description The gateways the key is limited to, by name. Empty means every gateway its owner can use. A deleted gateway stays listed (exists false); a key whose gateways are all gone works nowhere. */
+            gateways: components["schemas"]["ApiKeyGateway"][];
+        };
+        ApiKeyGateway: {
+            /** Format: uuid */
+            id: string;
+            /** @description The gateway's slug (as it was when the key was created, once deleted) */
+            slug: string;
+            name: string;
+            exists: boolean;
         };
         ApiKeyCreate: {
             /** @example Claude Code on my laptop */
@@ -1981,6 +2000,8 @@ export interface components {
              * @default 90
              */
             expiresInDays: number;
+            /** @description Limit the key to these gateways, each one the caller can use now. Absent or empty means every gateway the caller can use. A limit never widens access. */
+            gatewayIds?: string[];
         };
         ApiKeyCreated: {
             key: components["schemas"]["ApiKey"];
@@ -1997,9 +2018,12 @@ export interface components {
             id: number;
             /** Format: date-time */
             occurredAt: string;
-            /** @example tools/call */
+            /**
+             * @description tools/list, tools/call, prompts/list, prompts/get, resources/list, resources/templates/list or resources/read
+             * @example tools/call
+             */
             method: string;
-            /** @description The tool or prompt name the client used (absent for list calls) */
+            /** @description The tool or prompt name, or the exposed resource URI, the client used (absent for list calls) */
             exposedName?: string;
             gateway: components["schemas"]["CallRef"];
             server?: components["schemas"]["CallRef"];
@@ -2007,6 +2031,7 @@ export interface components {
             /** @description clientInfo.name from initialize, when sent */
             clientName?: string;
             outcome: components["schemas"]["McpCallOutcome"];
+            /** @description Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason */
             errorClass?: string;
             /** Format: int32 */
             latencyMs: number;
@@ -2083,6 +2108,17 @@ export interface components {
                 };
             };
         };
+        /** @description A page of options ordered by server name, then name */
+        GatewayOptionPageReply: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["GatewayOptionPage"];
+                };
+            };
+        };
         /** @description A page of calls, newest first */
         McpCallPageReply: {
             headers: {
@@ -2122,6 +2158,10 @@ export interface components {
         ServerIdParam: string;
         CapabilityIdParam: string;
         CapabilityKindParam: components["schemas"]["CapabilityKind"];
+        GatewayOptionKindParam: components["schemas"]["GatewayCapabilityKind"];
+        /** @description Only this MCP server's capabilities (server ID) */
+        GatewayOptionServerParam: string;
+        GatewayOptionLimitParam: number;
         GatewayIdParam: string;
         /** @description Gateway ID */
         CallGatewayParam: string;
@@ -3842,7 +3882,12 @@ export interface operations {
             query?: {
                 /** @description Case-insensitive substring match */
                 q?: components["parameters"]["SearchParam"];
-                kind?: components["schemas"]["GatewayCapabilityKind"];
+                kind?: components["parameters"]["GatewayOptionKindParam"];
+                /** @description Only this MCP server's capabilities (server ID) */
+                server?: components["parameters"]["GatewayOptionServerParam"];
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["GatewayOptionLimitParam"];
             };
             header?: never;
             path: {
@@ -3853,17 +3898,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Options ordered by server and name (at most 1000) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["GatewayOption"][];
-                    };
-                };
-            };
+            200: components["responses"]["GatewayOptionPageReply"];
+            400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
         };
@@ -4114,7 +4150,12 @@ export interface operations {
             query?: {
                 /** @description Case-insensitive substring match */
                 q?: components["parameters"]["SearchParam"];
-                kind?: components["schemas"]["GatewayCapabilityKind"];
+                kind?: components["parameters"]["GatewayOptionKindParam"];
+                /** @description Only this MCP server's capabilities (server ID) */
+                server?: components["parameters"]["GatewayOptionServerParam"];
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["GatewayOptionLimitParam"];
             };
             header?: never;
             path?: never;
@@ -4122,17 +4163,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Options ordered by server and name (at most 1000) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["GatewayOption"][];
-                    };
-                };
-            };
+            200: components["responses"]["GatewayOptionPageReply"];
+            400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
         };
     };
@@ -4341,6 +4373,7 @@ export interface operations {
             400: components["responses"]["ErrorReply"];
             401: components["responses"]["ErrorReply"];
             409: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
         };
     };
     revokeMyApiKey: {

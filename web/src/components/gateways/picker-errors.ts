@@ -2,7 +2,7 @@
  * A refused selection (422 from PUT …/capabilities) in the picker's words,
  * with the capabilities it's about, so their rows can say what's wrong:
  * capability_not_selectable (details.capabilityIds), too_many (over 200),
- * name_clash (details.exposedName).
+ * name_clash (details.exposedName: a name or an exposed resource URI).
  */
 import { ApiError } from "../../api/client";
 import { maxCapabilities } from "./labels";
@@ -26,13 +26,15 @@ export function selectionProblem(err: unknown, selected: { capabilityId: string;
   if (err.code === "capability_not_selectable") {
     const ids = strings(err.details?.capabilityIds);
     const n = ids.length;
+    const reasons = err.details?.reasons;
+    const template = typeof reasons === "object" && reasons !== null && Object.values(reasons).includes("unsupported_template");
     return {
       code: err.code,
       ids,
       rowText: "Can't be selected now. Remove it to save.",
       message:
         n > 0
-          ? `${n === 1 ? "1 selected capability can't" : `${n} selected capabilities can't`} be selected any more: the server may be another team's private one, or the capability unapproved, gone or not a tool or prompt. Remove ${n === 1 ? "it" : "them"} and save again.`
+          ? `${n === 1 ? "1 selected capability can't" : `${n} selected capabilities can't`} be selected any more: the server may be another team's private one, or the capability unapproved or gone${template ? ", or a resource template using expressions other than {var} and {+var}" : ""}. Remove ${n === 1 ? "it" : "them"} and save again.`
           : "Some selected capabilities can't be selected any more. Remove the ones marked here and save again.",
     };
   }
@@ -47,7 +49,8 @@ export function selectionProblem(err: unknown, selected: { capabilityId: string;
   }
   if (err.code === "name_clash") {
     const name = typeof err.details?.exposedName === "string" ? err.details.exposedName : undefined;
-    const ids = name ? selected.filter((s) => s.exposedName === name).map((s) => s.capabilityId) : [];
+    // The server compares exposed names and URIs case-insensitively.
+    const ids = name ? selected.filter((s) => s.exposedName?.toLowerCase() === name.toLowerCase()).map((s) => s.capabilityId) : [];
     return {
       code: err.code,
       ids,

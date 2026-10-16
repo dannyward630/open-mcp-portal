@@ -11,10 +11,10 @@
  * edit them and their grants; auditors read. In Admin a team gateway is
  * read-only except its switch (platform admins).
  */
-import { type QueryClient, queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, type QueryClient, queryOptions } from "@tanstack/react-query";
 import { api, ifMatch, unwrap } from "../../api/client";
 import { adminGatewayQuery, adminGatewaysKey, myGatewaysKey, teamGatewayQuery, teamGatewaysKey } from "../../api/queries";
-import type { Gateway, TeamRole } from "./labels";
+import type { Gateway, GatewayKind, TeamRole } from "./labels";
 
 export type GatewayScope = { kind: "team"; team: string } | { kind: "admin" };
 
@@ -59,14 +59,24 @@ export const gatewayCapabilitiesQuery = (scope: GatewayScope, id: string) =>
         : unwrap(await api.GET("/v1/admin/gateways/{gatewayId}/capabilities", { params: { path: { gatewayId: id } } })),
   });
 
-/** What a gateway may select (all of it, at most 1000: the picker searches and filters in memory). */
-export const gatewayOptionsQuery = (scope: GatewayScope) =>
-  queryOptions({
-    queryKey: [...baseKey(scope), "options"],
-    queryFn: async () =>
-      scope.kind === "team"
-        ? unwrap(await api.GET("/v1/teams/{team}/gateway-options", { params: { path: { team: scope.team } } }))
-        : unwrap(await api.GET("/v1/admin/gateway-options")),
+/** Server-side filters of gateway-options ("" = any). */
+export type OptionFilters = { q: string; kind: GatewayKind | ""; server: string };
+
+/** The page size the picker asks for. */
+export const optionPageSize = 100;
+
+/** What a gateway may select, a page at a time (ordered by server, then name), searched and filtered by the server. */
+export const gatewayOptionsQuery = (scope: GatewayScope, f: OptionFilters) =>
+  infiniteQueryOptions({
+    queryKey: [...baseKey(scope), "options", f],
+    queryFn: async ({ pageParam }) => {
+      const query = { q: f.q || undefined, kind: f.kind || undefined, server: f.server || undefined, cursor: pageParam, limit: optionPageSize };
+      return scope.kind === "team"
+        ? unwrap(await api.GET("/v1/teams/{team}/gateway-options", { params: { path: { team: scope.team }, query } }))
+        : unwrap(await api.GET("/v1/admin/gateway-options", { params: { query } }));
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 
 export const grantsQuery = (id: string) =>

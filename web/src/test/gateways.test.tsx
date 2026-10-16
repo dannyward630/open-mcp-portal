@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
-import { gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOptions, mcpCall, myGateway, page, team } from "./fixtures";
+import { gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOptions, optionsPage, mcpCall, myGateway, page, team } from "./fixtures";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 type Role = Schemas["TeamRole"];
@@ -16,7 +16,7 @@ const routes = (role: Role | null = "owner", g = gateway(), extra: Record<string
   [`GET ${base}`]: () => page([g]),
   [`GET ${base}/${gatewayId}`]: () => g,
   [`GET ${base}/${gatewayId}/capabilities`]: () => gatewayCapabilities(),
-  [`GET /v1/teams/${team.slug}/gateway-options`]: () => gatewayOptions,
+  [`GET /v1/teams/${team.slug}/gateway-options`]: (_b, call) => optionsPage(gatewayOptions, call.search),
   [`GET /v1/teams/${team.slug}/calls`]: () => page([mcpCall()]),
   // Members can use the team's gateways (My gateways); staff who aren't members can't.
   "GET /v1/me/gateways": () => (role ? [myGateway()] : []),
@@ -37,7 +37,7 @@ describe("Team › Gateways list", () => {
     expect(within(row).getByRole("link", { name: "Support tools" })).toHaveAttribute("href", record);
     expect(screen.queryByRole("button", { name: "Create gateway" })).toBeNull();
     expect(screen.getByText("Members can view the team's gateways. Admins and owners can create and change them.")).toBeInTheDocument();
-    expect(screen.getByText(`Curated sets of tools and prompts, each at one MCP URL, for the members of ${team.name}.`)).toBeInTheDocument();
+    expect(screen.getByText(`Curated sets of tools, prompts and resources, each at one MCP URL, for the members of ${team.name}.`)).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -45,7 +45,7 @@ describe("Team › Gateways list", () => {
     mockApi(routes("admin", gateway(), { [`GET ${base}`]: () => page([]) }));
     const { unmount } = renderApp(list);
     expect(await screen.findByText("No gateways yet.")).toBeInTheDocument();
-    expect(screen.getByText(/curated set of tools and prompts at one MCP address/)).toBeInTheDocument();
+    expect(screen.getByText(/curated set of tools, prompts and resources at one MCP address/)).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Create gateway" }).length).toBeGreaterThan(0);
     unmount();
 

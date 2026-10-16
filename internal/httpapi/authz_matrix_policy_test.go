@@ -235,8 +235,10 @@ var matrixPolicies = map[string]policy{
 	"setTeamGatewayCapabilities": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
 		return request{method: "PUT", path: c.team("/gateways/" + c.gateway() + "/capabilities"), body: map[string]any{"items": []any{}}, headers: rev1}
 	}},
-	"listTeamGatewayOptions": {scope: scopeTeam, own: admins, build: func(c *mctx) request { return get(c.team("/gateway-options")) }},
-	"listTeamCalls":          {scope: scopeTeam, own: admins, foreign: platform, build: func(c *mctx) request { return get(c.team("/calls")) }},
+	"listTeamGatewayOptions": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
+		return get(c.team("/gateway-options?kind=resource&limit=5&server=" + c.tf.server))
+	}},
+	"listTeamCalls": {scope: scopeTeam, own: admins, foreign: platform, build: func(c *mctx) request { return get(c.team("/calls")) }},
 
 	// Gateway administration.
 	"adminListGateways": {own: platform, build: func(*mctx) request { return get("/v1/admin/gateways?ownerKind=platform") }},
@@ -254,7 +256,7 @@ var matrixPolicies = map[string]policy{
 	"adminSetGatewayCapabilities": {own: padmin, build: func(c *mctx) request {
 		return request{method: "PUT", path: "/v1/admin/gateways/" + c.platformGateway() + "/capabilities", body: map[string]any{"items": []any{}}, headers: rev1}
 	}},
-	"adminListGatewayOptions": {own: platform, build: func(*mctx) request { return get("/v1/admin/gateway-options") }},
+	"adminListGatewayOptions": {own: platform, build: func(*mctx) request { return get("/v1/admin/gateway-options?limit=500") }},
 	"adminListGatewayGrants": {own: platform, build: func(c *mctx) request {
 		return get("/v1/admin/gateways/" + c.e.platformGateway + "/grants")
 	}},
@@ -272,6 +274,10 @@ var matrixPolicies = map[string]policy{
 	"listMyGateways": {own: signedIn, build: func(*mctx) request { return get("/v1/me/gateways") }},
 	"getMyGateway":   {own: signedIn, build: func(c *mctx) request { return get("/v1/me/gateways/" + c.e.platformGateway) }},
 	"listMyApiKeys":  {own: signedIn, build: func(*mctx) request { return get("/v1/me/api-keys") }},
-	"createMyApiKey": {own: signedIn, build: func(*mctx) request { return post("/v1/me/api-keys", map[string]any{"name": "matrix key"}) }},
+	// Keys limited to the fixture platform gateway, which every signed-in
+	// matrix caller may use.
+	"createMyApiKey": {own: signedIn, build: func(c *mctx) request {
+		return post("/v1/me/api-keys", map[string]any{"name": "matrix key", "gatewayIds": []string{c.e.platformGateway}})
+	}},
 	"revokeMyApiKey": {own: signedIn, build: func(c *mctx) request { return del("/v1/me/api-keys/" + c.apiKey()) }},
 }

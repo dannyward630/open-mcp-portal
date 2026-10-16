@@ -44,13 +44,17 @@ type FakeMCP struct {
 	jwksURL      string
 	audience     string
 	toolCalls    []ToolCall
-	// OnToolCall, when set, sees every tool call (cmd/fakemcp logs them).
+	reads        []ToolCall
+	// OnToolCall, when set, sees every tool call and resource read
+	// (cmd/fakemcp logs them).
 	OnToolCall func(ToolCall)
 }
 
-// ToolCall is what the fake received with one tool call.
+// ToolCall is what the fake received with one tool call (or resource
+// read: Tool is then "resources/read" and URI the URI read).
 type ToolCall struct {
 	Tool string
+	URI  string
 	// Authorization and Identity are the Authorization and
 	// MCP-Gateway-Identity headers as received.
 	Authorization, Identity string
@@ -173,6 +177,29 @@ func (f *FakeMCP) sawCall(tool string, h http.Header) {
 	}
 }
 
+// ResourceReads are the resource reads received so far.
+func (f *FakeMCP) ResourceReads() []ToolCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ToolCall(nil), f.reads...)
+}
+
+func (f *FakeMCP) sawRead(req *mcp.ReadResourceRequest) {
+	h := http.Header{}
+	if req.Extra != nil && req.Extra.Header != nil {
+		h = req.Extra.Header
+	}
+	c := ToolCall{Tool: "resources/read", URI: req.Params.URI, Authorization: h.Get("Authorization"),
+		Identity: h.Get("MCP-Gateway-Identity"), Header: h.Clone()}
+	f.mu.Lock()
+	f.reads = append(f.reads, c)
+	hook := f.OnToolCall
+	f.mu.Unlock()
+	if hook != nil {
+		hook(c)
+	}
+}
+
 func headerOf(req *mcp.CallToolRequest) http.Header {
 	if req.Extra == nil || req.Extra.Header == nil {
 		return http.Header{}
@@ -254,6 +281,7 @@ func (f *FakeMCP) server() *mcp.Server {
 	if !f.hidden["status://services"] {
 		s.AddResource(&mcp.Resource{URI: "status://services", Name: "services", Title: "Services", Description: "Every monitored service.",
 			MIMEType: "text/plain"}, func(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			f.sawRead(req)
 			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: req.Params.URI, MIMEType: "text/plain", Text: "email\nvpn"}}}, nil
 		})
 	}
@@ -261,6 +289,7 @@ func (f *FakeMCP) server() *mcp.Server {
 		s.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: "status://services/{service}", Name: "service", Title: "Service status",
 			Description: "The status of one service.", MIMEType: "text/plain"},
 			func(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+				f.sawRead(req)
 				return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: req.Params.URI, MIMEType: "text/plain", Text: "operating normally"}}}, nil
 			})
 	}

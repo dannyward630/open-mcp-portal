@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
-import { gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOptions, page, team } from "./fixtures";
+import { catalogServerId, gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOption, gatewayOptions, optionsPage, page, team } from "./fixtures";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 type Role = Schemas["TeamRole"];
@@ -16,7 +16,7 @@ const routes = (role: Role = "owner", extra: Record<string, Handler> = {}): Reco
   ...shellRoutes("none", role),
   [`GET ${base}/${gatewayId}`]: () => gateway(),
   [`GET ${base}/${gatewayId}/capabilities`]: () => gatewayCapabilities(),
-  [`GET /v1/teams/${team.slug}/gateway-options`]: () => gatewayOptions,
+  [`GET /v1/teams/${team.slug}/gateway-options`]: (_b, call) => optionsPage(gatewayOptions, call.search),
   ...extra,
 });
 
@@ -54,13 +54,17 @@ describe("Gateway › Capabilities", () => {
     expect(within(screen.getByRole("heading", { level: 3, name: /^Service status/ })).getByText("Team")).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
 
+    // Search and the kind filter run on the server.
     await u.type(screen.getByRole("searchbox", { name: "Search capabilities" }), "wiki");
-    expect(screen.queryByRole("checkbox", { name: "service-status__restart" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "service-status__restart" })).toBeNull());
+    expect(calls.some((c) => c.url.endsWith("/gateway-options") && c.search.get("q") === "wiki")).toBe(true);
     await u.clear(screen.getByRole("searchbox", { name: "Search capabilities" }));
     await u.click(screen.getByRole("button", { name: "Prompts" }));
-    expect(screen.getByRole("checkbox", { name: "service-status__incident_summary" })).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "wiki__search" })).toBeNull();
+    expect(await screen.findByRole("checkbox", { name: "service-status__incident_summary" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "wiki__search" })).toBeNull());
+    expect(calls.some((c) => c.url.endsWith("/gateway-options") && c.search.get("kind") === "prompt")).toBe(true);
     await u.click(screen.getByRole("button", { name: "All" }));
+    await screen.findByRole("checkbox", { name: "wiki__search" });
 
     await u.click(screen.getByRole("checkbox", { name: "wiki__search" }));
     await u.click(screen.getByRole("checkbox", { name: "service-status__restart" }));
@@ -149,6 +153,66 @@ describe("Gateway › Capabilities", () => {
     await u.click(screen.getByRole("button", { name: "Remove service-status__old" }));
     expect(screen.queryByText("Selected, but can't be selected now")).toBeNull();
     expect(screen.getByText("1 of at most 200 selected")).toBeInTheDocument();
+  });
+});
+
+describe("the picker with many options", () => {
+  // 150 tools on the team's server (two pages of 100), then the catalog's wiki and its resources.
+  const many = Array.from({ length: 150 }, (_, i) =>
+    gatewayOption({ capabilityId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, name: `tool_${String(i).padStart(3, "0")}`, exposedName: `service-status__tool_${String(i).padStart(3, "0")}`, title: "" }),
+  );
+  const resource = gatewayOption({
+    capabilityId: "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1",
+    serverId: catalogServerId,
+    serverSlug: "wiki",
+    serverName: "Company wiki",
+    source: "catalog",
+    kind: "resource",
+    name: "wiki://pages",
+    exposedName: "omcp://wiki/wiki://pages",
+    title: "Pages",
+    description: "Every page.",
+  });
+  const template = gatewayOption({ ...resource, capabilityId: "f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2", kind: "resource_template", name: "wiki://pages/{id}", exposedName: "omcp://wiki/wiki://pages/{id}", title: "Page" });
+  const all = [...many, gatewayOptions[3]!, resource, template];
+
+  it("loads more by cursor, filters by server and kind, and keeps the selection through paging and search", async () => {
+    const u = userEvent.setup();
+    const saved = gatewayCapabilities([gatewayCapability()], 8);
+    const calls = mockApi(routes("owner", { [`GET /v1/teams/${team.slug}/gateway-options`]: (_b, call) => optionsPage(all, call.search), [`PUT ${base}/${gatewayId}/capabilities`]: () => saved }));
+    renderApp(tab);
+    await u.click(await screen.findByRole("button", { name: "Edit selection" }));
+    expect(await screen.findByRole("checkbox", { name: "service-status__tool_099" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "service-status__tool_100" })).toBeNull();
+    expect(screen.getByText("100 shown")).toBeInTheDocument();
+    await u.click(screen.getByRole("button", { name: "Load more" }));
+    await u.click(await screen.findByRole("checkbox", { name: "service-status__tool_120" }));
+    expect(calls.some((c) => c.url.endsWith("/gateway-options") && c.search.get("cursor") === "100")).toBe(true);
+    // Resources show with their exposed URIs; the template filter asks the server.
+    expect(await screen.findByRole("checkbox", { name: "omcp://wiki/wiki://pages" })).toBeInTheDocument();
+    await u.click(screen.getByRole("button", { name: "Templates" }));
+    await u.click(await screen.findByRole("checkbox", { name: "omcp://wiki/wiki://pages/{id}" }));
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "service-status__tool_000" })).toBeNull());
+    await u.click(screen.getByRole("button", { name: "All" }));
+
+    // Filter by server: only the wiki; the tool chosen on page 2 is still selected.
+    await u.selectOptions(screen.getByRole("combobox", { name: "Server" }), "Company wiki");
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "service-status__tool_000" })).toBeNull());
+    expect(calls.some((c) => c.url.endsWith("/gateway-options") && c.search.get("server") === catalogServerId)).toBe(true);
+    await u.selectOptions(screen.getByRole("combobox", { name: "Server" }), "All servers");
+    await u.type(screen.getByRole("searchbox", { name: "Search capabilities" }), "tool_00");
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "wiki__search" })).toBeNull());
+    await u.click(screen.getByRole("checkbox", { name: "Selected only" }));
+    await u.clear(screen.getByRole("searchbox", { name: "Search capabilities" }));
+    expect(await screen.findByRole("checkbox", { name: "service-status__tool_120" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "omcp://wiki/wiki://pages/{id}" })).toBeChecked();
+    expect(screen.getByText("3 of at most 200 selected")).toBeInTheDocument();
+
+    await u.click(screen.getByRole("button", { name: "Save selection" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT")).toBeDefined());
+    expect(calls.find((c) => c.method === "PUT")!.body).toEqual({
+      items: [{ capabilityId: gatewayCapability().capabilityId }, { capabilityId: many[120]!.capabilityId }, { capabilityId: template.capabilityId }],
+    });
   });
 });
 

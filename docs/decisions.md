@@ -33,6 +33,7 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 | 17 | Sharing team gateways | Team gateways are for the team's members only; cross-team sharing goes through platform gateways |
 | 18 | Resources | Phase 3 exposes tools and prompts; resources and resource templates follow in a later step |
 | 19 | Identity header | `Authorization: Bearer <jwt>` when the server has no static `Authorization` header; otherwise `MCP-Gateway-Identity: <jwt>` |
+| 20 | Internal MCP servers | Platform admins maintain an allowlist of internal networks (CIDRs) and hostnames (exact or `*.suffix`) that MCP servers may use, each optionally allowing plain `http`. A deployment setting can add entries (read-only in the UI). Loopback, link-local (incl. cloud metadata), unspecified and multicast addresses stay blocked whatever the list says; everything not listed stays blocked as today |
 
 ## Proposed build order
 

@@ -1,0 +1,32 @@
+# Gateway API alternative to ingress.yaml: list it in kustomization.yaml
+# instead. The parent Gateway (with the TLS listener for mcp.example.org) is
+# the cluster's; patch parentRefs to it, and the NetworkPolicy
+# open-mcp-gateway-ingress to the namespace its data plane runs in.
+#
+# timeouts.request must cover an upstream MCP call (up to 120s), with
+# headroom for SSE responses once the gateway relays them. No session persistence is needed: /mcp/{slug}
+# is stateless.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: open-mcp-gateway
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  parentRefs:
+    - name: example-gateway
+      namespace: gateway-system
+      sectionName: https
+  hostnames: [mcp.example.org]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: open-mcp-gateway
+          port: 80
+      timeouts:
+        request: 300s

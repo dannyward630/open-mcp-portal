@@ -78,7 +78,7 @@ export function MyGatewaysPage() {
     <ListPage<MyGateway>
       id="my-gateways"
       title={terms.myGateways}
-      description="The gateways you can connect your AI clients to. Each offers you only the tools and prompts you may use."
+      description="The gateways you can connect your AI clients to. Each offers you only the tools, prompts and resources you may use."
       primaryAction={keys}
       caption={terms.myGateways}
       columns={columns(narrow)}

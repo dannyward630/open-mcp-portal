@@ -76,6 +76,11 @@ func main() {
 		f.OnToolCall = func(c testutil.ToolCall) {
 			header, _ := testutil.IdentityToken(c.Header)
 			who := testutil.Whoami(context.Background(), c.Header, *jwks, aud)
+			if c.URI != "" {
+				log.Printf("read %s: identity in %q, sub=%v aud=%v gateway=%v resource=%v verified=%v %s", c.URI, header,
+					who.Claims["sub"], who.Claims["aud"], who.Claims["gateway"], who.Claims["resource"], who.Verified, who.Error)
+				return
+			}
 			log.Printf("tool %s: identity in %q, sub=%v aud=%v gateway=%v tool=%v verified=%v %s", c.Tool, header,
 				who.Claims["sub"], who.Claims["aud"], who.Claims["gateway"], who.Claims["tool"], who.Verified, who.Error)
 		}

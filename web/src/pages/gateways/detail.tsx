@@ -9,7 +9,7 @@ import { ListTree, Network } from "lucide-react";
 import { myGatewayQuery } from "../../api/queries";
 import { CapabilityList } from "../../components/gateways/capability-list";
 import { ConnectSection } from "../../components/gateways/connect";
-import { capabilityCount } from "../../components/gateways/labels";
+import { capabilityCount, isResourceKind } from "../../components/gateways/labels";
 import { isNotFound, NotFoundState } from "../../components/not-found";
 import { PageSkeleton } from "../../components/page-skeleton";
 import { untrustedText } from "../../components/servers/labels";
@@ -56,7 +56,14 @@ export function MyGatewayPage() {
         }
       />
       <ConnectSection slug={gateway.slug} url={gateway.url} />
-      <Card title="What it offers you" description="Clients see each one as server__name. Only what you may use right now is listed.">
+      <Card
+        title="What it offers you"
+        description={
+          capabilities.some((c) => isResourceKind(c.kind))
+            ? "Clients see tools and prompts as server__name, and resources as omcp://server/uri (a template's {variables} are filled in by the client). Only what you may use right now is listed."
+            : "Clients see each one as server__name. Only what you may use right now is listed."
+        }
+      >
         {capabilities.length === 0 ? (
           <EmptyState
             size="compact"

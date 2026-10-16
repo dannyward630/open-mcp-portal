@@ -20,21 +20,26 @@ export type TeamRole = Schemas["TeamRole"];
 
 /** What a gateway is, for empty lists and the create form. */
 export const whatIsAGateway =
-  "A gateway is a curated set of tools and prompts at one MCP address. Pick capabilities from your team's servers and the company catalog; the team's members connect their AI clients to the gateway's URL with an API key and see only what it offers.";
+  "A gateway is a curated set of tools, prompts and resources at one MCP address. Pick capabilities from your team's servers and the company catalog; the team's members connect their AI clients to the gateway's URL with an API key and see only what it offers.";
 
 /** The same for platform gateways (Admin). */
 export const whatIsAPlatformGateway =
-  "A platform gateway is a curated set of approved tools and prompts from the catalog at one MCP address, shared with the teams, people or SSO groups you grant it to.";
+  "A platform gateway is a curated set of approved tools, prompts and resources from the catalog at one MCP address, shared with the teams, people or SSO groups you grant it to.";
 
 /** The most capabilities one gateway can hold (the API's maxItems). */
 export const maxCapabilities = 200;
 
-export const gatewayKinds: GatewayKind[] = ["tool", "prompt"];
+export const gatewayKinds: GatewayKind[] = ["tool", "prompt", "resource", "resource_template"];
 
 export const gatewayKindLabels: Record<GatewayKind, { one: string; many: string; title: string }> = {
   tool: { one: "tool", many: "tools", title: "Tools" },
   prompt: { one: "prompt", many: "prompts", title: "Prompts" },
+  resource: { one: "resource", many: "resources", title: "Resources" },
+  resource_template: { one: "resource template", many: "resource templates", title: "Templates" },
 };
+
+/** Resources and templates are exposed as URIs (omcp://{server}/{uri}); tools and prompts by name. */
+export const isResourceKind = (k: GatewayKind) => k === "resource" || k === "resource_template";
 
 /** "3 capabilities". */
 export const capabilityCount = (n: number) => plural(n, "capability", "capabilities");
@@ -107,7 +112,7 @@ export const callOutcomes = Object.keys(outcomeLabels) as CallOutcome[];
 /**
  * Why a call was refused or failed, in words (McpCall.errorClass). The backend
  * records: refusals (internal/mcpgw: gateway_disabled, no_access, role,
- * unknown, or an unavailable reason), invalid requests (invalid_params,
+ * unknown, key_scope, or an unavailable reason), invalid requests (invalid_params,
  * invalid_cursor) and the registry's upstream error classes.
  */
 export const callErrorLabels: Record<string, string> = {
@@ -115,6 +120,7 @@ export const callErrorLabels: Record<string, string> = {
   gateway_disabled: "Gateway turned off",
   no_access: "No access to the gateway",
   role: "Needs a higher team role",
+  key_scope: "API key limited to other gateways",
   unknown: "Not offered by the gateway",
   ...unavailableLabels,
   // The client's request.

@@ -157,7 +157,7 @@ SELECT g.id AS gateway_id,
         JOIN mcp_servers s ON s.id = c.server_id
         JOIN teams st ON st.id = s.team_id
         WHERE gc.gateway_id = g.id
-          AND NOT COALESCE(c.gone_at IS NULL AND c.kind IN ('tool', 'prompt')
+          AND NOT COALESCE(c.gone_at IS NULL AND c.kind IN ('tool', 'prompt', 'resource', 'resource_template')
                            AND st.status = 'active' AND COALESCE(gt.status, 'active') = 'active' AND s.enabled
                            AND ((g.owner_kind = 'team' AND s.team_id = g.team_id)
                                 OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint)), false)
@@ -203,6 +203,32 @@ func (q *Queries) GatewayStats(ctx context.Context, ids []uuid.UUID) ([]GatewayS
 		return nil, err
 	}
 	return items, nil
+}
+
+const getCapability = `-- name: GetCapability :one
+SELECT id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at FROM mcp_capabilities WHERE id = $1
+`
+
+func (q *Queries) GetCapability(ctx context.Context, id uuid.UUID) (McpCapability, error) {
+	row := q.db.QueryRow(ctx, getCapability, id)
+	var i McpCapability
+	err := row.Scan(
+		&i.ID,
+		&i.ServerID,
+		&i.Kind,
+		&i.Name,
+		&i.Title,
+		&i.Description,
+		&i.Definition,
+		&i.Fingerprint,
+		&i.ApprovedFingerprint,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.GoneAt,
+	)
+	return i, err
 }
 
 const getGateway = `-- name: GetGateway :one
@@ -444,27 +470,37 @@ SELECT c.id, c.kind, c.name, c.title, c.description,
 FROM mcp_capabilities c
 JOIN mcp_servers s ON s.id = c.server_id
 JOIN teams t ON t.id = s.team_id
-WHERE c.kind IN ('tool', 'prompt') AND c.gone_at IS NULL AND s.enabled AND t.status = 'active'
+WHERE c.kind IN ('tool', 'prompt', 'resource', 'resource_template') AND c.gone_at IS NULL AND s.enabled AND t.status = 'active'
+  AND (c.kind <> 'resource_template' OR c.name ~ '^([^{}]|\{\+?[A-Za-z0-9_]([A-Za-z0-9_.]|%[0-9A-Fa-f]{2})*\})*$')
   AND (($1::uuid IS NOT NULL AND s.team_id = $1::uuid)
        OR (s.publish_state = 'published' AND c.approved_fingerprint = c.fingerprint))
   AND ($2::text IS NULL OR c.kind = $2::text)
-  AND (NOT $3::bool OR c.id = ANY($4::uuid[]))
-  AND ($5::text IS NULL
-       OR c.name ILIKE '%' || $5::text || '%' ESCAPE '\'
-       OR c.title ILIKE '%' || $5::text || '%' ESCAPE '\'
-       OR s.name ILIKE '%' || $5::text || '%' ESCAPE '\'
-       OR s.slug ILIKE '%' || $5::text || '%' ESCAPE '\')
-ORDER BY s.name, s.id, CASE c.kind WHEN 'tool' THEN 0 ELSE 1 END, c.name
-LIMIT $6
+  AND ($3::uuid IS NULL OR s.id = $3::uuid)
+  AND (NOT $4::bool OR c.id = ANY($5::uuid[]))
+  AND ($6::text IS NULL
+       OR c.name ILIKE '%' || $6::text || '%' ESCAPE '\'
+       OR c.title ILIKE '%' || $6::text || '%' ESCAPE '\'
+       OR s.name ILIKE '%' || $6::text || '%' ESCAPE '\'
+       OR s.slug ILIKE '%' || $6::text || '%' ESCAPE '\')
+  AND ($7::text IS NULL
+       OR (s.name, s.id, c.name, c.id) > ($7::text, $8::uuid,
+                                          $9::text, $10::uuid))
+ORDER BY s.name, s.id, c.name, c.id
+LIMIT $11
 `
 
 type ListGatewayOptionsParams struct {
-	TeamID   uuid.NullUUID
-	Kind     *string
-	ByIds    bool
-	Ids      []uuid.UUID
-	Search   *string
-	PageSize int32
+	TeamID          uuid.NullUUID
+	Kind            *string
+	ServerID        uuid.NullUUID
+	ByIds           bool
+	Ids             []uuid.UUID
+	Search          *string
+	AfterServerName *string
+	AfterServerID   uuid.NullUUID
+	AfterName       *string
+	AfterID         uuid.NullUUID
+	PageSize        int32
 }
 
 type ListGatewayOptionsRow struct {
@@ -481,18 +517,26 @@ type ListGatewayOptionsRow struct {
 	TeamName     string
 }
 
-// Tools and prompts a gateway may select: listed, of an enabled server of
-// an active team, and either a server of team_id (a team gateway's own
-// team; NULL for a platform gateway) or published with the current
-// definition approved. by_ids narrows to ids; search is LIKE-escaped by the
-// caller.
+// One page of the tools, prompts, resources and resource templates a
+// gateway may select, ordered by (server name, server id, name, id):
+// listed, of an enabled server of an active team, and either a server of
+// team_id (a team gateway's own team; NULL for a platform gateway) or
+// published with the current definition approved. Resource templates must
+// use only RFC 6570 level 1-2 {var} and {+var} expressions (the same rule as
+// gateways.TemplateSupported). by_ids narrows to ids; server_id to one
+// server; search is LIKE-escaped by the caller.
 func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptionsParams) ([]ListGatewayOptionsRow, error) {
 	rows, err := q.db.Query(ctx, listGatewayOptions,
 		arg.TeamID,
 		arg.Kind,
+		arg.ServerID,
 		arg.ByIds,
 		arg.Ids,
 		arg.Search,
+		arg.AfterServerName,
+		arg.AfterServerID,
+		arg.AfterName,
+		arg.AfterID,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -532,7 +576,8 @@ JOIN mcp_capabilities c ON c.id = gc.capability_id
 JOIN mcp_servers s ON s.id = c.server_id
 JOIN teams t ON t.id = s.team_id
 WHERE gc.gateway_id = $1
-ORDER BY s.name, s.id, CASE c.kind WHEN 'tool' THEN 0 ELSE 1 END, c.name
+ORDER BY s.name, s.id,
+         CASE c.kind WHEN 'tool' THEN 0 WHEN 'prompt' THEN 1 WHEN 'resource' THEN 2 ELSE 3 END, c.name
 `
 
 type ListGatewaySelectionRow struct {
@@ -545,7 +590,7 @@ type ListGatewaySelectionRow struct {
 }
 
 // A gateway's selected capabilities with their servers and the servers'
-// teams, ordered by server and name (tools before prompts).
+// teams, ordered by server and name (tools, prompts, resources, templates).
 func (q *Queries) ListGatewaySelection(ctx context.Context, gatewayID uuid.UUID) ([]ListGatewaySelectionRow, error) {
 	rows, err := q.db.Query(ctx, listGatewaySelection, gatewayID)
 	if err != nil {
@@ -756,6 +801,45 @@ func (q *Queries) ListGatewaysForUser(ctx context.Context, arg ListGatewaysForUs
 			&i.MemberRole,
 			&i.GrantKinds,
 			&i.GrantGroups,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsableGatewayCandidates = `-- name: ListUsableGatewayCandidates :many
+SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at FROM gateways WHERE id = ANY($1::uuid[])
+`
+
+// Gateways by ID, for checking which a person may use (API key scopes).
+func (q *Queries) ListUsableGatewayCandidates(ctx context.Context, ids []uuid.UUID) ([]Gateway, error) {
+	rows, err := q.db.Query(ctx, listUsableGatewayCandidates, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Gateway{}
+	for rows.Next() {
+		var i Gateway
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Description,
+			&i.OwnerKind,
+			&i.TeamID,
+			&i.Enabled,
+			&i.CapturePayloads,
+			&i.Revision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

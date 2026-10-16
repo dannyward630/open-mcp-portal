@@ -4,7 +4,10 @@
  * expired ones stay listed for 30 days). Create shows the secret once
  * (create-key-dialog.tsx); Revoke asks first and takes effect at once.
  * Expiry reads in days ("in 7 days", never "next week"), the exact date as
- * its tooltip; a revoked key has none (its status says so).
+ * its tooltip; a revoked key has none (its status says so). Gateways says
+ * where a key works: all the person's gateways, or the ones it is limited
+ * to (a deleted one is marked; a key whose gateways are all gone works
+ * nowhere, and the page warns).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -65,9 +68,34 @@ const facets: Facet<ApiKey>[] = [
   },
 ];
 
+/** A limited key whose gateways are all deleted: it works nowhere. */
+export const worksNowhere = (k: ApiKey) => k.gateways.length > 0 && k.gateways.every((g) => !g.exists);
+
+/** "All my gateways", or the gateways a key is limited to. */
+export function keyScopeText(k: ApiKey): string {
+  if (k.gateways.length === 0) return "All my gateways";
+  return k.gateways.map((g) => (g.exists ? g.name : `${g.name} (deleted)`)).join(", ");
+}
+
+function KeyScope({ k }: { k: ApiKey }) {
+  if (k.gateways.length === 0) return <span className={s.muted}>All my gateways</span>;
+  return (
+    <span>
+      {keyScopeText(k)}
+      {worksNowhere(k) && (
+        <>
+          {" "}
+          <StatusBadge tone="warning">Works nowhere</StatusBadge>
+        </>
+      )}
+    </span>
+  );
+}
+
 const columns: DataTableColumn<ApiKey>[] = [
   { id: "name", header: "Name", accessor: "name", rowHeader: true, hideable: false, sortable: true, cell: (k) => <CellText primary={k.name} secondary={<span className={s.mono}>{k.prefix}…</span>} /> },
   { id: "status", header: "Status", accessor: (k) => statusLabels[k.status], sortable: true, cell: (k) => <StatusBadge tone={statusTone[k.status]}>{statusLabels[k.status]}</StatusBadge> },
+  { id: "gateways", header: "Gateways", accessor: (k) => keyScopeText(k), cell: (k) => <KeyScope k={k} /> },
   { ...timeColumn<ApiKey>("lastUsedAt", "Last used", (k) => k.lastUsedAt), cell: (k) => (k.lastUsedAt ? <span className={s.nowrap}><RelativeTime value={k.lastUsedAt} /></span> : <span className={s.muted}>Never</span>) },
   {
     id: "expiresAt",
@@ -84,6 +112,7 @@ export function ApiKeysPage() {
   const keys = useQuery(myApiKeysQuery());
   const [creating, setCreating] = useState(false);
   const [revoking, setRevoking] = useState<ApiKey | null>(null);
+  const stranded = (keys.data ?? []).filter((k) => k.status === "active" && worksNowhere(k));
   useIntent("create-api-key", () => setCreating(true));
   const revoke = useMutation({
     mutationFn: async (k: ApiKey) => unwrap(await api.DELETE("/v1/me/api-keys/{keyId}", { params: { path: { keyId: k.id } } })),
@@ -106,10 +135,17 @@ export function ApiKeysPage() {
         description="Personal keys for MCP clients, agents and scripts. A key acts as you: it reaches the gateways you can use, with your access."
         primaryAction={create}
         notices={
-          <Alert tone="info">
-            Connect a client from <TextLink render={<Link to="/gateways" />}>{terms.myGateways}</TextLink>: each gateway shows the snippets to copy. Keep keys secret, and revoke a key you no
-            longer use.
-          </Alert>
+          <>
+            {stranded.length > 0 && (
+              <Alert tone="warning" title={stranded.length === 1 ? `${stranded[0]!.name} works nowhere` : `${stranded.length} keys work nowhere`}>
+                Every gateway {stranded.length === 1 ? "this key is" : "these keys are"} limited to was deleted. Revoke {stranded.length === 1 ? "it" : "them"} and create a new key.
+              </Alert>
+            )}
+            <Alert tone="info">
+              Connect a client from <TextLink render={<Link to="/gateways" />}>{terms.myGateways}</TextLink>: each gateway shows the snippets to copy. Keep keys secret, and revoke a key you no
+              longer use.
+            </Alert>
+          </>
         }
         caption={terms.apiKeys}
         columns={columns}
@@ -122,7 +158,7 @@ export function ApiKeysPage() {
         onRetry={() => void keys.refetch()}
         rowActions={(k) => [{ label: "Revoke…", icon: <Trash2 aria-hidden />, danger: true, hidden: k.status !== "active", onSelect: () => setRevoking(k) }]}
         empty={{ icon: <KeyRound />, title: "No API keys yet.", description: "Create a key to connect an MCP client such as Claude Code, VS Code or Cursor to a gateway.", action: create }}
-        tableProps={{ columnsMenuMin: 5 }}
+        tableProps={{ columnsMenuMin: 6 }}
       />
       {creating && <CreateKeyDialog onClose={() => setCreating(false)} />}
       <ConfirmMutationDialog

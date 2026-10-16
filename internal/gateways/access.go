@@ -166,6 +166,42 @@ func unserved(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway) (string, e
 	return ReasonTeamArchived, nil
 }
 
+// Usable splits ids into the gateways the person may use now (enabled, a
+// team gateway's team active, and they have access), in the order given,
+// and the IDs they may not (unknown ones included).
+func (s *Service) Usable(ctx context.Context, u dbgen.User, ids []uuid.UUID) ([]dbgen.Gateway, []uuid.UUID, error) {
+	rows, err := s.q.ListUsableGatewayCandidates(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	byID := make(map[uuid.UUID]dbgen.Gateway, len(rows))
+	for _, g := range rows {
+		byID[g.ID] = g
+	}
+	var usable []dbgen.Gateway
+	refused := []uuid.UUID{}
+	for _, id := range ids {
+		g, ok := byID[id]
+		if ok {
+			why, err := unserved(ctx, s.q, g)
+			if err != nil {
+				return nil, nil, err
+			}
+			c, err := callerOf(ctx, s.q, g, u)
+			if err != nil {
+				return nil, nil, err
+			}
+			ok = why == "" && c.Allowed()
+		}
+		if ok {
+			usable = append(usable, g)
+		} else {
+			refused = append(refused, id)
+		}
+	}
+	return usable, refused, nil
+}
+
 // Resolve finds a gateway by slug (404 gateway_not_found).
 func (s *Service) Resolve(ctx context.Context, slug string) (dbgen.Gateway, error) {
 	g, err := s.q.GetGatewayBySlug(ctx, slug)

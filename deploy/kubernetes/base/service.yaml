@@ -1,0 +1,22 @@
+# Port "http" (80) is what the Ingress or HTTPRoute targets. /mcp/{slug} is
+# stateless (no MCP sessions are kept in a pod), so no session affinity is
+# needed: any replica serves any request.
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-mcp-gateway
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  selector:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
