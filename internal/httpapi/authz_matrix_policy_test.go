@@ -316,7 +316,8 @@ var matrixPolicies = map[string]policy{
 	}},
 
 	// Service accounts (owners and admins manage them and their keys;
-	// members and platform staff see them; platform staff see keys).
+	// members and platform staff see them and the gateways they can use;
+	// platform staff see keys and every team's accounts).
 	"listServiceAccounts": {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request { return get(c.team("/service-accounts")) }},
 	"createServiceAccount": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
 		return post(c.team("/service-accounts"), map[string]any{"name": fmt.Sprintf("bot-%d", c.e.next()), "role": "editor"})
@@ -330,6 +331,10 @@ var matrixPolicies = map[string]policy{
 	"deleteServiceAccount": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
 		return del(c.team("/service-accounts/" + c.serviceAccount()))
 	}},
+	"listServiceAccountGateways": {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request {
+		return get(c.team("/service-accounts/" + c.tf.serviceAccount + "/gateways"))
+	}},
+	"adminListServiceAccounts": {own: platform, build: func(*mctx) request { return get("/v1/admin/service-accounts?q=sa-&limit=5") }},
 	"listServiceAccountKeys": {scope: scopeTeam, own: admins, foreign: platform, build: func(c *mctx) request {
 		return get(c.team("/service-accounts/" + c.tf.serviceAccount + "/keys"))
 	}},

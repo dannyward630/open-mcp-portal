@@ -1,14 +1,13 @@
 /*
  * A service account's Overview: its role (what minimum roles it passes),
- * who answers for it, and what its keys reach (decision 23): the team's own
- * gateways, linked, and the platform gateways granted to the team (a team
- * grant covers its service accounts; there are no grants to one account).
+ * who answers for it, and what its keys reach now (decision 23): the team's
+ * own gateways, linked, and the platform gateways granted to the team (a
+ * team grant covers its service accounts; there are no grants to one
+ * account), each with what it reaches with its role
+ * (GET .../service-accounts/{id}/gateways).
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { api, unwrap } from "../../../api/client";
-import { teamGatewaysKey } from "../../../api/queries";
-import { EnabledBadge } from "../../../components/servers/badges";
 import { capabilityCount } from "../../../components/gateways/labels";
 import { terms } from "../../../lib/terms";
 import { useCurrentUser } from "../../../session";
@@ -22,7 +21,16 @@ import { TextLink } from "@/components/ui/text-link/text-link";
 import { Time } from "@/components/ui/time/time";
 import s from "../../shared.module.css";
 import { useTeam } from "../common";
-import { roleExplanation, roleLabel, type ServiceAccount, type ServiceAccountAbilities, serviceAccountRoleHelp } from "./labels";
+import {
+  type AccountGateway,
+  accountAccessText,
+  accountGatewaysQuery,
+  roleExplanation,
+  roleLabel,
+  type ServiceAccount,
+  type ServiceAccountAbilities,
+  serviceAccountRoleHelp,
+} from "./labels";
 
 type Props = { account: ServiceAccount; abilities: ServiceAccountAbilities };
 
@@ -58,46 +66,56 @@ function AccessCard({ account }: { account: ServiceAccount }) {
   const { slug, team } = useTeam();
   const me = useCurrentUser();
   const staff = me.capabilities.platformAdmin || me.capabilities.platformAuditor;
-  const gateways = useQuery({
-    queryKey: [...teamGatewaysKey(slug), "list", "service-account-access"],
-    queryFn: async () => unwrap(await api.GET("/v1/teams/{team}/gateways", { params: { path: { team: slug }, query: { limit: 200 } } })),
-  });
-  const items = gateways.data?.items ?? [];
+  const gateways = useQuery(accountGatewaysQuery(slug, account.id));
+  const items = gateways.data ?? [];
   return (
     <Card
       title="Access"
-      description={`What its keys reach, with its ${roleLabel(account.role).toLowerCase()} role: the gateways of ${team.name}, and the platform gateways granted to ${team.name}. A key can be limited to some of them.`}
+      description={`The gateways its keys reach now, with its ${roleLabel(account.role).toLowerCase()} role: the gateways of ${team.name}, and the platform gateways granted to ${team.name}. A key can be limited to some of them.`}
       flush={items.length > 0}
     >
-      {gateways.isLoading && <Loading label="Loading the team's gateways…" />}
-      <ErrorAlert error={gateways.error} title="Couldn't load the team's gateways" />
-      {gateways.isSuccess && items.length === 0 && <p className={s.muted}>{`${team.name} has no gateways yet.`}</p>}
+      {gateways.isLoading && <Loading label="Loading the gateways it can use…" />}
+      <ErrorAlert error={gateways.error} title="Couldn't load the gateways it can use" onRetry={() => void gateways.refetch()} />
+      {gateways.isSuccess && items.length === 0 && (
+        <p className={s.muted}>{`It can't use any gateway yet. Add a gateway to ${team.name}, or ask a platform admin to grant a platform gateway to ${team.name}.`}</p>
+      )}
       {items.length > 0 && (
-        <Table caption={`Gateways of ${team.name}`} columns={["Gateway", "Status", "Capabilities"]} stack>
+        <Table caption={`Gateways ${account.name} can use`} columns={["Gateway", "Access", "It reaches"]} stack>
           {items.map((g) => (
             <Tr key={g.id}>
               <Td>
-                <TextLink render={<Link to="/teams/$team/gateways/$gatewayId" params={{ team: slug, gatewayId: g.id }} />} className={s.primary}>
-                  {g.name}
-                </TextLink>
+                <GatewayName gateway={g} team={slug} staff={staff} />
                 <span className={`${s.secondary} ${s.mono}`}>{g.slug}</span>
               </Td>
-              <Td>
-                <EnabledBadge enabled={g.enabled} />
-              </Td>
+              <Td>{accountAccessText(g, team.name)}</Td>
               <Td>{capabilityCount(g.capabilityCount)}</Td>
             </Tr>
           ))}
         </Table>
       )}
       <p className={items.length > 0 ? `${s.muted} ${s.pad}` : s.muted}>
-        {`Platform gateways granted to ${team.name} work for it too; a grant to the team covers its service accounts. `}
-        {staff ? (
-          <TextLink render={<Link to="/admin/gateways" search={{ ownerKind: "platform" }} />}>See platform gateways in Admin › {terms.gateways}</TextLink>
-        ) : (
-          "A platform admin can tell you which ones."
-        )}
+        {`A grant of a platform gateway to ${team.name} covers its service accounts; grants to people or SSO groups don't. `}
+        {staff && <TextLink render={<Link to="/admin/gateways" search={{ ownerKind: "platform" }} />}>See platform gateways in Admin › {terms.gateways}</TextLink>}
       </p>
     </Card>
   );
+}
+
+/** The gateway's name: linked to the team's gateway, or (for platform staff) to the platform gateway in Admin. */
+function GatewayName({ gateway: g, team, staff }: { gateway: AccountGateway; team: string; staff: boolean }) {
+  if (g.ownerKind === "team") {
+    return (
+      <TextLink render={<Link to="/teams/$team/gateways/$gatewayId" params={{ team: g.teamSlug ?? team, gatewayId: g.id }} />} className={s.primary}>
+        {g.name}
+      </TextLink>
+    );
+  }
+  if (staff) {
+    return (
+      <TextLink render={<Link to="/admin/gateways/$gatewayId" params={{ gatewayId: g.id }} />} className={s.primary}>
+        {g.name}
+      </TextLink>
+    );
+  }
+  return <span className={s.primary}>{g.name}</span>;
 }

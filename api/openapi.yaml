@@ -1812,7 +1812,11 @@ paths:
       tags:
       - gateways
       operationId: listTeamCalls
-      summary: Calls through the team's gateways or to the team's servers (team owners and admins; platform staff)
+      summary: Calls through the team's gateways, to the team's servers, or by the team's service accounts (team owners
+        and admins; platform staff)
+      description: A call is listed when it went through one of the team's gateways, reached one of the team's servers,
+        or was made by one of the team's service accounts through any gateway (for example a platform gateway granted
+        to the team). Calls of a deleted service account stay listed under its name.
       parameters:
       - $ref: '#/components/parameters/CallGatewayParam'
       - $ref: '#/components/parameters/CallServerParam'
@@ -2166,7 +2170,7 @@ paths:
       - name: team
         in: query
         required: false
-        description: Team slug or ID (calls through its gateways or to its servers)
+        description: Team slug or ID (calls through its gateways, to its servers, or by its service accounts)
         schema:
           type: string
       - $ref: '#/components/parameters/AuditFromParam'
@@ -2692,6 +2696,35 @@ paths:
           $ref: '#/components/responses/ErrorReply'
         '404':
           $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/service-accounts/{serviceAccountId}/gateways:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServiceAccountIdParam'
+    get:
+      tags:
+      - service-accounts
+      operationId: listServiceAccountGateways
+      summary: The gateways the service account can use now (members and above; platform staff read any team)
+      description: 'Its team''s enabled gateways (access team_member) and the enabled platform gateways granted to its
+        team (access team_grant), by name. capabilityCount counts what the account reaches now: available capabilities,
+        with its role applied to minimum roles on its team''s gateways. Empty while the team is archived. A turned-off
+        account still lists them (its keys are refused until it''s turned on). A key can be limited to these gateways.'
+      responses:
+        '200':
+          description: Gateways ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MyGateway'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
   /v1/teams/{team}/service-accounts/{serviceAccountId}/keys:
     parameters:
     - $ref: '#/components/parameters/TeamParam'
@@ -2776,6 +2809,40 @@ paths:
         '403':
           $ref: '#/components/responses/ErrorReply'
         '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/service-accounts:
+    get:
+      tags:
+      - admin
+      operationId: adminListServiceAccounts
+      summary: Every team's service accounts (platform admins and auditors)
+      description: q matches the account's name and its team's slug and name. An unknown team lists nothing.
+      parameters:
+      - $ref: '#/components/parameters/SearchParam'
+      - name: team
+        in: query
+        required: false
+        description: Team slug or ID (that team's service accounts)
+        schema:
+          type: string
+          maxLength: 100
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of service accounts ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceAccountPage'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
           $ref: '#/components/responses/ErrorReply'
 components:
   headers:
@@ -5007,11 +5074,18 @@ components:
         oauthClientName:
           type: string
           description: The connected client (oauth)
+        oauthClientVerified:
+          type: boolean
+          description: 'oauth: true when the client is identified by a Client ID Metadata Document (its host vouches for
+            it); false when it registered itself, so its name is only its own claim'
         serviceAccountId:
           type: string
           format: uuid
         serviceAccountTeamSlug:
           type: string
+        serviceAccountExists:
+          type: boolean
+          description: 'service_account: false once the account was deleted (its name is the one recorded)'
     McpCallPage:
       type: object
       required:
@@ -5212,6 +5286,18 @@ components:
         updatedAt:
           type: string
           format: date-time
+    ServiceAccountPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceAccount'
+        nextCursor:
+          type: string
+          nullable: true
     ServiceAccountCreate:
       type: object
       required:

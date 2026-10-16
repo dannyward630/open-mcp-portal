@@ -1,6 +1,7 @@
 # Status and handoff
 
-Last updated: 2026-10-16 (Phase 4 backend: OAuth sign-in for MCP clients, service accounts).
+Last updated: 2026-10-16 (Phase 4 QA follow-ups: service account gateways, admin service account list, team call
+lists include service accounts' calls, verified/deleted call principals, `client_verified`).
 
 ## Where things stand
 
@@ -79,7 +80,7 @@ Last updated: 2026-10-16 (Phase 4 backend: OAuth sign-in for MCP clients, servic
   - UI: the add-server and settings URL fields let plain http through to the server (it decides from the allowlist);
     a `private_address` refusal links platform admins to Internal networks and tells others to ask one.
 
-- **Phase 4 (client sign-in and service accounts): backend done; UI in progress (parallel).** OAuth 2.1 authorization
+- **Phase 4 (client sign-in and service accounts): backend and UI done; QA follow-ups done.** OAuth 2.1 authorization
   server for `/mcp/{slug}` (always on; CIMD and DCR clients, PKCE S256, resource = one gateway, consent per person +
   client + gateway, trusted clients, rotating refresh tokens) and team service accounts with `omcp_sa_` keys. See
   [phase4-client-auth.md](phase4-client-auth.md) "As built", [connect-clients.md](connect-clients.md) and
@@ -101,6 +102,13 @@ Last updated: 2026-10-16 (Phase 4 backend: OAuth sign-in for MCP clients, servic
   - Gaps: no rate limit on `/mcp` itself; rate counters per process; no previous-pepper support (rotating
     `API_KEY_PEPPER` signs clients out and invalidates keys); no CORS on OAuth endpoints; no private-use redirect
     schemes; DCR clean-up runs on registration; the previous release can't list call records of service accounts.
+  - QA follow-ups done (not yet browser-checked): see [phase4-client-auth.md](phase4-client-auth.md) "As built: QA
+    follow-ups". Contract changes: `GET /v1/teams/{team}/service-accounts/{serviceAccountId}/gateways`
+    (`MyGateway` items), `GET /v1/admin/service-accounts` (`ServiceAccountPage`), team call lists also include the
+    team's service accounts' calls through any gateway, `CallPrincipal.serviceAccountExists` and
+    `oauthClientVerified`; identity JWT claim `client_verified`. Migration `00009_call_principals` (nullable
+    `mcp_calls.oauth_client_kind`, an index). CIMD fetches logged at info level; the OAuth error page follows the
+    color mode; UI fixes (rotation note, sign-in note for apps, combined notices, wording, focus).
 
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
@@ -133,8 +141,8 @@ make test && make web-test
 
 ## Next steps
 
-1. Phase 4 UI (consent page, connected apps, trusted clients, service accounts) and browser QA of the OAuth flow with
-   real clients (Claude Code, VS Code, Cursor) against a reachable deployment.
+1. Browser re-check of the Phase 4 QA follow-ups (390px service account header, Admin › Calls filter, dark error page)
+   and QA of the OAuth flow with real clients (Claude Code, VS Code, Cursor) against a reachable deployment.
 2. Phase 5: auth providers, per-user token vault.
 3. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, metrics; see [deploy.md](deploy.md)
    "Not covered yet".

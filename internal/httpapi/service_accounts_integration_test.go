@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -238,7 +239,7 @@ func TestServiceAccountsAtTheGateway(t *testing.T) {
 	_ = json.Unmarshal([]byte(resultText(t, res)), &who)
 	c := who.Claims
 	if teams, _ := c["teams"].([]any); !who.Verified || c["principal_type"] != "service_account" || c["sub"] != id || c["name"] != "ci-bot" ||
-		len(teams) != 1 || teams[0] != "tools" || c["email"] != nil || c["client"] != "deploy" || c["gateway"] != "support" {
+		len(teams) != 1 || teams[0] != "tools" || c["email"] != nil || c["client"] != "deploy" || c["client_verified"] != nil || c["gateway"] != "support" {
 		t.Fatalf("whoami = %+v", who)
 	}
 	// People's tokens say user.
@@ -267,18 +268,31 @@ func TestServiceAccountsAtTheGateway(t *testing.T) {
 		t.Errorf("scoped key on its gateway = %d", code)
 	}
 
-	// Call records name the account; the serviceAccount filter finds them
-	// (the team's calls: through its gateways or to its servers).
+	// Call records name the account; the serviceAccount filter finds them.
+	// The team's calls include every call of its accounts, through any
+	// gateway: the platform gateways and the other team's gateway too (all
+	// nine of them, refusals included).
 	var page apitypes.McpCallPage
-	if code := e.owner.get(toolsTeam+"/calls?serviceAccount="+id, &page); code != 200 || len(page.Items) != 4 {
+	if code := e.owner.get(toolsTeam+"/calls?serviceAccount="+id, &page); code != 200 || len(page.Items) != 9 {
 		t.Fatalf("calls = %d %d", code, len(page.Items))
 	}
+	through := map[string]int{}
 	for _, it := range page.Items {
 		p := it.Principal
+		through[it.Gateway.Slug]++
 		if p.Kind != "service_account" || p.DisplayName != "ci-bot" || p.ServiceAccountId == nil || p.ServiceAccountId.String() != id ||
-			p.ServiceAccountTeamSlug == nil || *p.ServiceAccountTeamSlug != "tools" || p.ApiKeyName == nil || p.UserId != nil || p.Email != nil {
+			p.ServiceAccountTeamSlug == nil || *p.ServiceAccountTeamSlug != "tools" || p.ApiKeyName == nil || p.UserId != nil || p.Email != nil ||
+			p.ServiceAccountExists == nil || !*p.ServiceAccountExists || p.OauthClientVerified != nil {
 			t.Errorf("principal = %+v", p)
 		}
+	}
+	if through["support"] != 4 || through["shared"] != 3 || through["personal"] != 1 || through["other-gw"] != 1 {
+		t.Errorf("calls by gateway = %v", through)
+	}
+	// The other team sees the refusal on its gateway (it went through it).
+	page = apitypes.McpCallPage{}
+	if code := e.outsider.get("/v1/teams/other/calls?serviceAccount="+id, &page); code != 200 || len(page.Items) != 1 || page.Items[0].Gateway.Slug != "other-gw" {
+		t.Errorf("other team's calls by the account = %d %+v", code, page.Items)
 	}
 	page = apitypes.McpCallPage{}
 	if code := e.auditor.get("/v1/admin/calls?serviceAccount="+id+"&gateway="+shared.Id.String(), &page); code != 200 || len(page.Items) < 2 {
@@ -338,7 +352,8 @@ func TestServiceAccountsAtTheGateway(t *testing.T) {
 	// Its records stay, with its name as it was.
 	page = apitypes.McpCallPage{}
 	if code := e.auditor.get("/v1/admin/calls?serviceAccount="+id+"&limit=1", &page); code != 200 || len(page.Items) != 1 ||
-		page.Items[0].Principal.DisplayName != "ci-bot" || page.Items[0].Principal.ApiKeyName == nil {
+		page.Items[0].Principal.DisplayName != "ci-bot" || page.Items[0].Principal.ApiKeyName == nil || *page.Items[0].Principal.ApiKeyName != "fresh" ||
+		page.Items[0].Principal.ServiceAccountExists == nil || *page.Items[0].Principal.ServiceAccountExists {
 		t.Errorf("records after delete = %d %+v", code, page.Items)
 	}
 
@@ -352,6 +367,130 @@ func TestServiceAccountsAtTheGateway(t *testing.T) {
 			if strings.Contains(text, secret) {
 				t.Errorf("%s contains a service account key", what)
 			}
+		}
+	}
+}
+
+// GET .../service-accounts/{id}/gateways: what an account can use now, with
+// its role applied (decision 23); and the admin list of every team's
+// accounts.
+func TestServiceAccountGatewaysAndAdminList(t *testing.T) {
+	e := newGwEnv(t, nil)
+	e.publish(e.owner, e.server)
+	whoami := e.capID(e.owner, e.server, "tool", "whoami")
+	support := e.createGateway(e.owner, toolsTeam+"/gateways", "support")
+	e.mustSetCaps(e.owner, toolsTeam+"/gateways/"+support.Id.String(), sel(whoami, e.capID(e.owner, e.server, "tool", "echo")+":editor",
+		e.capID(e.owner, e.server, "tool", "check_outage")+":admin"))
+	off := e.createGateway(e.owner, toolsTeam+"/gateways", "off")
+	var cur apitypes.Gateway
+	e.owner.get(toolsTeam+"/gateways/"+off.Id.String(), &cur)
+	code, ec := e.owner.call("PATCH", toolsTeam+"/gateways/"+off.Id.String(), map[string]any{"enabled": false}, nil, ifMatch(cur.Revision))
+	mustCode(t, "turn a gateway off", code, ec, 200, "")
+	shared := e.createGateway(e.admin, "/v1/admin/gateways", "shared")
+	e.mustSetCaps(e.admin, "/v1/admin/gateways/"+shared.Id.String(), sel(whoami))
+	code, ec = e.admin.call("POST", "/v1/admin/gateways/"+shared.Id.String()+"/grants", map[string]any{"subjectKind": "team", "team": "tools"}, nil, nil)
+	mustCode(t, "grant to the team", code, ec, 201, "")
+	personal := e.createGateway(e.admin, "/v1/admin/gateways", "personal")
+	code, ec = e.admin.call("POST", "/v1/admin/gateways/"+personal.Id.String()+"/grants", map[string]any{"subjectKind": "user", "userEmail": "user@localhost"}, nil, nil)
+	mustCode(t, "grant to a person", code, ec, 201, "")
+	e.createGateway(e.outsider, "/v1/teams/other/gateways", "other-gw")
+
+	sa := createSA(t, e.owner, map[string]any{"name": "ci-bot"})
+	path := saBase + "/" + sa.Id.String() + "/gateways"
+	list := func(s *session) []apitypes.MyGateway {
+		t.Helper()
+		var out []apitypes.MyGateway
+		if code := s.get(path, &out); code != 200 {
+			t.Fatalf("gateways = %d", code)
+		}
+		return out
+	}
+	summary := func(gws []apitypes.MyGateway) string {
+		parts := []string{}
+		for _, g := range gws {
+			access := []string{}
+			for _, a := range g.Access {
+				access = append(access, string(a))
+			}
+			parts = append(parts, g.Slug+":"+strings.Join(access, "+")+":"+strconv.FormatInt(g.CapabilityCount, 10))
+		}
+		return strings.Join(parts, " ")
+	}
+	// Role member: one of support's three capabilities; the team's grant
+	// covers shared; a person's grant, another team's gateway and a gateway
+	// that's off don't count.
+	if got := summary(list(e.member)); got != "shared:team_grant:1 support:team_member:1" {
+		t.Fatalf("member-role account = %q", got)
+	}
+	gws := list(e.auditor)
+	if g := gws[1]; g.Url != e.app.URL+"/mcp/support" || g.TeamSlug == nil || *g.TeamSlug != "tools" || g.OwnerKind != "team" || g.Groups != nil {
+		t.Errorf("support = %+v", g)
+	}
+	patchSA(t, e.owner, sa.Id.String(), map[string]any{"role": "editor"})
+	if got := summary(list(e.editor)); got != "shared:team_grant:1 support:team_member:2" {
+		t.Errorf("editor-role account = %q", got)
+	}
+	// A turned-off account still lists them; an archived team none.
+	patchSA(t, e.owner, sa.Id.String(), map[string]any{"enabled": false})
+	if got := summary(list(e.owner)); got != "shared:team_grant:1 support:team_member:2" {
+		t.Errorf("turned-off account = %q", got)
+	}
+	e.setTeamStatus("tools", "archived")
+	if got := list(e.admin); len(got) != 0 {
+		t.Errorf("archived team = %+v", got)
+	}
+	e.setTeamStatus("tools", "active")
+	code, ec = e.outsider.call("GET", path, nil, nil, nil)
+	mustCode(t, "outsider", code, ec, 404, "team_not_found")
+	code, ec = e.owner.call("GET", saBase+"/00000000-0000-0000-0000-000000000000/gateways", nil, nil, nil)
+	mustCode(t, "unknown account", code, ec, 404, "service_account_not_found")
+	code, ec = e.outsider.call("GET", "/v1/teams/other/service-accounts/"+sa.Id.String()+"/gateways", nil, nil, nil)
+	mustCode(t, "another team's account", code, ec, 404, "service_account_not_found")
+
+	// Every team's accounts, for platform staff: by name, searchable, by team, paged.
+	createSA(t, e.owner, map[string]any{"name": "a-tools-bot"})
+	code, ec = e.outsider.call("POST", "/v1/teams/other/service-accounts", map[string]any{"name": "zz-other-bot"}, nil, nil)
+	mustCode(t, "other team's account", code, ec, 201, "")
+	names := func(s *session, query string) (int, []string, *string) {
+		t.Helper()
+		var page apitypes.ServiceAccountPage
+		code := s.get("/v1/admin/service-accounts"+query, &page)
+		out := []string{}
+		for _, a := range page.Items {
+			out = append(out, a.TeamSlug+"/"+a.Name)
+		}
+		return code, out, page.NextCursor
+	}
+	if code, got, next := names(e.auditor, ""); code != 200 || strings.Join(got, ",") != "tools/a-tools-bot,tools/ci-bot,other/zz-other-bot" || next != nil {
+		t.Errorf("all = %d %v %v", code, got, next)
+	}
+	if _, got, _ := names(e.admin, "?team=other"); strings.Join(got, ",") != "other/zz-other-bot" {
+		t.Errorf("team filter = %v", got)
+	}
+	if _, got, _ := names(e.admin, "?q=OTHER"); strings.Join(got, ",") != "other/zz-other-bot" {
+		t.Errorf("search = %v", got)
+	}
+	if _, got, _ := names(e.admin, "?q=tools"); strings.Join(got, ",") != "tools/a-tools-bot,tools/ci-bot" {
+		t.Errorf("search by team = %v", got)
+	}
+	if _, got, _ := names(e.admin, "?team=nope"); len(got) != 0 {
+		t.Errorf("unknown team = %v", got)
+	}
+	_, first, next := names(e.admin, "?limit=2")
+	if len(first) != 2 || next == nil {
+		t.Fatalf("first page = %v %v", first, next)
+	}
+	if _, rest, last := names(e.admin, "?limit=2&cursor="+*next); strings.Join(rest, ",") != "other/zz-other-bot" || last != nil {
+		t.Errorf("second page = %v %v", rest, last)
+	}
+	for _, s := range []*session{e.owner, e.member} {
+		code, ec := s.call("GET", "/v1/admin/service-accounts", nil, nil, nil)
+		mustCode(t, "non-staff", code, ec, 403, "forbidden")
+	}
+	for _, q := range []string{"?cursor=junk", "?limit=0", "?team=" + strings.Repeat("x", 101)} {
+		code, _ := e.admin.call("GET", "/v1/admin/service-accounts"+q, nil, nil, nil)
+		if code != 400 {
+			t.Errorf("%s = %d", q, code)
 		}
 	}
 }

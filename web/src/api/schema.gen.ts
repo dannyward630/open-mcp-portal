@@ -1010,7 +1010,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Calls through the team's gateways or to the team's servers (team owners and admins; platform staff) */
+        /**
+         * Calls through the team's gateways, to the team's servers, or by the team's service accounts (team owners and admins; platform staff)
+         * @description A call is listed when it went through one of the team's gateways, reached one of the team's servers, or was made by one of the team's service accounts through any gateway (for example a platform gateway granted to the team). Calls of a deleted service account stay listed under its name.
+         */
         get: operations["listTeamCalls"];
         put?: never;
         post?: never;
@@ -1414,6 +1417,30 @@ export interface paths {
         patch: operations["updateServiceAccount"];
         trace?: never;
     };
+    "/v1/teams/{team}/service-accounts/{serviceAccountId}/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The gateways the service account can use now (members and above; platform staff read any team)
+         * @description Its team's enabled gateways (access team_member) and the enabled platform gateways granted to its team (access team_grant), by name. capabilityCount counts what the account reaches now: available capabilities, with its role applied to minimum roles on its team's gateways. Empty while the team is archived. A turned-off account still lists them (its keys are refused until it's turned on). A key can be limited to these gateways.
+         */
+        get: operations["listServiceAccountGateways"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/teams/{team}/service-accounts/{serviceAccountId}/keys": {
         parameters: {
             query?: never;
@@ -1456,6 +1483,26 @@ export interface paths {
         post?: never;
         /** Revoke a key (team owners and admins); takes effect on the next request */
         delete: operations["revokeServiceAccountKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/service-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every team's service accounts (platform admins and auditors)
+         * @description q matches the account's name and its team's slug and name. An unknown team lists nothing.
+         */
+        get: operations["adminListServiceAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2366,9 +2413,13 @@ export interface components {
             apiKeyName?: string;
             /** @description The connected client (oauth) */
             oauthClientName?: string;
+            /** @description oauth: true when the client is identified by a Client ID Metadata Document (its host vouches for it); false when it registered itself, so its name is only its own claim */
+            oauthClientVerified?: boolean;
             /** Format: uuid */
             serviceAccountId?: string;
             serviceAccountTeamSlug?: string;
+            /** @description service_account: false once the account was deleted (its name is the one recorded) */
+            serviceAccountExists?: boolean;
         };
         McpCallPage: {
             items: components["schemas"]["McpCall"][];
@@ -2456,6 +2507,10 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        ServiceAccountPage: {
+            items: components["schemas"]["ServiceAccount"][];
+            nextCursor?: string | null;
         };
         ServiceAccountCreate: {
             /** @description Lower-case letters, digits and dashes; unique within the team */
@@ -4790,7 +4845,7 @@ export interface operations {
                 user?: components["parameters"]["CallUserParam"];
                 /** @description Only calls made by this service account */
                 serviceAccount?: components["parameters"]["CallServiceAccountParam"];
-                /** @description Team slug or ID (calls through its gateways or to its servers) */
+                /** @description Team slug or ID (calls through its gateways, to its servers, or by its service accounts) */
                 team?: string;
                 /** @description Entries at or after this time */
                 from?: components["parameters"]["AuditFromParam"];
@@ -5282,6 +5337,33 @@ export interface operations {
             428: components["responses"]["ErrorReply"];
         };
     };
+    listServiceAccountGateways: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serviceAccountId: components["parameters"]["ServiceAccountIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateways ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MyGateway"][];
+                    };
+                };
+            };
+            404: components["responses"]["ErrorReply"];
+        };
+    };
     listServiceAccountKeys: {
         parameters: {
             query?: never;
@@ -5362,6 +5444,38 @@ export interface operations {
             200: components["responses"]["OkReply"];
             403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListServiceAccounts: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring match */
+                q?: components["parameters"]["SearchParam"];
+                /** @description Team slug or ID (that team's service accounts) */
+                team?: string;
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of service accounts ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ServiceAccountPage"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
         };
     };
 }

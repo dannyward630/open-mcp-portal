@@ -1,13 +1,13 @@
 /*
  * Admin → Calls: every call through every gateway (metadata only), newest
  * first, with server-side filters in the URL: gateway, server, outcome,
- * person, team, service account (of the chosen team) and date range.
- * Platform admins and auditors.
+ * person, team, service account (any team's, searchable; the chosen team's
+ * when a team is chosen) and date range. Platform admins and auditors.
  */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Activity } from "lucide-react";
 import { api, unwrap } from "@/api/client";
-import { callColumns, callLabel, callsPrivacy, noCalls, outcomeFacet, serviceAccountFacet, useServiceAccountOptions } from "@/components/gateways/calls-table";
+import { callColumns, callLabel, callsPrivacy, noCalls, outcomeFacet, serviceAccountFacet, useAdminServiceAccountOptions } from "@/components/gateways/calls-table";
 import type { CallOutcome, McpCall } from "@/components/gateways/labels";
 import { ListPage, useListFilters } from "@/components/templates/list-page";
 import { Alert } from "@/components/ui/alert/alert";
@@ -36,17 +36,17 @@ function useFacets(): Facet<McpCall>[] {
   const servers = useOptions("servers");
   const people = usePeopleOptions();
   const teams = useTeamOptions();
-  // Service accounts belong to a team: the chosen team's are offered.
+  // Every team's service accounts, named with their team; only the chosen team's once a team is chosen.
   const [params] = useSearchParams();
   const team = params.get("team") || undefined;
-  const accounts = useServiceAccountOptions(team);
+  const accounts = useAdminServiceAccountOptions(team);
   return [
     { id: "gateway", label: "Gateway", type: "select", placeholder: "Any gateway", options: gateways },
     { id: "server", label: "Server", type: "select", placeholder: "Any server", options: servers },
     outcomeFacet,
     { id: "person", label: "Person", type: "select", placeholder: "Anyone", options: people },
     { id: "team", label: "Team", type: "select", placeholder: "Any team", options: teams.data ?? [] },
-    serviceAccountFacet(accounts, team ? "Any service account" : "Choose a team first"),
+    serviceAccountFacet(accounts),
     dateFacet<McpCall>(),
   ];
 }

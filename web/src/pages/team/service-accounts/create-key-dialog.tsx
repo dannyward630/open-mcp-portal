@@ -1,14 +1,16 @@
 /*
  * Create a service account key: a name (where it's deployed), how many days
  * it lasts (keys always expire; 90 by default, at most 365) and, optionally,
- * the team gateways it's limited to. The secret is shown once, right after,
- * with a warning, a copy button and the rotation steps; it's gone when the
- * dialog closes. No toast: the dialog's own title says it was created.
+ * the gateways it's limited to: any the account can use now, its team's or
+ * platform gateways granted to the team. The secret is shown once, right
+ * after, with a warning and a copy button; when another key was active
+ * before this one, the next rotation step too. It's gone when the dialog
+ * closes. No toast: the dialog's own title says it was created.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { api, ApiError, type Schemas, unwrap } from "../../../api/client";
-import { serviceAccountsKey, teamGatewaysKey } from "../../../api/queries";
+import { serviceAccountsKey } from "../../../api/queries";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { Button } from "@/components/ui/button/button";
 import { Combobox } from "@/components/ui/combobox/combobox";
@@ -18,7 +20,7 @@ import { Field, Form } from "@/components/ui/field/field";
 import { Input } from "@/components/ui/input/input";
 import { Stack } from "@/components/ui/layout/layout";
 import { NumberInput } from "@/components/ui/number-input/number-input";
-import { maxActiveKeys, rotationSteps, type ServiceAccount } from "./labels";
+import { accountGatewaysQuery, maxActiveKeys, type ServiceAccount } from "./labels";
 
 /** The most gateways a key can be limited to (the API's maxItems). */
 const maxKeyGateways = 50;
@@ -37,7 +39,12 @@ function refusal(err: unknown): string | undefined {
   return undefined;
 }
 
-type Props = { account: ServiceAccount; activeCount: number; onClose: () => void };
+type Props = {
+  account: ServiceAccount;
+  /** Its active keys now, before this one: one or more means this key is a rotation. */
+  activeCount: number;
+  onClose: () => void;
+};
 
 export function CreateKeyDialog({ account, activeCount, onClose }: Props) {
   const qc = useQueryClient();
@@ -47,12 +54,10 @@ export function CreateKeyDialog({ account, activeCount, onClose }: Props) {
   const [days, setDays] = useState("90");
   const [gatewayIds, setGatewayIds] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
-  const gateways = useQuery({
-    queryKey: [...teamGatewaysKey(team), "list", "key-scope"],
-    queryFn: async () => unwrap(await api.GET("/v1/teams/{team}/gateways", { params: { path: { team }, query: { limit: 200 } } })),
-  });
+  const gateways = useQuery(accountGatewaysQuery(team, account.id));
   const create = useMutation({
-    mutationFn: async () =>
+    // activeBefore: the active keys when Create was pressed (the list counts the new key once it reloads).
+    mutationFn: async (_: { activeBefore: number }) =>
       unwrap(
         await api.POST("/v1/teams/{team}/service-accounts/{serviceAccountId}/keys", {
           params: { path: { team, serviceAccountId: account.id } },
@@ -66,7 +71,7 @@ export function CreateKeyDialog({ account, activeCount, onClose }: Props) {
   if (create.data) {
     return (
       <Dialog open onOpenChange={(o) => !o && onClose()} title="Key created" size="lg" footer={<Button onClick={onClose}>Done</Button>}>
-        <SecretView created={create.data} rotating={activeCount >= 1} />
+        <SecretView created={create.data} rotating={(create.variables?.activeBefore ?? 0) >= 1} />
       </Dialog>
     );
   }
@@ -93,7 +98,7 @@ export function CreateKeyDialog({ account, activeCount, onClose }: Props) {
         onSubmit={(e) => {
           e.preventDefault();
           setSubmitted(true);
-          if (name.trim() && !daysProblem(days)) create.mutate();
+          if (name.trim() && !daysProblem(days)) create.mutate({ activeBefore: activeCount });
         }}
       >
         <Field label="Name" description="Where it's deployed, for example “GitHub Actions release workflow”." error={nameError}>
@@ -108,11 +113,11 @@ export function CreateKeyDialog({ account, activeCount, onClose }: Props) {
         >
           <Combobox
             multiple
-            items={(gateways.data?.items ?? []).map((g) => ({ value: g.id, label: g.name, hint: g.slug }))}
+            items={(gateways.data ?? []).map((g) => ({ value: g.id, label: g.name, hint: g.ownerKind === "platform" ? `${g.slug} · platform` : g.slug }))}
             value={gatewayIds}
             onValueChange={(v) => setGatewayIds(v.slice(0, maxKeyGateways))}
             placeholder="All its gateways"
-            listLabel="The team's gateways"
+            listLabel="Gateways it can use"
             chipsLabel="Chosen gateways"
             emptyText="No gateway matches."
           />
@@ -141,7 +146,11 @@ function SecretView({ created, rotating }: { created: Schemas["ServiceAccountKey
         value={created.secret}
         description={`Send it as “Authorization: Bearer …” to a gateway's URL. Starts with ${created.key.prefix}.`}
       />
-      {rotating && <Alert tone="info" title="Next: finish the rotation">{`Deploy this key where the older one is used, then revoke the older key. ${rotationSteps}`}</Alert>}
+      {rotating && (
+        <Alert tone="info" title="Next: finish the rotation">
+          Deploy this key where the older one is used, then revoke the older key on the Keys tab.
+        </Alert>
+      )}
     </Stack>
   );
 }

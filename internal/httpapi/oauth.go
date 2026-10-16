@@ -205,11 +205,20 @@ func (a *api) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, to, http.StatusFound)
 }
 
+// oauthPageTmpl is the authorization error page. It follows the person's
+// color mode like the web app: /color-mode.js (the app's own pre-paint
+// script, same origin) sets <html data-theme> from their choice in this
+// browser, else the system's; without it, the system's setting applies.
 var oauthPageTmpl = template.Must(template.New("oauth").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="/color-mode.js"></script>
 <title>Can't connect this app · {{.Instance}}</title>
-<style>body{font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem;line-height:1.5;color:#1f2328}
-h1{font-size:1.4rem}code{background:#f3f4f6;padding:0 .25rem}</style></head>
+<style>:root{color-scheme:light;--bg:#fff;--fg:#1f2328;--muted:#59636e;--code:#eff1f3}
+:root[data-theme=dark]{color-scheme:dark;--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--code:#262c36}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){color-scheme:dark;--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--code:#262c36}}
+html{background:var(--bg)}body{font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem;line-height:1.5;color:var(--fg);background:var(--bg)}
+h1{font-size:1.4rem}small{color:var(--muted)}code{background:var(--code);padding:0 .25rem}</style></head>
 <body><main><h1>Can't connect this app</h1><p>{{.Message}}</p>
 <p>Nothing was shared with the app. Close this page and try connecting again, or ask the app's maker.</p>
 <p><small>Error: <code>{{.Code}}</code></small></p></main></body></html>`))
@@ -228,7 +237,7 @@ func (a *api) oauthPage(w http.ResponseWriter, r *http.Request, err error) {
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	h.Set("Cache-Control", "no-store")
-	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+	h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'")
 	w.WriteHeader(status)
 	_ = oauthPageTmpl.Execute(w, map[string]string{"Instance": a.Config.Instance.Name, "Message": msg, "Code": code})
 }

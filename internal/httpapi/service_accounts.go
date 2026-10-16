@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
@@ -23,10 +25,16 @@ func (a *api) serviceAccountRoutes() []route {
 		{"GET", one, a.session(a.getServiceAccount)},
 		{"PATCH", one, a.session(a.updateServiceAccount)},
 		{"DELETE", one, a.session(a.deleteServiceAccount)},
+		{"GET", one + "/gateways", a.session(a.listServiceAccountGateways)},
 		{"GET", one + "/keys", a.session(a.listServiceAccountKeys)},
 		{"POST", one + "/keys", a.session(a.createServiceAccountKey)},
 		{"DELETE", one + "/keys/{keyId}", a.session(a.revokeServiceAccountKey)},
 	}
+}
+
+// serviceAccountAdminRoutes: every team's service accounts (platform staff).
+func (a *api) serviceAccountAdminRoutes() []route {
+	return []route{{"GET", "/v1/admin/service-accounts", a.admin(a.adminListServiceAccounts)}}
 }
 
 func toAPIServiceAccount(v serviceaccounts.View) apitypes.ServiceAccount {
@@ -111,6 +119,61 @@ func (a *api) deleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, r, a.ServiceAccounts.Delete(r.Context(), a.actor(r), r.PathValue("team"), id))
+}
+
+func (a *api) listServiceAccountGateways(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "serviceAccountId")
+	if !ok {
+		return
+	}
+	mine, err := a.ServiceAccounts.Gateways(r.Context(), a.actor(r), r.PathValue("team"), id)
+	writeList(w, r, mine, err, a.toAPIMyGateway)
+}
+
+// adminListServiceAccounts reads ?q=, ?team=, ?cursor= and ?limit=.
+func (a *api) adminListServiceAccounts(w http.ResponseWriter, r *http.Request) {
+	limit, ok := pageLimit(w, r)
+	if !ok {
+		return
+	}
+	q, ok := search(w, r)
+	if !ok {
+		return
+	}
+	keys, ok := decodeCursor(w, r, 2)
+	if !ok {
+		return
+	}
+	p := serviceaccounts.AdminListParams{Search: q, Limit: limit + 1}
+	if keys != nil {
+		id, err := uuid.Parse(keys[1])
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "invalid_cursor", "Invalid cursor")
+			return
+		}
+		p.AfterName, p.AfterID = &keys[0], &id
+	}
+	if v := r.URL.Query().Get("team"); v != "" {
+		if len(v) > 100 {
+			httpx.Error(w, http.StatusBadRequest, "invalid_team", "team must be a team slug or ID")
+			return
+		}
+		p.Team = v
+	}
+	rows, err := a.ServiceAccounts.AdminList(r.Context(), a.actor(r), p)
+	if failed(w, r, err) {
+		return
+	}
+	page := apitypes.ServiceAccountPage{Items: []apitypes.ServiceAccount{}}
+	if len(rows) > int(limit) {
+		rows = rows[:limit]
+		last := rows[len(rows)-1].Account
+		page.NextCursor = encodeCursor(last.Name, last.ID.String())
+	}
+	for _, v := range rows {
+		page.Items = append(page.Items, toAPIServiceAccount(v))
+	}
+	httpx.JSON(w, http.StatusOK, page)
 }
 
 func (a *api) listServiceAccountKeys(w http.ResponseWriter, r *http.Request) {

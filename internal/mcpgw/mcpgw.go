@@ -502,7 +502,7 @@ func (rc *request) record(c calls.Call, responseBytes int64) {
 	case p.account != nil:
 		c.ServiceAccountID, c.ServiceAccountName, c.ServiceAccountTeamID = p.account.Account.ID, p.account.Account.Name, p.account.Team.ID
 	case p.grant != nil:
-		c.UserID, c.OAuthGrantID, c.OAuthClientName = p.user.ID, p.grant.ID, p.grant.ClientName
+		c.UserID, c.OAuthGrantID, c.OAuthClientName, c.OAuthClientKind = p.user.ID, p.grant.ID, p.grant.ClientName, p.grant.ClientKind
 	default:
 		c.UserID = p.user.ID
 	}

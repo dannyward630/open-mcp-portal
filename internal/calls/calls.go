@@ -59,15 +59,17 @@ type Call struct {
 	CapabilityID                   uuid.UUID
 	// PrincipalKind says who called (PrincipalAPIKey when empty): a person
 	// with a key (UserID, APIKeyID) or a connected client (UserID,
-	// OAuthGrantID, OAuthClientName), or a service account (ServiceAccount*
-	// and its key in APIKeyID). KeyName is the key's name as it was.
+	// OAuthGrantID, OAuthClientName, and OAuthClientKind: "metadata" for a
+	// Client ID Metadata Document, else "registered"), or a service account
+	// (ServiceAccount* and its key in APIKeyID). KeyName is the key's name as
+	// it was.
 	PrincipalKind                          string
 	UserID, APIKeyID                       uuid.UUID
 	KeyName                                string
 	ServiceAccountID, ServiceAccountTeamID uuid.UUID
 	ServiceAccountName                     string
 	OAuthGrantID                           uuid.UUID
-	OAuthClientName                        string
+	OAuthClientName, OAuthClientKind       string
 	ClientName                             string
 	Outcome, ErrorClass                    string
 	Latency                                time.Duration
@@ -99,7 +101,7 @@ func Record(ctx context.Context, q *dbgen.Queries, c Call) error {
 		CapabilityID: null(c.CapabilityID), PrincipalKind: c.PrincipalKind, UserID: null(c.UserID), ApiKeyID: null(c.APIKeyID),
 		KeyName: clip(c.KeyName, 100), ServiceAccountID: null(c.ServiceAccountID), ServiceAccountName: clip(c.ServiceAccountName, 64),
 		ServiceAccountTeamID: null(c.ServiceAccountTeamID), OauthGrantID: null(c.OAuthGrantID), OauthClientName: clip(c.OAuthClientName, 200),
-		ClientName: clip(c.ClientName, 200), Outcome: c.Outcome, ErrorClass: clip(c.ErrorClass, 64),
+		OauthClientKind: clip(c.OAuthClientKind, 20), ClientName: clip(c.ClientName, 200), Outcome: c.Outcome, ErrorClass: clip(c.ErrorClass, 64),
 		LatencyMs: int32(min(c.Latency.Milliseconds(), 1<<31-1)), RequestBytes: max(c.RequestBytes, 0), ResponseBytes: max(c.ResponseBytes, 0),
 	}
 	if c.Server != nil {
@@ -151,8 +153,9 @@ func (f Filter) query() dbgen.ListMCPCallsParams {
 	return p
 }
 
-// ListTeam lists calls through the team's gateways or to its servers
-// (team owners and admins; platform admins and auditors).
+// ListTeam lists calls through the team's gateways, to its servers, or by
+// its service accounts through any gateway (team owners and admins;
+// platform admins and auditors).
 func (s *Service) ListTeam(ctx context.Context, a authz.Actor, ref string, f Filter) ([]dbgen.ListMCPCallsRow, error) {
 	t, err := teams.Resolve(ctx, s.q, ref)
 	if err != nil {

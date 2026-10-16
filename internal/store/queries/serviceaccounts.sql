@@ -111,3 +111,23 @@ WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 mi
 -- name: TeamHasGatewayGrant :one
 -- Whether a platform gateway is granted to a team.
 SELECT EXISTS (SELECT 1 FROM gateway_grants WHERE gateway_id = @gateway_id AND team_id = @team_id)::bool;
+
+-- name: AdminListServiceAccounts :many
+-- One page of every team's service accounts ordered by (name, id), with
+-- their team, active keys and creator. search (LIKE-escaped by the caller)
+-- matches the account's name and its team's slug and name.
+SELECT sqlc.embed(sa), t.slug AS team_slug,
+       (SELECT count(*) FROM service_account_keys k
+        WHERE k.service_account_id = sa.id AND k.revoked_at IS NULL AND k.expires_at > now())::bigint AS active_keys,
+       u.display_name AS created_by_name
+FROM service_accounts sa
+JOIN teams t ON t.id = sa.team_id
+LEFT JOIN users u ON u.id = sa.created_by
+WHERE (sqlc.narg(team_id)::uuid IS NULL OR sa.team_id = sqlc.narg(team_id)::uuid)
+  AND (sqlc.narg(search)::text IS NULL
+       OR sa.name ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'
+       OR t.slug ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\'
+       OR t.name ILIKE '%' || sqlc.narg(search)::text || '%' ESCAPE '\')
+  AND (sqlc.narg(after_name)::text IS NULL OR (sa.name, sa.id) > (sqlc.narg(after_name)::text, sqlc.narg(after_id)::uuid))
+ORDER BY sa.name, sa.id
+LIMIT @page_size;

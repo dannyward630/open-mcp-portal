@@ -9,6 +9,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/calls"
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
+	"github.com/ncecere/open-mcp-gateway/internal/oauth"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
 )
@@ -211,8 +212,8 @@ type identityFor struct {
 // identityToken signs who is calling, for the server's URL: a person
 // (principal_type user: their ID, email, name and teams) or a service
 // account (principal_type service_account: its ID, name and team, no
-// email). client is the connected OAuth client's name, else the request's
-// clientInfo.name, else the key's name.
+// email). client is the connected OAuth client's name (with
+// client_verified), else the request's clientInfo.name, else the key's name.
 func (rc *request) identityToken(what identityFor, o gateways.Offer) (string, error) {
 	p := rc.principal
 	c := identity.Claims{Audience: o.Server.URL, Gateway: rc.gateway.Slug, Tool: what.tool, Prompt: what.prompt, Resource: what.resource}
@@ -232,7 +233,10 @@ func (rc *request) identityToken(what identityFor, o gateways.Offer) (string, er
 	}
 	switch {
 	case p.grant != nil:
-		c.Client = p.grant.ClientName
+		// Only a metadata-document client's name is vouched for by its host;
+		// a client that registered itself chose its own name.
+		verified := p.grant.ClientKind == oauth.KindMetadata
+		c.Client, c.ClientVerified = p.grant.ClientName, &verified
 	default:
 		if c.Client = rc.clientName(); c.Client == "" {
 			c.Client = p.keyName

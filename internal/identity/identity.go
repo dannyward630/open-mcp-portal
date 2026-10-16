@@ -102,6 +102,10 @@ type Claims struct {
 	Prompt        string   // the exposed prompt name (prompts/get)
 	Resource      string   // the exposed resource URI read (resources/read)
 	Client        string   // the OAuth client's name; else clientInfo.name when known, else the key's name
+	// ClientVerified is set when Client is an OAuth client's name: true for
+	// a Client ID Metadata Document client (its host vouches for the name),
+	// false for one that registered itself (the name is its own claim).
+	ClientVerified *bool
 }
 
 // Principal types (claim principal_type).
@@ -121,6 +125,8 @@ type tokenClaims struct {
 	Prompt        string   `json:"prompt,omitempty"`
 	Resource      string   `json:"resource,omitempty"`
 	Client        string   `json:"client,omitempty"`
+	// ClientVerified: only with an OAuth client's name in client.
+	ClientVerified *bool `json:"client_verified,omitempty"`
 }
 
 // Key states.
@@ -191,7 +197,7 @@ func (s *Service) Sign(ctx context.Context, c Claims) (string, error) {
 	if pt == "" {
 		pt = PrincipalUser
 	}
-	priv := tokenClaims{PrincipalType: pt, Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Resource: c.Resource, Client: c.Client}
+	priv := tokenClaims{PrincipalType: pt, Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Resource: c.Resource, Client: c.Client, ClientVerified: c.ClientVerified}
 	return jwt.Signed(k.signer).Claims(reg).Claims(priv).Serialize()
 }
 

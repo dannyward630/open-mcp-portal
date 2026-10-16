@@ -5,7 +5,8 @@
  * one, deploy it, revoke the old one. Create shows the secret once
  * (create-key-dialog.tsx); Revoke asks first and takes effect on the next
  * request. Owners, admins and platform staff see the keys; members are told
- * who can.
+ * who can. A turned-off account is explained once, above the tabs (record.tsx);
+ * here Create key is off, with the reason as its title.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Lock, Plus, Trash2 } from "lucide-react";
@@ -109,7 +110,6 @@ function KeyList({ account, canManage }: { account: ServiceAccount; canManage: b
       ) : (
         <Alert tone="info">{`A service account can have at most ${maxActiveKeys} active keys. ${rotationSteps} Keys always expire, after at most 365 days.`}</Alert>
       )}
-      {canManage && blocked && !account.enabled && <Alert tone="warning">{blocked}</Alert>}
       <ListPage<ServiceAccountKey>
         id="service-account-keys"
         caption={`Keys of ${account.name}`}

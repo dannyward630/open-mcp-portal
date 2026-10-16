@@ -58,7 +58,11 @@ describe("Admin → Users", () => {
     await screen.findByRole("heading", { level: 1, name: "Pat Admin" });
     await u.click(screen.getByRole("button", { name: "More actions" }));
     await u.click(await screen.findByRole("menuitem", { name: "Suspend…" }));
-    await u.click(within(await screen.findByRole("alertdialog", { name: "Suspend Pat Admin?" })).getByRole("button", { name: "Suspend" }));
+    const ask = await screen.findByRole("alertdialog", { name: "Suspend Pat Admin?" });
+    // What stops, and that reactivating brings it back.
+    expect(ask).toHaveTextContent("their connected apps, their API keys and their access to teams and gateways stop working");
+    expect(ask).toHaveTextContent("Reactivating restores them");
+    await u.click(within(ask).getByRole("button", { name: "Suspend" }));
     await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ status: "suspended" }));
   });
 

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
-import { gateway, page, serviceAccount, serviceAccountId, serviceAccountKey, team } from "./fixtures";
+import { gatewayId, myGateway, serviceAccount, serviceAccountId, serviceAccountKey, team } from "./fixtures";
 import { type Call, type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 type Role = Schemas["TeamRole"];
@@ -11,13 +11,19 @@ const base = `/v1/teams/${team.slug}/service-accounts`;
 const list = `/teams/${team.slug}/service-accounts`;
 const record = `${list}/${serviceAccountId}`;
 const secret = "omcp_sa_ab12cd34_0123456789abcdefghijklmnopqrstuv";
+const platformGatewayId = "78787878-7878-4787-8787-787878787878";
+/** What the account can use: its team's gateway (one capability with its role) and a platform gateway granted to the team. */
+const accountGateways = [
+  myGateway({ capabilityCount: 1 }),
+  myGateway({ id: platformGatewayId, slug: "company-search", name: "Company search", ownerKind: "platform", teamSlug: undefined, teamName: undefined, access: ["team_grant"], capabilityCount: 3, url: "https://mcp.example.com/mcp/company-search" }),
+];
 
 const routes = (role: Role | null = "owner", sa = serviceAccount(), keys = [serviceAccountKey()], extra: Record<string, Handler> = {}, platformRole: Schemas["PlatformRole"] = "none"): Record<string, Handler> => ({
   ...shellRoutes(platformRole, role),
   [`GET ${base}`]: () => [sa],
   [`GET ${base}/${serviceAccountId}`]: () => sa,
   [`GET ${base}/${serviceAccountId}/keys`]: () => keys,
-  [`GET /v1/teams/${team.slug}/gateways`]: () => page([gateway()]),
+  [`GET ${base}/${serviceAccountId}/gateways`]: () => accountGateways,
   ...extra,
 });
 
@@ -87,24 +93,63 @@ describe("Create service account", () => {
 });
 
 describe("Service account › Overview", () => {
-  it("explains its role and links the team gateways its keys reach", async () => {
-    mockApi(routes("member"));
+  it("lists the gateways it can use now, with what it reaches with its role, including platform gateways granted to the team", async () => {
+    const calls = mockApi(routes("member"));
     const { container } = renderApp(record);
     expect(await screen.findByRole("heading", { level: 1, name: "ci-release-bot" })).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "Service account sections" })).toBeInTheDocument();
     expect(screen.getByText(/Reaches the capabilities open to every member of the team/)).toBeInTheDocument();
     expect(screen.getByText(/The owners and admins of Platform Tools/)).toBeInTheDocument();
-    const access = await screen.findByRole("table", { name: "Gateways of Platform Tools" });
-    expect(within(access).getByRole("link", { name: "Support tools" })).toHaveAttribute("href", `/teams/${team.slug}/gateways/77777777-7777-4777-8777-777777777777`);
-    expect(screen.getByText(/Platform gateways granted to Platform Tools work for it too/)).toBeInTheDocument();
+    const access = await screen.findByRole("table", { name: "Gateways ci-release-bot can use" });
+    const own = within(access).getByRole("link", { name: "Support tools" }).closest("tr")!;
+    expect(within(own).getByRole("link", { name: "Support tools" })).toHaveAttribute("href", `/teams/${team.slug}/gateways/${gatewayId}`);
+    // The count is the account's (its role applied), not the gateway's.
+    expect(own).toHaveTextContent("Platform Tools's gateway");
+    expect(own).toHaveTextContent("1 capability");
+    // A platform gateway granted to the team: listed, not linked for members.
+    const granted = within(access).getByText("Company search").closest("tr")!;
+    expect(granted).toHaveTextContent("Platform gateway granted to Platform Tools");
+    expect(granted).toHaveTextContent("3 capabilities");
+    expect(within(granted).queryByRole("link")).toBeNull();
+    expect(screen.getByText(/A grant of a platform gateway to Platform Tools covers its service accounts/)).toBeInTheDocument();
+    // Its own endpoint, not the team's gateway list.
+    expect(calls.some((c) => c.url === `/v1/teams/${team.slug}/gateways`)).toBe(false);
     await waitFor(() => expect(document.title).toBe("ci-release-bot · Service accounts · Open MCP Gateway"));
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it("says when it's turned off", async () => {
-    mockApi(routes("member", serviceAccount({ enabled: false })));
+  it("links platform gateways to Admin for platform staff, and says when it can use none", async () => {
+    mockApi(routes(null, serviceAccount(), [], {}, "platform_auditor"));
+    renderApp(record);
+    const access = await screen.findByRole("table", { name: "Gateways ci-release-bot can use" });
+    expect(within(access).getByRole("link", { name: "Company search" })).toHaveAttribute("href", `/admin/gateways/${platformGatewayId}`);
+  });
+
+  it("says when it can't use any gateway yet", async () => {
+    mockApi(routes("owner", serviceAccount(), [], { [`GET ${base}/${serviceAccountId}/gateways`]: () => [] }));
+    renderApp(record);
+    expect(await screen.findByText(/It can't use any gateway yet/)).toBeInTheDocument();
+  });
+
+  it("says when it's turned off, and that it was never used", async () => {
+    mockApi(routes("member", serviceAccount({ enabled: false, lastUsedAt: null })));
     renderApp(record);
     expect(await screen.findByText(/Its keys are refused until it's turned on again/)).toHaveTextContent("The team's owners and admins can turn it on again.");
+    expect(screen.getByText("Never used")).toBeInTheDocument();
+  });
+
+  it("says turned off and archived in one notice, not a stack of warnings", async () => {
+    mockApi({
+      ...routes("owner", serviceAccount({ enabled: false })),
+      [`GET /v1/teams/${team.slug}`]: () => ({ team: { ...team, status: "archived" }, role: "owner" }),
+    });
+    renderApp(`${record}?tab=keys`);
+    const notice = await screen.findByText("Turned off, and the team is archived");
+    expect(notice).toBeInTheDocument();
+    await screen.findByRole("table", { name: "Keys of ci-release-bot" });
+    expect(screen.queryByText("This team is archived")).toBeNull();
+    expect(screen.queryByText(/Its keys are refused until it's turned on again/)).toBeNull();
+    expect(screen.queryByText(/The account is turned off. Turn it on in Settings to create a key/)).toBeNull();
   });
 
   it("shows the not-found page for an unknown account", async () => {
@@ -130,12 +175,14 @@ describe("Service account › Keys", () => {
     await u.click(within(dialog).getByRole("button", { name: "Create key" }));
     expect(await within(dialog).findByText("Enter a name.")).toBeInTheDocument();
     await u.type(within(dialog).getByRole("textbox", { name: "Name" }), "Release workflow");
+    // The gateways it can use, platform ones granted to the team too.
     await u.click(within(dialog).getByRole("combobox", { name: /Limit to gateways/ }));
-    await u.click(await screen.findByRole("option", { name: /Support tools/ }));
+    expect(await screen.findByRole("option", { name: /Support tools/ })).toBeInTheDocument();
+    await u.click(await screen.findByRole("option", { name: /Company search/ }));
     await u.keyboard("{Escape}");
     await u.click(within(dialog).getByRole("button", { name: "Create key" }));
     await waitFor(() =>
-      expect(made(calls, "POST", `${base}/${serviceAccountId}/keys`)[0]?.body).toEqual({ name: "Release workflow", expiresInDays: 90, gatewayIds: ["77777777-7777-4777-8777-777777777777"] }),
+      expect(made(calls, "POST", `${base}/${serviceAccountId}/keys`)[0]?.body).toEqual({ name: "Release workflow", expiresInDays: 90, gatewayIds: [platformGatewayId] }),
     );
 
     const shown = await screen.findByRole("dialog", { name: "Key created" });
@@ -143,10 +190,39 @@ describe("Service account › Keys", () => {
     expect(within(shown).getByText(/It won't be shown again/)).toBeInTheDocument();
     expect(within(shown).getByText(secret)).toBeInTheDocument();
     expect(within(shown).getByRole("button", { name: /Copy service account key secret/ })).toBeInTheDocument();
+    // Another key was active before this one: the next step of the rotation, said once.
     expect(within(shown).getByText("Next: finish the rotation")).toBeInTheDocument();
+    expect(shown).toHaveTextContent("Deploy this key where the older one is used, then revoke the older key on the Keys tab.");
+    expect(shown.textContent).not.toContain("To rotate a key without downtime");
+    expect(await axe(shown)).toHaveNoViolations();
     await u.click(within(shown).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Key created" })).toBeNull());
     expect(document.body.textContent).not.toContain(secret);
+  });
+
+  it("doesn't call a first key a rotation, even once the list counts it", async () => {
+    const u = userEvent.setup();
+    const created: Schemas["ServiceAccountKeyCreated"] = { key: serviceAccountKey({ id: "new", name: "First", lastUsedAt: null }), secret };
+    let keys: Schemas["ServiceAccountKey"][] = [];
+    mockApi(
+      routes("owner", serviceAccount({ activeKeyCount: 0 }), [], {
+        [`GET ${base}/${serviceAccountId}/keys`]: () => keys,
+        [`POST ${base}/${serviceAccountId}/keys`]: () => {
+          keys = [created.key];
+          return new Reply(201, { data: created });
+        },
+      }),
+    );
+    renderApp(`${record}?tab=keys`);
+    await screen.findByText("No keys yet.");
+    await u.click(screen.getAllByRole("button", { name: "Create key" })[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Create a key for ci-release-bot" });
+    await u.type(within(dialog).getByRole("textbox", { name: "Name" }), "First");
+    await u.click(within(dialog).getByRole("button", { name: "Create key" }));
+    const shown = await screen.findByRole("dialog", { name: "Key created" });
+    // The list reloads with the new key (one active now) while the secret is still shown.
+    await within(await screen.findByRole("table", { name: "Keys of ci-release-bot", hidden: true })).findByText("First");
+    expect(within(shown).queryByText("Next: finish the rotation")).toBeNull();
   });
 
   it("allows at most two active keys: Create is off and the rotation is explained", async () => {

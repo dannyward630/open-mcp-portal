@@ -1,6 +1,6 @@
 # Phase 4 — Client sign-in (OAuth) and service accounts (design draft)
 
-Status: **backend built** (see "As built" at the end); UI in progress. Builds on decisions 12, 15–17; open questions answered as decisions 21–24.
+Status: **built** (backend, UI and the Phase 4 QA follow-ups; see "As built" at the end). Builds on decisions 12, 15–17; open questions answered as decisions 21–24.
 Grounded's OAuth server (`internal/oauth`, `docs/mcp.md` "Signing in with OAuth") is the reference, not a dependency.
 
 ## Goal
@@ -153,15 +153,17 @@ its name (`mcp_calls.service_account_name`, `key_name`).
   Access: the team's own gateways (role used for `minRole`) and platform gateways with a **team grant** to its team
   (user and group grants never cover it). Key scopes behave like personal ones (`key_scope`).
 - **Identity JWT:** every token now has `principal_type` (`user` | `service_account`); a service account's has `sub` =
-  its ID, `name`, `teams` = [its team], no `email`; OAuth calls' `client` is the client's name.
+  its ID, `name`, `teams` = [its team], no `email`; OAuth calls' `client` is the client's name, with `client_verified`
+  (QA follow-ups below).
 - **Call records:** `principal_kind` `api_key` | `oauth` | `service_account`; `user_id` is NULL for service accounts
   (a CHECK ties the columns to the kind). `CallPrincipal`: `userId`/`email` for people, `apiKeyName` for keys,
   `oauthClientName` for OAuth, `serviceAccountId`/`serviceAccountTeamSlug` for accounts. `?serviceAccount=` filters
-  team and admin call lists. Team call lists still mean "through the team's gateways or to its servers".
+  team and admin call lists. Team call lists mean "through the team's gateways, to its servers, or by its service
+  accounts" (the last added by the QA follow-ups below).
 - **Audit:** `service_account.create/update/delete` (target `service_account`) and `service_account_key.create/revoke`
   (target `service_account_key`, label "account · key"), all with the team; never a secret.
 
-**Contract:** no changes to `api/openapi.yaml` were needed.
+**Contract:** no changes to `api/openapi.yaml` were needed for the backend; the QA follow-ups below added some.
 
 **Tests:** `internal/oauth` (address guard with netpolicy entries for documents, cache, PKCE, redirect matching, resource
 shape, trusted-list validation), `internal/httpapi/oauth_integration_test.go` (discovery, authorize validation as page vs
@@ -175,3 +177,51 @@ sentinel), and the authz matrix for every new operation.
 **Not built / gaps:** rate limits on `/mcp` itself; per-tool scopes or step-up; private-use redirect schemes; CORS on
 the OAuth endpoints; previous-pepper support; DCR expiry runs only when someone registers (an expired registration is
 refused regardless); rate counters are per process.
+
+## As built: QA follow-ups
+
+**Contract changes** (additive; existing clients keep working):
+
+- `GET /v1/teams/{team}/service-accounts/{serviceAccountId}/gateways` (`listServiceAccountGateways`; members and above,
+  platform staff read any team): the gateways the account can use now, as `MyGateway` items ordered by name: its team's
+  enabled gateways (`access: [team_member]`) and enabled platform gateways granted to its team (`access: [team_grant]`).
+  `capabilityCount` is what the account reaches (availability, and its role for `minRole` on team gateways). Empty
+  while the team is archived; a turned-off account still lists them. `gateways.Service.ListForServiceAccount`,
+  `serviceaccounts.Service.Gateways`, query `ListGatewaysForServiceAccount`.
+- `GET /v1/admin/service-accounts` (`adminListServiceAccounts`; platform admins and auditors): a `ServiceAccountPage`
+  (new schema) ordered by (name, id) with `q` (account name, team slug or name), `team` (slug or ID; unknown lists
+  nothing), `cursor`, `limit`. Query `AdminListServiceAccounts`.
+- `GET /v1/teams/{team}/calls` (and Admin › Calls' `team` filter) also lists calls made by the team's service accounts
+  through **any** gateway (a platform gateway granted to the team, or a refusal on another team's gateway); documented in
+  the operation's description. Index `mcp_calls_service_account_team_idx`.
+- `CallPrincipal.serviceAccountExists` (service_account: false once the account is deleted) and
+  `CallPrincipal.oauthClientVerified` (oauth: true for metadata-document clients, false for registered ones). Calls now
+  record the client's kind (`mcp_calls.oauth_client_kind`); older records read it from the grant while it exists.
+- Identity JWT: `client_verified` (bool) whenever `client` is an OAuth client's name; absent otherwise.
+  [upstream-identity.md](upstream-identity.md) says a registered client's `client` is self-asserted.
+
+Migration `00009_call_principals.sql` (a nullable column and an index).
+
+**Behaviour and UI:** Client ID Metadata Document fetches are logged at info level ("oauth client metadata document
+fetched": host, HTTP status, outcome such as `ok`, `http_status`, `blocked_address`, `redirect`, `too_large`, and the
+duration; never the document or its path). The "Can't connect this app" page follows the person's color mode (the
+app's `/color-mode.js`, CSP `script-src 'self'`, dark styles; the system's setting without script). Service account
+Overview's Access card and the key dialog's "Limit to gateways" use the new endpoint (counts per the account's role;
+granted platform gateways listed and choosable). Admin › Calls' service account filter lists every team's accounts
+(searchable, "name (team)"; the chosen team's when a team is chosen). Call rows: a deleted service account is plain
+text ("Deleted service account · team · Key: …"), service account rows name the key, apps that registered themselves
+read "via <name> (unverified)". The key dialog shows "Next: finish the rotation" only when another key was active
+before the new one (captured when Create is pressed), once. The sign-in page reached from `/oauth/…` says an app is
+waiting to connect. Suspend-user and team-grant dialogs say what they cover. The service account header says "Never
+used"/"Used …" and shows one notice for turned off and/or archived. The trusted-client dialog focuses the first
+invalid field.
+
+**Tests:** `TestServiceAccountGatewaysAndAdminList` (role vs `minRole`, team grant vs person grant, other team's and
+turned-off gateways, archived team, 404s, admin list search/team/paging/403/400), `TestServiceAccountsAtTheGateway`
+(team call list includes the account's calls through platform and other teams' gateways; `serviceAccountExists`
+before and after delete; no `client_verified` for keys), OAuth flow tests (`client_verified` true/false in the JWT,
+`oauthClientVerified`, recorded kind; the error page's color mode and CSP), `TestMetadataDocumentFetchLogging`, the
+authz matrix for both new operations, the doctor's migration version. Vitest: service accounts (Access card, key
+scope with a platform gateway, rotation note only after a previous key, one combined notice, "Never used"), calls
+(unverified apps, deleted accounts, key names, admin filter without a team), sign-in note, trusted-client focus,
+suspend and grant wording.

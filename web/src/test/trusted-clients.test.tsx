@@ -108,6 +108,22 @@ describe("Admin → Trusted clients", () => {
     expect((puts(calls)[1]?.body as Clients).clients.map((c) => c.clientId)).toContain("https://cursor.com/oauth/client-metadata.json");
   });
 
+  it("moves the focus to the first invalid field after a refused Add", async () => {
+    const u = userEvent.setup();
+    mockApi(routes());
+    renderApp("/admin/trusted-clients");
+    await u.click(await screen.findByRole("button", { name: "Add client" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add trusted client" });
+    const label = within(dialog).getByRole("textbox", { name: /Label/ });
+    await u.type(label, "Cursor");
+    expect(label).toHaveFocus();
+    await u.click(within(dialog).getByRole("button", { name: "Add client" }));
+    const id = within(dialog).getByRole("textbox", { name: "Client ID" });
+    await waitFor(() => expect(id).toHaveFocus());
+    expect(id).toHaveAttribute("aria-invalid", "true");
+    expect(within(dialog).getByText(/Enter the client's ID/)).toBeInTheDocument();
+  });
+
   it("is read-only for auditors", async () => {
     mockApi(routes("platform_auditor"));
     const { container } = renderApp("/admin/trusted-clients");

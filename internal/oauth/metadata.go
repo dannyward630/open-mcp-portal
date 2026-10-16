@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -54,8 +55,10 @@ type metadataDocs struct {
 	// (the development allowance: DEV_AUTH on a loopback APP_URL).
 	devHTTP bool
 	now     func() time.Time
-	mu      sync.Mutex
-	cache   map[string]cachedDoc
+	// log is where fetches are logged (nil: slog.Default()).
+	log   func() *slog.Logger
+	mu    sync.Mutex
+	cache map[string]cachedDoc
 }
 
 func newMetadataDocs(dial func(ctx context.Context, network, address string) (net.Conn, error), devHTTP bool) *metadataDocs {
@@ -129,53 +132,98 @@ func (d *metadataDocs) get(ctx context.Context, id string) (Client, error) {
 	return c, nil
 }
 
-// fetch reads and checks a document.
+// Fetch outcomes, as logged.
+const (
+	docOK             = "ok"
+	docBadURL         = "bad_url"
+	docBlocked        = "blocked_address"
+	docRedirect       = "redirect"
+	docUnreachable    = "unreachable"
+	docHTTPStatus     = "http_status"
+	docNotJSON        = "not_json"
+	docUnreadable     = "unreadable"
+	docTooLarge       = "too_large"
+	docInvalidJSON    = "invalid_json"
+	docIDMismatch     = "client_id_mismatch"
+	docInvalidContent = "invalid_metadata"
+)
+
+// fetch reads and checks a document. Every fetch is logged at info level
+// with the document's host, the HTTP status and the outcome (like MCP server
+// discovery); never the document, its path or the fetch error's text.
 func (d *metadataDocs) fetch(ctx context.Context, id string) (Client, time.Duration, error) {
+	start := d.now()
+	c, ttl, status, outcome, err := d.fetchDoc(ctx, id)
+	d.logger().InfoContext(ctx, "oauth client metadata document fetched", "host", hostOf(id), "status", status,
+		"outcome", outcome, "duration_ms", d.now().Sub(start).Milliseconds())
+	return c, ttl, err
+}
+
+func (d *metadataDocs) logger() *slog.Logger {
+	if d.log != nil {
+		if l := d.log(); l != nil {
+			return l
+		}
+	}
+	return slog.Default()
+}
+
+// fetchDoc fetches a document: the client, how long to cache it, the HTTP
+// status (0 without an answer) and the outcome.
+func (d *metadataDocs) fetchDoc(ctx context.Context, id string) (Client, time.Duration, int, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, docTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, id, nil)
 	if err != nil {
-		return Client{}, 0, docError("The client_id isn't a URL the gateway can fetch.")
+		return Client{}, 0, 0, docBadURL, docError("The client_id isn't a URL the gateway can fetch.")
 	}
 	req.Header.Set("Accept", "application/json")
 	res, err := d.client.Do(req)
 	if err != nil {
 		if errors.Is(err, upstream.ErrBlockedAddress) {
-			return Client{}, 0, docError("The client's metadata document is on an address the gateway doesn't fetch from " +
+			return Client{}, 0, 0, docBlocked, docError("The client's metadata document is on an address the gateway doesn't fetch from " +
 				"(loopback, link-local, or an internal network no platform admin has allowed).")
 		}
 		if errors.Is(err, errDocRedirect) {
-			return Client{}, 0, docError("The client's metadata document redirects, which the gateway doesn't follow.")
+			status := 0
+			if res != nil { // the redirect itself, its body already closed
+				status = res.StatusCode
+			}
+			return Client{}, 0, status, docRedirect, docError("The client's metadata document redirects, which the gateway doesn't follow.")
 		}
-		return Client{}, 0, docError("The gateway couldn't fetch the client's metadata document at " + hostOf(id) + ".")
+		return Client{}, 0, 0, docUnreachable, docError("The gateway couldn't fetch the client's metadata document at " + hostOf(id) + ".")
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return Client{}, 0, docError("The client's metadata document answered HTTP " + strconv.Itoa(res.StatusCode) + ".")
+	status := res.StatusCode
+	fail := func(outcome, msg string) (Client, time.Duration, int, string, error) {
+		return Client{}, 0, status, outcome, docError(msg)
+	}
+	if status != http.StatusOK {
+		return fail(docHTTPStatus, "The client's metadata document answered HTTP "+strconv.Itoa(status)+".")
 	}
 	if mt, _, err := mime.ParseMediaType(res.Header.Get("Content-Type")); err != nil || (mt != "application/json" && !strings.HasSuffix(mt, "+json")) {
-		return Client{}, 0, docError("The client's metadata document isn't JSON (Content-Type application/json).")
+		return fail(docNotJSON, "The client's metadata document isn't JSON (Content-Type application/json).")
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxDocBytes+1))
 	if err != nil {
-		return Client{}, 0, docError("The gateway couldn't read the client's metadata document.")
+		return fail(docUnreadable, "The gateway couldn't read the client's metadata document.")
 	}
 	if len(body) > maxDocBytes {
-		return Client{}, 0, docError("The client's metadata document is larger than 16 KiB.")
+		return fail(docTooLarge, "The client's metadata document is larger than 16 KiB.")
 	}
 	var m ClientMetadata
 	if err := json.Unmarshal(body, &m); err != nil {
-		return Client{}, 0, docError("The client's metadata document isn't valid JSON.")
+		return fail(docInvalidJSON, "The client's metadata document isn't valid JSON.")
 	}
 	if m.ClientID != id {
-		return Client{}, 0, docError("The client_id in the client's metadata document must equal the document's URL.")
+		return fail(docIDMismatch, "The client_id in the client's metadata document must equal the document's URL.")
 	}
 	c, bad := m.check()
 	if bad != nil {
-		return Client{}, 0, docError("The client's metadata document is invalid: " + bad.Description)
+		return fail(docInvalidContent, "The client's metadata document is invalid: "+bad.Description)
 	}
 	c.ID, c.Kind = id, KindMetadata
-	return c, cacheFor(res.Header.Get("Cache-Control")), nil
+	return c, cacheFor(res.Header.Get("Cache-Control")), status, docOK, nil
 }
 
 // cacheFor is how long to keep a document: its max-age, clamped.

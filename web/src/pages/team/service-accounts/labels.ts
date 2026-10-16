@@ -79,6 +79,22 @@ export function serviceAccountAbilities(t: { isManager: boolean; archived: boole
   return { canManage: t.isManager && !t.archived, canReadKeys: t.isManager || t.staff };
 }
 
+/**
+ * The gateways the account can use now (its team's, and platform gateways granted to the team), with what
+ * it reaches on each (its role applied). Under the account's key, so a role change loads them again.
+ */
+export const accountGatewaysQuery = (team: string, serviceAccountId: string) =>
+  queryOptions({
+    queryKey: [...serviceAccountsKey(team), serviceAccountId, "gateways"],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/teams/{team}/service-accounts/{serviceAccountId}/gateways", { params: { path: { team, serviceAccountId } } })),
+  });
+
+export type AccountGateway = Schemas["MyGateway"];
+
+/** Why it can use a gateway, in words: its team's own, or a platform gateway granted to the team. */
+export const accountAccessText = (g: AccountGateway, teamName: string) => (g.ownerKind === "team" ? `${teamName}'s gateway` : `Platform gateway granted to ${teamName}`);
+
 export const keysQuery = (team: string, serviceAccountId: string) =>
   queryOptions({
     queryKey: [...serviceAccountsKey(team), serviceAccountId, "keys"],

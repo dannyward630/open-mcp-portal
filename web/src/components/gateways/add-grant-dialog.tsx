@@ -1,7 +1,8 @@
 /*
  * Add grant (platform gateways, platform admins): a team (all its members,
- * now and later), a person by email (someone who has signed in), or an SSO
- * group by its name in the identity provider's groups claim.
+ * now and later, and its service accounts: decision 23), a person by email
+ * (someone who has signed in), or an SSO group by its name in the identity
+ * provider's groups claim.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -19,7 +20,7 @@ import { grantsQuery } from "./scope";
 type Kind = Schemas["GatewayGrantSubjectKind"];
 
 const kindOptions: { value: Kind; label: string; description: string }[] = [
-  { value: "team", label: "A team", description: "Everyone on the team, including people who join later." },
+  { value: "team", label: "A team", description: "Everyone on the team, including people who join later, and the team's service accounts." },
   { value: "user", label: "A person", description: "Someone who has signed in at least once, by email." },
   { value: "group", label: "An SSO group", description: "Everyone in the group, as your identity provider reports at sign-in." },
 ];

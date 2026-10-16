@@ -63,7 +63,7 @@ Cursor shows a sign-in prompt for the server in its MCP settings.
 
 ### Apps without a metadata document
 
-Clients identify themselves either with a *Client ID Metadata Document* (an https URL their maker publishes; the consent page shows that host) or, for older clients, by registering themselves (Dynamic Client Registration). Self-registered apps are marked **registered** on the consent page: anyone can register any name, so check the redirect host before you allow it. They are never on the trusted list, and a registration unused for 30 days expires (the app registers again).
+Clients identify themselves either with a *Client ID Metadata Document* (an https URL their maker publishes; the consent page shows "From <host>") or, for older clients, by registering themselves (Dynamic Client Registration). Self-registered apps are marked **Unverified** on the consent page, with "It registered itself" (and the website it claims, if any): anyone can register any name, so allow one only if you just connected it yourself, and check the host the page says your answer goes to. They are never on the trusted list, a registration unused for 30 days expires (the app registers again), and call logs show their calls as "via <name> (unverified)". MCP servers see `client_verified: false` with such an app's name ([upstream-identity.md](upstream-identity.md)).
 
 If the browser shows **"Can't connect this app"**, the app's request was refused before anything was shared, for example an unknown app, a redirect address the app never registered, or a metadata document the gateway can't fetch. Nothing is sent to the app in that case. Errors after that (no PKCE, a URL that isn't one of your gateways, a gateway you can't use) go back to the app, which usually shows them.
 
@@ -100,11 +100,11 @@ A personal key stops working when you leave the team or are suspended, like ever
 For CI, agents and jobs owned by a **team** rather than a person. Team owners and admins manage them under **Team › Service accounts**:
 
 - An account has a name (unique in the team), a description, a **role** of `member` or `editor` (used for tools that require a minimum team role), and can be turned off.
-- It can use the **team's own gateways**, and **platform gateways granted to the team**. Grants to people or SSO groups don't cover it.
-- Its keys (`omcp_sa_…`) are shown once, always expire (at most 365 days), and can be limited to some gateways. An account has at most **two active keys**, so you can rotate: create the new key, deploy it, then revoke the old one.
+- It can use the **team's own gateways**, and **platform gateways granted to the team**. Grants to people or SSO groups don't cover it. The account's **Overview** lists the gateways it can use now and how many capabilities it reaches on each with its role.
+- Its keys (`omcp_sa_…`) are shown once, always expire (at most 365 days), and can be limited to some of the gateways it can use (platform gateways granted to the team included). An account has at most **two active keys**, so you can rotate: create the new key, deploy it, then revoke the old one.
 - Turning the account off, deleting it, archiving the team, or revoking or expiring a key refuses the next request. The account doesn't depend on the person who created it.
 
-Use its key exactly like a personal key (`Authorization: Bearer omcp_sa_...`). MCP servers see `principal_type: service_account` with the account's ID and name and its team, and no email. Calls are recorded under the account's name; owners and admins can filter the team's call log by service account.
+Use its key exactly like a personal key (`Authorization: Bearer omcp_sa_...`). MCP servers see `principal_type: service_account` with the account's ID and name and its team, and no email. Calls are recorded under the account's name and the key used. The team's call log (owners and admins) includes every call of the team's service accounts, through any gateway, and can be filtered by service account; platform staff can filter Admin › Calls by any team's service account.
 
 ## Troubleshooting
 

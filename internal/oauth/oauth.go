@@ -116,11 +116,13 @@ func New(pool *pgxpool.Pool, gws *gateways.Service, cfg Config) *Service {
 	if up == nil {
 		up = &upstream.Client{}
 	}
-	return &Service{
+	s := &Service{
 		pool: pool, q: q, pepper: cfg.Pepper, issuer: strings.TrimRight(cfg.Issuer, "/"), gateways: gws,
 		docs: newMetadataDocs(up.GuardedDial(), up.AllowPrivate),
 		Log:  slog.Default(), now: time.Now,
 	}
+	s.docs.log = func() *slog.Logger { return s.Log }
+	return s
 }
 
 // Issuer is the authorization server's identifier (APP_URL).

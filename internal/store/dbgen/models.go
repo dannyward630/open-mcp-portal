@@ -121,6 +121,7 @@ type McpCall struct {
 	OauthGrantID         uuid.NullUUID
 	OauthClientName      *string
 	KeyName              *string
+	OauthClientKind      *string
 }
 
 type McpCapability struct {

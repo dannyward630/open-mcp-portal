@@ -144,11 +144,18 @@ func authorize(t *testing.T, app *testApp, s *session, q url.Values) (*http.Resp
 }
 
 // wantPage checks an authorization error shown as a page, never a redirect.
+// The page follows the person's color mode: the app's same-origin
+// color-mode script (allowed by its CSP, nothing else is) and dark styles.
 func wantPage(t *testing.T, what string, res *http.Response, body, code string) {
 	t.Helper()
 	if res.StatusCode != 400 || res.Header.Get("Location") != "" || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") ||
 		!strings.Contains(body, code) {
 		t.Errorf("%s = %d %q %s", what, res.StatusCode, res.Header.Get("Location"), body)
+	}
+	csp := res.Header.Get("Content-Security-Policy")
+	if !strings.Contains(body, `<script src="/color-mode.js"></script>`) || !strings.Contains(body, ":root[data-theme=dark]") ||
+		!strings.Contains(body, "prefers-color-scheme:dark") || !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "script-src 'self'") {
+		t.Errorf("%s: the page doesn't follow the color mode (CSP %q)", what, csp)
 	}
 }
 
@@ -495,7 +502,7 @@ func TestOAuthFlowWithMetadataDocument(t *testing.T) {
 	_ = json.Unmarshal([]byte(resultText(t, r)), &who)
 	c := who.Claims
 	if !who.Verified || c["principal_type"] != "user" || c["sub"] != e.userID("blair@localhost") || c["email"] != "blair@localhost" ||
-		c["client"] != "Test Assistant" || c["gateway"] != "support" {
+		c["client"] != "Test Assistant" || c["client_verified"] != true || c["gateway"] != "support" {
 		t.Fatalf("whoami = %+v", who)
 	}
 	for _, h := range e.fake.ToolCalls()[0].Header {
@@ -511,8 +518,12 @@ func TestOAuthFlowWithMetadataDocument(t *testing.T) {
 	}
 	pr := page.Items[0].Principal
 	if pr.Kind != "oauth" || pr.OauthClientName == nil || *pr.OauthClientName != "Test Assistant" || pr.Email == nil ||
-		*pr.Email != "blair@localhost" || pr.ApiKeyName != nil {
+		*pr.Email != "blair@localhost" || pr.ApiKeyName != nil || pr.OauthClientVerified == nil || !*pr.OauthClientVerified ||
+		pr.ServiceAccountExists != nil {
 		t.Errorf("principal = %+v", pr)
+	}
+	if got := e.scalar(`SELECT oauth_client_kind FROM mcp_calls WHERE principal_kind = 'oauth' ORDER BY id DESC LIMIT 1`); got != "metadata" {
+		t.Errorf("recorded client kind = %q", got)
 	}
 
 	// Only its own gateway accepts the token (blair may use "shared" too).
@@ -658,6 +669,21 @@ func TestOAuthTrustedRegisteredAndConnectedApps(t *testing.T) {
 		t.Errorf("registered view = %+v", view.Client)
 	}
 	dcrAccess, dcrRefresh := exchange(t, app, dcr, codeFrom(t, app, "registered", consent(t, e.member, q2, "allow")), p2, nil)
+	// Its name is its own claim: the identity says client_verified false, and so does the call log.
+	r, err := connect(t, app, "support", dcrAccess).CallTool(context.Background(), &mcp.CallToolParams{Name: "status__whoami"})
+	if err != nil || r.IsError {
+		t.Fatalf("whoami as a registered client: %v %+v", err, r)
+	}
+	var who testutil.WhoamiResult
+	_ = json.Unmarshal([]byte(resultText(t, r)), &who)
+	if who.Claims["client"] != "Old Client" || who.Claims["client_verified"] != false {
+		t.Errorf("registered client's identity = %+v", who.Claims)
+	}
+	var calls apitypes.McpCallPage
+	if code := e.owner.get(toolsTeam+"/calls?limit=1", &calls); code != 200 || len(calls.Items) != 1 ||
+		calls.Items[0].Principal.OauthClientVerified == nil || *calls.Items[0].Principal.OauthClientVerified {
+		t.Errorf("registered client's call = %d %+v", code, calls.Items)
+	}
 
 	// Connected apps: the person's own, newest first.
 	var grants []apitypes.OAuthGrant

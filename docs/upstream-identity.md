@@ -37,8 +37,11 @@ The claims:
 | `gateway` | The gateway's slug |
 | `tool` / `prompt` | The exposed name of the tool (`tools/call`) or prompt (`prompts/get`), `{server-slug}__{name}` |
 | `resource` | The exposed URI read (`resources/read`): `omcp://{server-slug}/{your-uri}`, for example `omcp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set |
-| `client` | For a client connected with OAuth, the client's name as it signed in (such as `Claude Code`). Otherwise the MCP client's `clientInfo.name` when the request carried it, else the name of the API key or service account key |
+| `client` | For a client connected with OAuth, the client's name as it signed in (such as `Claude Code`), with `client_verified`. Otherwise the MCP client's `clientInfo.name` when the request carried it, else the name of the API key or service account key |
+| `client_verified` | Present whenever `client` comes from an OAuth client. `true`: the client is identified by a Client ID Metadata Document, so its name is vouched for by the host that publishes it. `false`: the client registered itself (Dynamic Client Registration) and its name is **self-asserted**: anyone can register any name, so don't trust `client` for decisions in that case. Absent for API keys and service account keys (then `client` is the MCP client's or the key's own label, never verified) |
 | `jti` | A unique ID for the token (useful in your logs) |
+
+`client` is informational: decide on `principal_type`, `sub`, `email` and `teams`, which the gateway checked. Treat `client` as a hint, and as plain self-asserted text unless `client_verified` is `true`.
 
 The gateway has already checked that the caller may use this tool (for a service account: its team's own gateways, with its team role `member` or `editor` for minimum roles, and platform gateways granted to its team). Your server decides what they may do with it, for example by reading `principal_type`, `sub`, `email` or `teams`.
 
@@ -73,6 +76,9 @@ type Identity struct {
 	Teams   []string `json:"teams"`
 	Gateway string   `json:"gateway"`
 	Tool    string   `json:"tool"`
+	Client  string   `json:"client"`
+	// ClientVerified is set only for OAuth clients; nil otherwise.
+	ClientVerified *bool `json:"client_verified"`
 }
 
 // Fetch the JWKS (cache it for up to 5 minutes, and fetch again for an

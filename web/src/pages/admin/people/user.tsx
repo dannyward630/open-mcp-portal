@@ -122,7 +122,7 @@ export function AdminUserPage() {
         open={confirmSuspend}
         onOpenChange={setConfirmSuspend}
         title={`Suspend ${name}?`}
-        description="They are signed out immediately and can't sign in until reactivated."
+        description="They are signed out immediately and can't sign in until reactivated. While suspended, their connected apps, their API keys and their access to teams and gateways stop working. Reactivating restores them (an app may ask them to sign in again)."
         confirmLabel="Suspend"
         busy={update.isPending}
         error={update.error}

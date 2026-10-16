@@ -19,7 +19,6 @@ import { serviceAccountTabs } from "../../../lib/tabs";
 import { useCurrentUser } from "../../../session";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { useTeam } from "../common";
-import { ArchivedNotice } from "../layout";
 import { KeysTab } from "./keys-tab";
 import { activeKeysText, roleLabel, type ServiceAccount, type ServiceAccountAbilities, serviceAccountAbilities } from "./labels";
 import { OverviewTab } from "./overview-tab";
@@ -37,7 +36,30 @@ export function ServiceAccountPage() {
   return <Record account={account.data} abilities={serviceAccountAbilities({ ...ctx, staff })} staff={staff} />;
 }
 
+/**
+ * Why its keys don't work right now, in one notice (turned off, the team archived, or both), so a phone
+ * doesn't stack warnings above the tabs.
+ */
+function StateNotice({ account, abilities, archived }: { account: ServiceAccount; abilities: ServiceAccountAbilities; archived: boolean }) {
+  if (archived) {
+    return (
+      <Alert tone="warning" title={account.enabled ? "This team is archived" : "Turned off, and the team is archived"}>
+        {account.enabled
+          ? "Its service accounts can be viewed but not changed, and their keys don't work while the team is archived."
+          : "Its keys are refused. It can be viewed but not changed, or turned on again, until the team is unarchived."}
+      </Alert>
+    );
+  }
+  if (account.enabled) return null;
+  return (
+    <Alert tone="warning" title="Turned off">
+      {`Its keys are refused until it's turned on again. ${abilities.canManage ? "Turn it on in Settings." : "The team's owners and admins can turn it on again."}`}
+    </Alert>
+  );
+}
+
 function Record({ account, abilities, staff }: { account: ServiceAccount; abilities: ServiceAccountAbilities; staff: boolean }) {
+  const { archived } = useTeam();
   const props = { account, abilities };
   return (
     <DetailPage
@@ -47,7 +69,16 @@ function Record({ account, abilities, staff }: { account: ServiceAccount; abilit
       facts={[
         { label: "Role", value: roleLabel(account.role) },
         { label: "Keys", value: activeKeysText(account.activeKeyCount) },
-        { label: "Last used", value: account.lastUsedAt ? <RelativeTime value={account.lastUsedAt} /> : "Never" },
+        {
+          label: "Last used",
+          value: account.lastUsedAt ? (
+            <span>
+              Used <RelativeTime value={account.lastUsedAt} />
+            </span>
+          ) : (
+            "Never used"
+          ),
+        },
       ]}
       menuLabel="More service account actions"
       menuActions={
@@ -61,16 +92,7 @@ function Record({ account, abilities, staff }: { account: ServiceAccount; abilit
             ]
           : []
       }
-      notices={
-        <>
-          {!account.enabled && (
-            <Alert tone="warning" title="Turned off">
-              {`Its keys are refused until it's turned on again. ${abilities.canManage ? "Turn it on in Settings." : "The team's owners and admins can turn it on again."}`}
-            </Alert>
-          )}
-          <ArchivedNotice>Its service accounts can be viewed but not changed, and their keys don&apos;t work while the team is archived.</ArchivedNotice>
-        </>
-      }
+      notices={<StateNotice account={account} abilities={abilities} archived={archived} />}
       tabIds={serviceAccountTabs}
       tabsLabel="Service account sections"
       tabs={[

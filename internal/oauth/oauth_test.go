@@ -1,12 +1,14 @@
 package oauth
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -144,6 +146,50 @@ func TestMetadataDocumentCache(t *testing.T) {
 		if got := cacheFor(cc); got != want {
 			t.Errorf("cacheFor(%q) = %v, want %v", cc, got, want)
 		}
+	}
+}
+
+// Every document fetch is logged at info level with the host, the HTTP
+// status and the outcome, never the document or its path.
+func TestMetadataDocumentFetchLogging(t *testing.T) {
+	const sentinel = "Sentinel Assistant 7f3a"
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/missing.json" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_id": "https://" + r.Host + r.URL.Path, "client_name": sentinel,
+			"redirect_uris": []string{"http://127.0.0.1/cb"}})
+	}))
+	t.Cleanup(srv.Close)
+	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())
+	d := docFetcher(t, srv, map[string]string{"public.example.com": "8.8.8.8", "local.example.com": "127.0.0.1"}, nil, false)
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	d.log = func() *slog.Logger { return logger }
+	host := "public.example.com:" + port
+	cases := []struct{ id, want string }{
+		{"https://" + host + "/secret-path/client.json", "status=200 outcome=ok"},
+		{"https://" + host + "/missing.json", "status=404 outcome=http_status"},
+		{"https://local.example.com:" + port + "/client.json", "status=0 outcome=blocked_address"},
+	}
+	for _, c := range cases {
+		buf.Reset()
+		_, _ = d.get(context.Background(), c.id)
+		line := buf.String()
+		if !strings.Contains(line, "level=INFO") || !strings.Contains(line, "oauth client metadata document fetched") ||
+			!strings.Contains(line, "host="+hostOf(c.id)) || !strings.Contains(line, c.want) {
+			t.Errorf("%s logged %q, want %q", c.id, line, c.want)
+		}
+		if strings.Contains(line, sentinel) || strings.Contains(line, "secret-path") || strings.Contains(line, "client.json") {
+			t.Errorf("%s: the log has the document or its path: %q", c.id, line)
+		}
+	}
+	// A cached document isn't fetched (or logged) again.
+	buf.Reset()
+	if _, err := d.get(context.Background(), cases[0].id); err != nil || buf.Len() != 0 {
+		t.Errorf("cached get = %v, logged %q", err, buf.String())
 	}
 }
 

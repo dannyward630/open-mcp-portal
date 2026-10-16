@@ -18,12 +18,12 @@ INSERT INTO mcp_calls (
     request_id, method, exposed_name, gateway_id, gateway_slug, gateway_name, gateway_team_id,
     server_id, server_slug, server_name, server_team_id, capability_id, principal_kind, user_id, api_key_id,
     key_name, service_account_id, service_account_name, service_account_team_id, oauth_grant_id, oauth_client_name,
-    client_name, outcome, error_class, latency_ms, request_bytes, response_bytes
+    oauth_client_kind, client_name, outcome, error_class, latency_ms, request_bytes, response_bytes
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13, $14, $15,
     $16, $17, $18, $19, $20, $21,
-    $22, $23, $24, $25, $26, $27
+    $22, $23, $24, $25, $26, $27, $28
 )
 `
 
@@ -49,6 +49,7 @@ type InsertMCPCallParams struct {
 	ServiceAccountTeamID uuid.NullUUID
 	OauthGrantID         uuid.NullUUID
 	OauthClientName      *string
+	OauthClientKind      *string
 	ClientName           *string
 	Outcome              string
 	ErrorClass           *string
@@ -81,6 +82,7 @@ func (q *Queries) InsertMCPCall(ctx context.Context, arg InsertMCPCallParams) er
 		arg.ServiceAccountTeamID,
 		arg.OauthGrantID,
 		arg.OauthClientName,
+		arg.OauthClientKind,
 		arg.ClientName,
 		arg.Outcome,
 		arg.ErrorClass,
@@ -102,7 +104,9 @@ SELECT c.id, c.occurred_at, c.request_id, c.method, c.exposed_name, c.gateway_id
        COALESCE(u.email::text, '')::text AS user_email,
        COALESCE(u.display_name, sa.name, c.service_account_name, '')::text AS user_display_name,
        COALESCE(k.name, sk.name, c.key_name, '')::text AS api_key_name,
-       COALESCE(st.slug, '')::text AS service_account_team_slug
+       COALESCE(st.slug, '')::text AS service_account_team_slug,
+       (sa.id IS NOT NULL)::bool AS service_account_exists,
+       (COALESCE(c.oauth_client_kind, og.client_kind, '') = 'metadata')::bool AS oauth_client_verified
 FROM mcp_calls c
 LEFT JOIN gateways g ON g.id = c.gateway_id
 LEFT JOIN mcp_servers s ON s.id = c.server_id
@@ -111,8 +115,10 @@ LEFT JOIN api_keys k ON k.id = c.api_key_id AND c.principal_kind = 'api_key'
 LEFT JOIN service_account_keys sk ON sk.id = c.api_key_id AND c.principal_kind = 'service_account'
 LEFT JOIN service_accounts sa ON sa.id = c.service_account_id
 LEFT JOIN teams st ON st.id = c.service_account_team_id
+LEFT JOIN oauth_grants og ON og.id = c.oauth_grant_id AND c.principal_kind = 'oauth' AND c.oauth_client_kind IS NULL
 WHERE ($1::uuid IS NULL
-       OR c.gateway_team_id = $1::uuid OR c.server_team_id = $1::uuid)
+       OR c.gateway_team_id = $1::uuid OR c.server_team_id = $1::uuid
+       OR c.service_account_team_id = $1::uuid)
   AND ($2::uuid IS NULL OR c.gateway_id = $2::uuid)
   AND ($3::uuid IS NULL OR c.server_id = $3::uuid)
   AND ($4::uuid IS NULL OR c.user_id = $4::uuid)
@@ -166,11 +172,16 @@ type ListMCPCallsRow struct {
 	UserDisplayName        string
 	ApiKeyName             string
 	ServiceAccountTeamSlug string
+	ServiceAccountExists   bool
+	OauthClientVerified    bool
 }
 
 // One page of calls, newest first. team_id: calls through the team's
-// gateways or to its servers. Gateway, server, key and service account
-// names are the current ones while they exist, else the ones recorded.
+// gateways, to its servers, or by its service accounts (through any
+// gateway). Gateway, server, key and service account names are the current
+// ones while they exist, else the ones recorded. An OAuth client is verified
+// when it identified itself with a metadata document (recorded with the
+// call; older records: read from the grant while it exists).
 func (q *Queries) ListMCPCalls(ctx context.Context, arg ListMCPCallsParams) ([]ListMCPCallsRow, error) {
 	rows, err := q.db.Query(ctx, listMCPCalls,
 		arg.TeamID,
@@ -219,6 +230,8 @@ func (q *Queries) ListMCPCalls(ctx context.Context, arg ListMCPCallsParams) ([]L
 			&i.UserDisplayName,
 			&i.ApiKeyName,
 			&i.ServiceAccountTeamSlug,
+			&i.ServiceAccountExists,
+			&i.OauthClientVerified,
 		); err != nil {
 			return nil, err
 		}

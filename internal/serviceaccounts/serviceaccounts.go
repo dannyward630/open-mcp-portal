@@ -37,6 +37,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/apperr"
 	"github.com/ncecere/open-mcp-gateway/internal/audit"
 	"github.com/ncecere/open-mcp-gateway/internal/authz"
+	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
@@ -61,6 +62,7 @@ const (
 
 var (
 	errTeamNotFound = apperr.NotFound("team_not_found", "Team not found")
+	errPlatformRead = apperr.Forbidden("Only platform admins and auditors can see this")
 	errNotFound     = apperr.NotFound("service_account_not_found", "Service account not found")
 	errKeyNotFound  = apperr.NotFound("key_not_found", "Key not found")
 	errTeamArchived = apperr.Conflict("team_archived", "This team is archived and read-only")
@@ -84,6 +86,7 @@ var (
 // (internal/gateways).
 type Gateways interface {
 	UsableByServiceAccount(ctx context.Context, teamID uuid.UUID, role string, ids []uuid.UUID) ([]dbgen.Gateway, []uuid.UUID, error)
+	ListForServiceAccount(ctx context.Context, teamID uuid.UUID, role string) ([]gateways.Mine, error)
 }
 
 // Service manages service accounts.
@@ -210,6 +213,65 @@ func (s *Service) Get(ctx context.Context, a authz.Actor, ref string, id uuid.UU
 		return View{}, err
 	}
 	return s.view(ctx, s.q, ta.team, id)
+}
+
+// Gateways lists the gateways one of the team's service accounts may use
+// now (members; platform admins and auditors): its team's gateways, with its
+// role, and platform gateways granted to its team. A key can be limited to
+// these.
+func (s *Service) Gateways(ctx context.Context, a authz.Actor, ref string, id uuid.UUID) ([]gateways.Mine, error) {
+	ta, err := access(ctx, s.q, a, ref)
+	if err != nil {
+		return nil, err
+	}
+	sa, err := s.account(ctx, s.q, ta, id, false)
+	if err != nil {
+		return nil, err
+	}
+	return s.gateways.ListForServiceAccount(ctx, ta.team.ID, sa.Role)
+}
+
+// AdminListParams narrows and pages the list of every team's accounts.
+type AdminListParams struct {
+	Search    *string // raw; LIKE-escaped here
+	Team      string  // a team slug or ID ("" for all)
+	AfterName *string
+	AfterID   *uuid.UUID
+	Limit     int32
+}
+
+// AdminList lists every team's service accounts by name (platform admins
+// and auditors). An unknown team lists nothing.
+func (s *Service) AdminList(ctx context.Context, a authz.Actor, p AdminListParams) ([]View, error) {
+	if !a.CanReadPlatform() {
+		return nil, errPlatformRead
+	}
+	qp := dbgen.AdminListServiceAccountsParams{AfterName: p.AfterName, PageSize: p.Limit}
+	if p.Search != nil {
+		escaped := store.EscapeLike(*p.Search)
+		qp.Search = &escaped
+	}
+	if p.AfterID != nil {
+		qp.AfterID = uuid.NullUUID{UUID: *p.AfterID, Valid: true}
+	}
+	if p.Team != "" {
+		t, err := teams.Resolve(ctx, s.q, p.Team)
+		if e, ok := apperr.As(err); ok && e.Status == http.StatusNotFound {
+			return []View{}, nil
+		} else if err != nil {
+			return nil, err
+		}
+		qp.TeamID = uuid.NullUUID{UUID: t.ID, Valid: true}
+	}
+	rows, err := s.q.AdminListServiceAccounts(ctx, qp)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]View, len(rows))
+	for i, r := range rows {
+		out[i] = View{Account: r.ServiceAccount, TeamSlug: r.TeamSlug, ActiveKeys: r.ActiveKeys, CreatedByName: r.CreatedByName}
+	}
+	return out, nil
 }
 
 // CreateInput is a new service account.

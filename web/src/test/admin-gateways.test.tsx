@@ -124,6 +124,8 @@ describe("Admin → a platform gateway › Access", () => {
     renderApp(`/admin/gateways/${gatewayId}?tab=access`);
     await u.click(await screen.findByRole("button", { name: "Add grant" }));
     let dialog = await screen.findByRole("dialog", { name: "Grant access to Company tools" });
+    // A team grant covers the team's service accounts too (decision 23).
+    expect(dialog).toHaveTextContent("Everyone on the team, including people who join later, and the team's service accounts.");
     await u.selectOptions(await within(dialog).findByRole("combobox", { name: "Team" }), team.slug);
     await u.click(within(dialog).getByRole("button", { name: "Grant access" }));
     await waitFor(() => expect(calls.filter((c) => c.method === "POST").at(-1)?.body).toEqual({ subjectKind: "team", team: team.slug }));

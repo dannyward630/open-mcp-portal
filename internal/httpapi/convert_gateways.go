@@ -126,14 +126,19 @@ func toAPICall(r dbgen.ListMCPCallsRow) apitypes.McpCall {
 }
 
 // toAPICallPrincipal: a person (api_key with the key's name, oauth with the
-// client's name), or a service account (its name, team and key).
+// client's name and whether its host vouches for it), or a service account
+// (its name, team and key, and whether it still exists).
 func toAPICallPrincipal(r dbgen.ListMCPCallsRow) apitypes.CallPrincipal {
 	p := apitypes.CallPrincipal{Kind: apitypes.CallPrincipalKind(r.PrincipalKind), DisplayName: r.UserDisplayName}
 	switch r.PrincipalKind {
 	case calls.PrincipalServiceAccount:
+		exists := r.ServiceAccountExists
 		p.ServiceAccountId, p.ServiceAccountTeamSlug, p.ApiKeyName = nullUUID(r.ServiceAccountID), nonEmpty(r.ServiceAccountTeamSlug), nonEmpty(r.ApiKeyName)
+		p.ServiceAccountExists = &exists
 	case calls.PrincipalOAuth:
+		verified := r.OauthClientVerified
 		p.UserId, p.Email, p.OauthClientName = nullUUID(r.UserID), nonEmpty(r.UserEmail), r.OauthClientName
+		p.OauthClientVerified = &verified
 	default:
 		p.UserId, p.Email, p.ApiKeyName = nullUUID(r.UserID), nonEmpty(r.UserEmail), nonEmpty(r.ApiKeyName)
 	}

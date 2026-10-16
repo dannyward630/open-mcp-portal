@@ -200,3 +200,16 @@ SELECT * FROM mcp_capabilities WHERE id = $1;
 -- name: ListUsableGatewayCandidates :many
 -- Gateways by ID, for checking which a person may use (API key scopes).
 SELECT * FROM gateways WHERE id = ANY(@ids::uuid[]);
+
+-- name: ListGatewaysForServiceAccount :many
+-- Enabled gateways a service account of a team may use: the team's own
+-- gateways while the team is active, and platform gateways granted to the
+-- team (decision 23), by name.
+SELECT sqlc.embed(g), COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
+FROM gateways g
+LEFT JOIN teams t ON t.id = g.team_id
+WHERE g.enabled
+  AND ((g.owner_kind = 'team' AND g.team_id = @team_id AND t.status = 'active')
+       OR (g.owner_kind = 'platform' AND EXISTS (
+            SELECT 1 FROM gateway_grants gg WHERE gg.gateway_id = g.id AND gg.team_id = @team_id)))
+ORDER BY g.name, g.id;

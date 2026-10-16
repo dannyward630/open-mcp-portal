@@ -34,6 +34,7 @@ describe("signing in", () => {
     ]);
     expect(accounts[0]).toHaveTextContent("platform admin");
     expect(accounts[2]).not.toHaveTextContent("platform");
+    expect(screen.queryByText("An app is waiting to connect")).toBeNull();
     expect(await axe(container)).toHaveNoViolations();
 
     await user.click(within(dev).getByRole("button", { name: /Alex Owner/ }));
@@ -41,6 +42,19 @@ describe("signing in", () => {
     expect(calls.find((c) => c.url === "/auth/dev")?.body).toEqual({ account: "alex" });
     // Signed out was asked without a 401: GET /v1/me?optional=true.
     expect(calls.find((c) => c.url === "/v1/me")?.search.get("optional")).toBe("true");
+  });
+
+  it("says an app is waiting when an MCP client's sign-in sent the person here", async () => {
+    window.history.replaceState(null, "", "/?next=" + encodeURIComponent("/oauth/authorize?client_id=https%3A%2F%2Fclaude.ai%2Fx&state=s"));
+    try {
+      mockApi({ ...shellRoutes(), "GET /v1/me": () => null });
+      const { container } = renderApp("/");
+      expect(await screen.findByText("An app is waiting to connect")).toBeInTheDocument();
+      expect(screen.getByText(/you'll be asked to approve the app before it can use a gateway as you/)).toBeInTheDocument();
+      expect(await axe(container)).toHaveNoViolations();
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
   });
 
   it("offers single sign-on with the page to come back to", async () => {

@@ -107,6 +107,8 @@ export function SignInPage() {
   });
   const returnTo = nextPath(window.location.search);
   const next = returnTo ?? window.location.pathname + window.location.search;
+  // Sent here by an MCP client's sign-in (/oauth/authorize, or the consent page itself).
+  const appWaiting = next.startsWith("/oauth/");
 
   return (
     <main className={styles.page}>
@@ -132,6 +134,11 @@ export function SignInPage() {
                       ? `Use your ${instance.orgName ? instance.orgName + " " : "organization "}account to continue.`
                       : "Choose an account to continue."}</p>
                 </div>
+                {appWaiting && (
+                  <Alert tone="info" title="An app is waiting to connect">
+                    Sign in to continue. Then you&apos;ll be asked to approve the app before it can use a gateway as you.
+                  </Alert>
+                )}
                 {config.data.oidcEnabled && (
                   <Button block render={<a href={"/auth/login?next=" + encodeURIComponent(next)} />}>
                     <LogIn aria-hidden /> Sign in with single sign-on

@@ -731,6 +731,62 @@ func (q *Queries) ListGateways(ctx context.Context, arg ListGatewaysParams) ([]L
 	return items, nil
 }
 
+const listGatewaysForServiceAccount = `-- name: ListGatewaysForServiceAccount :many
+SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
+FROM gateways g
+LEFT JOIN teams t ON t.id = g.team_id
+WHERE g.enabled
+  AND ((g.owner_kind = 'team' AND g.team_id = $1 AND t.status = 'active')
+       OR (g.owner_kind = 'platform' AND EXISTS (
+            SELECT 1 FROM gateway_grants gg WHERE gg.gateway_id = g.id AND gg.team_id = $1)))
+ORDER BY g.name, g.id
+`
+
+type ListGatewaysForServiceAccountRow struct {
+	Gateway  Gateway
+	TeamSlug string
+	TeamName string
+}
+
+// Enabled gateways a service account of a team may use: the team's own
+// gateways while the team is active, and platform gateways granted to the
+// team (decision 23), by name.
+func (q *Queries) ListGatewaysForServiceAccount(ctx context.Context, teamID uuid.NullUUID) ([]ListGatewaysForServiceAccountRow, error) {
+	rows, err := q.db.Query(ctx, listGatewaysForServiceAccount, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGatewaysForServiceAccountRow{}
+	for rows.Next() {
+		var i ListGatewaysForServiceAccountRow
+		if err := rows.Scan(
+			&i.Gateway.ID,
+			&i.Gateway.Slug,
+			&i.Gateway.Name,
+			&i.Gateway.Description,
+			&i.Gateway.OwnerKind,
+			&i.Gateway.TeamID,
+			&i.Gateway.Enabled,
+			&i.Gateway.CapturePayloads,
+			&i.Gateway.Revision,
+			&i.Gateway.CreatedBy,
+			&i.Gateway.CreatedAt,
+			&i.Gateway.UpdatedBy,
+			&i.Gateway.UpdatedAt,
+			&i.TeamSlug,
+			&i.TeamName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGatewaysForUser = `-- name: ListGatewaysForUser :many
 SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name,
        COALESCE(m.role, '')::text AS member_role,

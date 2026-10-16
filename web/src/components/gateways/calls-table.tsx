@@ -10,6 +10,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
+import { api, unwrap } from "../../api/client";
 import { serviceAccountsQuery } from "../../api/queries";
 import { RelativeTime, timeColumn } from "../templates/list-page";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
@@ -35,6 +36,19 @@ export function useServiceAccountOptions(team: string | undefined): FacetOption[
   return (accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }));
 }
 
+/**
+ * Every team's service accounts as filter options for platform staff (the first 200 by name, of the chosen
+ * team when there is one), named with their team: the facet's list is searchable.
+ */
+export function useAdminServiceAccountOptions(team: string | undefined): FacetOption[] {
+  const accounts = useQuery({
+    queryKey: ["admin", "service-accounts", "options", team ?? ""],
+    queryFn: async () => unwrap(await api.GET("/v1/admin/service-accounts", { params: { query: { limit: 200, ...(team ? { team } : {}) } } })),
+    staleTime: 60_000,
+  });
+  return (accounts.data?.items ?? []).map((a) => ({ value: a.id, label: `${a.name} (${a.teamSlug})` }));
+}
+
 /** The Service account facet (the API's serviceAccount filter). */
 export function serviceAccountFacet(options: FacetOption[], placeholder = "Any service account"): Facet<McpCall> {
   return { id: "serviceAccount", label: "Service account", type: "select", placeholder, options };
@@ -50,15 +64,26 @@ type Principal = McpCall["principal"];
 /** Who made a call, in words: the person's or the service account's name. */
 export const principalName = (p: Principal) => p.displayName || p.email || (p.kind === "service_account" ? "Service account" : "Unknown");
 
-/** How they called: "API key: Laptop", "via Claude Code", "Service account · platform-tools". */
+/**
+ * How they called: "API key: Laptop", "via Claude Code" ("via Helper (unverified)" for an app that
+ * registered itself: its name is its own claim), "Service account · platform-tools · Key: GitHub Actions"
+ * ("Deleted service account · …" once the account is gone).
+ */
 export function principalDetail(p: Principal): string | undefined {
   switch (p.kind) {
     case "api_key":
       return p.apiKeyName ? `API key: ${p.apiKeyName}` : "API key";
     case "oauth":
-      return p.oauthClientName ? `via ${p.oauthClientName}` : "via a connected app";
+      if (!p.oauthClientName) return "via a connected app";
+      return p.oauthClientVerified === false ? `via ${p.oauthClientName} (unverified)` : `via ${p.oauthClientName}`;
     case "service_account":
-      return p.serviceAccountTeamSlug ? `Service account · ${p.serviceAccountTeamSlug}` : "Service account";
+      return [
+        p.serviceAccountExists === false ? "Deleted service account" : "Service account",
+        p.serviceAccountTeamSlug,
+        p.apiKeyName ? `Key: ${p.apiKeyName}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · ");
     default:
       return undefined;
   }
@@ -69,10 +94,13 @@ const who = (c: McpCall) => principalName(c.principal);
 /** A call's row name for screen readers: "service-status__get_status by Una User". */
 export const callLabel = (c: McpCall) => `${c.exposedName ?? c.method} by ${who(c)}`;
 
-/** Who made the call: a person (title: their email), or a service account linked to its record (members and staff read it). */
+/**
+ * Who made the call: a person (title: their email), or a service account linked to its record (members and
+ * staff read it); a deleted account is plain text, like a deleted gateway or server.
+ */
 function PrincipalCell({ p }: { p: Principal }) {
   const detail = principalDetail(p);
-  if (p.kind === "service_account" && p.serviceAccountId && p.serviceAccountTeamSlug) {
+  if (p.kind === "service_account" && p.serviceAccountId && p.serviceAccountTeamSlug && p.serviceAccountExists !== false) {
     const link = <Link to="/teams/$team/service-accounts/$serviceAccountId" params={{ team: p.serviceAccountTeamSlug, serviceAccountId: p.serviceAccountId }} />;
     return <CellText primary={<TextLink render={link}>{principalName(p)}</TextLink>} secondary={detail} />;
   }

@@ -291,6 +291,46 @@ func (s *Service) ListMine(ctx context.Context, u dbgen.User) ([]Mine, error) {
 	return out, nil
 }
 
+// ListForServiceAccount lists the gateways a service account of a team with
+// a role may use now, by name (decision 23): its team's enabled gateways
+// while the team is active (AccessTeamMember, with the role applied to
+// minimum roles) and enabled platform gateways granted to the team
+// (AccessTeamGrant). Offered counts what the account reaches now. It doesn't
+// look at whether the account is enabled; an archived team gets none (its
+// accounts' keys are refused).
+func (s *Service) ListForServiceAccount(ctx context.Context, teamID uuid.UUID, role string) ([]Mine, error) {
+	t, err := s.q.GetTeamByID(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	if t.Status != teams.StatusActive {
+		return []Mine{}, nil
+	}
+	rows, err := s.q.ListGatewaysForServiceAccount(ctx, uuid.NullUUID{UUID: teamID, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Mine, 0, len(rows))
+	for _, r := range rows {
+		c := Caller{Access: []string{AccessTeamGrant}}
+		if r.Gateway.OwnerKind == OwnerTeam {
+			c = Caller{Role: role, Access: []string{AccessTeamMember}}
+		}
+		offers, err := s.Offers(ctx, r.Gateway, c)
+		if err != nil {
+			return nil, err
+		}
+		m := Mine{View: View{Gateway: r.Gateway, TeamSlug: r.TeamSlug, TeamName: r.TeamName}, Access: c.Access, Groups: []string{}}
+		for _, o := range offers {
+			if o.Allowed {
+				m.Offered++
+			}
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
 // GetMine returns a gateway the person may use now, with the capabilities
 // it offers them; any other is 404.
 func (s *Service) GetMine(ctx context.Context, u dbgen.User, id uuid.UUID) (Mine, []Offer, error) {

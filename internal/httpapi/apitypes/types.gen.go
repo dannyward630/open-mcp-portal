@@ -971,7 +971,13 @@ type CallPrincipal struct {
 	Kind CallPrincipalKind `json:"kind"`
 
 	// OauthClientName The connected client (oauth)
-	OauthClientName        *string             `json:"oauthClientName,omitempty"`
+	OauthClientName *string `json:"oauthClientName,omitempty"`
+
+	// OauthClientVerified oauth: true when the client is identified by a Client ID Metadata Document (its host vouches for it); false when it registered itself, so its name is only its own claim
+	OauthClientVerified *bool `json:"oauthClientVerified,omitempty"`
+
+	// ServiceAccountExists service_account: false once the account was deleted (its name is the one recorded)
+	ServiceAccountExists   *bool               `json:"serviceAccountExists,omitempty"`
 	ServiceAccountId       *openapi_types.UUID `json:"serviceAccountId,omitempty"`
 	ServiceAccountTeamSlug *string             `json:"serviceAccountTeamSlug,omitempty"`
 
@@ -1882,6 +1888,12 @@ type ServiceAccountKeyCreated struct {
 	Secret string `json:"secret"`
 }
 
+// ServiceAccountPage defines model for ServiceAccountPage.
+type ServiceAccountPage struct {
+	Items      []ServiceAccount `json:"items"`
+	NextCursor *string          `json:"nextCursor,omitempty"`
+}
+
 // ServiceAccountRole The team role used for capabilities' minimum roles (decision 22)
 type ServiceAccountRole string
 
@@ -2204,7 +2216,7 @@ type AdminListCallsParams struct {
 	// ServiceAccount Only calls made by this service account
 	ServiceAccount *CallServiceAccountParam `form:"serviceAccount,omitempty" json:"serviceAccount,omitempty"`
 
-	// Team Team slug or ID (calls through its gateways or to its servers)
+	// Team Team slug or ID (calls through its gateways, to its servers, or by its service accounts)
 	Team *string `form:"team,omitempty" json:"team,omitempty"`
 
 	// From Entries at or after this time
@@ -2278,6 +2290,19 @@ type AdminListMcpServersParams struct {
 // AdminListMcpCapabilitiesParams defines parameters for AdminListMcpCapabilities.
 type AdminListMcpCapabilitiesParams struct {
 	Kind *CapabilityKindParam `form:"kind,omitempty" json:"kind,omitempty"`
+}
+
+// AdminListServiceAccountsParams defines parameters for AdminListServiceAccounts.
+type AdminListServiceAccountsParams struct {
+	// Q Case-insensitive substring match
+	Q *SearchParam `form:"q,omitempty" json:"q,omitempty"`
+
+	// Team Team slug or ID (that team's service accounts)
+	Team *string `form:"team,omitempty" json:"team,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // AdminUpdateNetworkSettingsParams defines parameters for AdminUpdateNetworkSettings.

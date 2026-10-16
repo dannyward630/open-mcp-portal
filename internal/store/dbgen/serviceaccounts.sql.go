@@ -12,6 +12,84 @@ import (
 	"github.com/google/uuid"
 )
 
+const adminListServiceAccounts = `-- name: AdminListServiceAccounts :many
+SELECT sa.id, sa.team_id, sa.name, sa.description, sa.role, sa.enabled, sa.revision, sa.created_by, sa.created_at, sa.updated_by, sa.updated_at, sa.last_used_at, t.slug AS team_slug,
+       (SELECT count(*) FROM service_account_keys k
+        WHERE k.service_account_id = sa.id AND k.revoked_at IS NULL AND k.expires_at > now())::bigint AS active_keys,
+       u.display_name AS created_by_name
+FROM service_accounts sa
+JOIN teams t ON t.id = sa.team_id
+LEFT JOIN users u ON u.id = sa.created_by
+WHERE ($1::uuid IS NULL OR sa.team_id = $1::uuid)
+  AND ($2::text IS NULL
+       OR sa.name ILIKE '%' || $2::text || '%' ESCAPE '\'
+       OR t.slug ILIKE '%' || $2::text || '%' ESCAPE '\'
+       OR t.name ILIKE '%' || $2::text || '%' ESCAPE '\')
+  AND ($3::text IS NULL OR (sa.name, sa.id) > ($3::text, $4::uuid))
+ORDER BY sa.name, sa.id
+LIMIT $5
+`
+
+type AdminListServiceAccountsParams struct {
+	TeamID    uuid.NullUUID
+	Search    *string
+	AfterName *string
+	AfterID   uuid.NullUUID
+	PageSize  int32
+}
+
+type AdminListServiceAccountsRow struct {
+	ServiceAccount ServiceAccount
+	TeamSlug       string
+	ActiveKeys     int64
+	CreatedByName  *string
+}
+
+// One page of every team's service accounts ordered by (name, id), with
+// their team, active keys and creator. search (LIKE-escaped by the caller)
+// matches the account's name and its team's slug and name.
+func (q *Queries) AdminListServiceAccounts(ctx context.Context, arg AdminListServiceAccountsParams) ([]AdminListServiceAccountsRow, error) {
+	rows, err := q.db.Query(ctx, adminListServiceAccounts,
+		arg.TeamID,
+		arg.Search,
+		arg.AfterName,
+		arg.AfterID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminListServiceAccountsRow{}
+	for rows.Next() {
+		var i AdminListServiceAccountsRow
+		if err := rows.Scan(
+			&i.ServiceAccount.ID,
+			&i.ServiceAccount.TeamID,
+			&i.ServiceAccount.Name,
+			&i.ServiceAccount.Description,
+			&i.ServiceAccount.Role,
+			&i.ServiceAccount.Enabled,
+			&i.ServiceAccount.Revision,
+			&i.ServiceAccount.CreatedBy,
+			&i.ServiceAccount.CreatedAt,
+			&i.ServiceAccount.UpdatedBy,
+			&i.ServiceAccount.UpdatedAt,
+			&i.ServiceAccount.LastUsedAt,
+			&i.TeamSlug,
+			&i.ActiveKeys,
+			&i.CreatedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countActiveServiceAccountKeys = `-- name: CountActiveServiceAccountKeys :one
 SELECT count(*)::bigint FROM service_account_keys
 WHERE service_account_id = $1 AND revoked_at IS NULL AND expires_at > now()

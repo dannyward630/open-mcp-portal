@@ -1,9 +1,10 @@
 /*
  * Add or edit one trusted client (a staged change: the page's Save sends the
  * whole list). Its client ID (a metadata document's https address) and an
- * optional label; typos and duplicates are caught here.
+ * optional label; typos and duplicates are caught here, and the first field
+ * with a problem takes the focus.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FormDialog } from "@/components/form-dialog";
 import { Field } from "@/components/ui/field/field";
 import { Input } from "@/components/ui/input/input";
@@ -22,12 +23,19 @@ export function ClientDialog({ client, others, onSave, onClose }: Props) {
   const [clientId, setClientId] = useState(client?.clientId ?? "");
   const [label, setLabel] = useState(client?.label ?? "");
   const [submitted, setSubmitted] = useState(false);
+  const idRef = useRef<HTMLInputElement>(null);
+  const labelRef = useRef<HTMLInputElement>(null);
   const duplicate = others.some((o) => o.clientId.trim() === clientId.trim());
   const problem = clientIdProblem(clientId) ?? (duplicate ? "This client is already on the list." : undefined);
   const labelProblem = label.trim().length > maxLabel ? `Use at most ${maxLabel} characters.` : undefined;
   const submit = () => {
     setSubmitted(true);
-    if (problem || labelProblem) return;
+    if (problem || labelProblem) {
+      // After the errors render: the first invalid field takes the focus, so its message is read out.
+      const first = problem ? idRef : labelRef;
+      requestAnimationFrame(() => first.current?.focus());
+      return;
+    }
     onSave(normalClient({ clientId, label }));
   };
   return (
@@ -44,10 +52,10 @@ export function ClientDialog({ client, others, onSave, onClose }: Props) {
         description="The https address of the client's metadata document (its OAuth client_id), such as https://vscode.dev/oauth/client-metadata.json."
         error={submitted ? problem : undefined}
       >
-        <Input autoComplete="off" spellCheck={false} inputMode="url" maxLength={maxClientId} value={clientId} onChange={(e) => setClientId(e.target.value)} />
+        <Input ref={idRef} autoComplete="off" spellCheck={false} inputMode="url" maxLength={maxClientId} value={clientId} onChange={(e) => setClientId(e.target.value)} />
       </Field>
       <Field label="Label" labelHint="Optional" description="A name for this list, such as “Claude Code”." error={submitted ? labelProblem : undefined}>
-        <Input maxLength={maxLabel} value={label} onChange={(e) => setLabel(e.target.value)} />
+        <Input ref={labelRef} maxLength={maxLabel} value={label} onChange={(e) => setLabel(e.target.value)} />
       </Field>
     </FormDialog>
   );
