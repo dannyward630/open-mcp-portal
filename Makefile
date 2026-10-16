@@ -16,7 +16,7 @@ K8S_TOOLS   := $(CURDIR)/bin/k8s-tools
 KUSTOMIZE   := $(K8S_TOOLS)/kustomize-$(KUSTOMIZE_VERSION)/kustomize
 KUBECONFORM := $(K8S_TOOLS)/kubeconform-$(KUBECONFORM_VERSION)/kubeconform
 
-.PHONY: help deps-up deps-down generate check-generated build run migrate fake-mcp test test-integration lint fmt web web-test web-dev docker demo demo-down k8s-validate
+.PHONY: dev-seed help deps-up deps-down generate check-generated build run migrate fake-mcp test test-integration lint fmt web web-test web-dev docker demo demo-down k8s-validate
 
 help: ## Show targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -48,6 +48,9 @@ run: ## Run `serve` locally on 127.0.0.1:8088 using .env (created from .env.exam
 migrate: ## Apply migrations using .env
 	@test -f .env || cp .env.example .env
 	set -a && . ./.env && set +a && $(GO) run ./cmd/open-mcp-gateway migrate
+
+dev-seed: ## Seed a local install (make run + make fake-mcp): team demo, a published server and two gateways
+	python3 scripts/dev-seed.py
 
 fake-mcp: ## Run a fake MCP server on http://127.0.0.1:8091/mcp (FAKEMCP_DESCRIBE='tool=text' changes a description)
 	$(GO) run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/jwks.json

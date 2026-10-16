@@ -134,6 +134,7 @@ cd ~/projects/golang/open-mcp-gateway
 make deps-up                  # Postgres on 127.0.0.1:55442
 cp -n .env.example .env       # DEV_AUTH=true, APP_URL=http://localhost:8088, ENCRYPTION_KEY
 make fake-mcp                 # fake MCP server on http://127.0.0.1:8091/mcp (separate terminal)
+make dev-seed                 # after make run: team demo, published server, gateways demo + company
 make web && make build        # embed UI
 make run                      # http://localhost:8088, sign in as admin@localhost
 make test && make web-test
