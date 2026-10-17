@@ -4,6 +4,8 @@
  * (tools, prompts) or URI (resources, templates) clients will see; on team
  * gateways a selected one gets a minimum team role.
  */
+import { RequiresBadge } from "../providers/requires";
+import { serviceAccountsCant } from "../providers/labels";
 import { Badge } from "@/components/ui/badge/badge";
 import { Checkbox } from "@/components/ui/checkbox/checkbox";
 import { NativeSelect } from "@/components/ui/input/input";
@@ -43,6 +45,7 @@ export function optionOf(c: GatewayCapability, gateway: Pick<Gateway, "ownerKind
     exposedName: c.exposedName,
     title: c.title,
     description: c.description,
+    requires: c.requires,
   };
 }
 
@@ -105,6 +108,7 @@ function OptionRow({ option: o, role, roles, problem, onToggle, onRole }: RowPro
         <Badge size="sm" variant="outline">
           {gatewayKindLabels[o.kind].one}
         </Badge>
+        {o.requires && <RequiresBadge req={o.requires} note={serviceAccountsCant} />}
         {roles && selected && (
           <NativeSelect
             size="sm"

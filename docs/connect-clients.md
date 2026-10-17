@@ -10,6 +10,15 @@ Every gateway has one MCP endpoint, `<gateway URL>/mcp/<gateway>`, for example `
 
 All three see only what the caller may use on that gateway, checked again on every request. The gateway never passes your credential on to MCP servers; it sends them a signed identity instead ([upstream-identity.md](upstream-identity.md)).
 
+## Tools that need your account on another service
+
+Some tools act as you on a third-party service (GitHub, Google, …). The first time you call one, the call fails with a
+link instead (JSON-RPC `-32042`; clients that support URL elicitation show it as a prompt, others show the error
+message, which contains the link). Open it in your browser while signed in to the gateway: it shows the tool, the
+gateway, the service and each permission (scope) asked for. Choose **Continue**, approve at the service, then run the tool
+again. The link works only for you, only once and for 10 minutes. Your connected accounts, and **Disconnect**, are under
+Account › My connections; **My gateways** shows which tools are connected. Service accounts can't use these tools.
+
 ## OAuth sign-in (Claude Code, VS Code, Cursor, Claude)
 
 Add the gateway's URL **without any header**. The first time the client talks to the gateway, it gets `401` with a pointer to the gateway's sign-in metadata, opens your browser, and:

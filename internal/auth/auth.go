@@ -233,6 +233,23 @@ func (s *Service) SessionUser(r *http.Request) (dbgen.User, bool, error) {
 	return row.User, true, nil
 }
 
+// SessionIdentity is SessionUser with the session itself (its ID binds an
+// authorization in progress to the browser that started it). ok is false
+// without a current session.
+func (s *Service) SessionIdentity(r *http.Request) (Identity, bool, error) {
+	cookie, err := r.Cookie(s.sessionCookieName())
+	if err != nil || cookie.Value == "" || len(cookie.Value) > 256 {
+		return Identity{}, false, nil
+	}
+	row, err := s.q.GetSessionUser(r.Context(), Digest(cookie.Value))
+	if errors.Is(store.NotFound(err), store.ErrNotFound) {
+		return Identity{}, false, nil
+	} else if err != nil {
+		return Identity{}, false, err
+	}
+	return Identity{User: row.User, SessionID: row.Session.ID.String(), CSRFToken: row.Session.CSRFToken}, true, nil
+}
+
 // LoginURL is where to send a browser to sign in and come back to next (a
 // same-origin path): single sign-on when it is configured, otherwise the web
 // app's sign-in page (the development accounts), which returns to next.

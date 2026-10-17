@@ -8,8 +8,8 @@ import { type Handler, mockApi, renderApp, shellRoutes } from "./harness";
 const detail: Schemas["CatalogServerDetail"] = {
   server: catalogServer(),
   capabilities: [
-    { id: "c1", kind: "tool", name: "get_status", title: "Get status", description: "Returns the status of a service.", definition: { name: "get_status", inputSchema: { type: "object" } } },
-    { id: "c2", kind: "prompt", name: "incident_summary", title: "", description: "Summarise an incident.", definition: { name: "incident_summary" } },
+    { id: "c1", kind: "tool", name: "get_status", title: "Get status", description: "Returns the status of a service.", definition: { name: "get_status", inputSchema: { type: "object" } }, requires: null },
+    { id: "c2", kind: "prompt", name: "incident_summary", title: "", description: "Summarise an incident.", definition: { name: "incident_summary" }, requires: null },
   ],
 };
 

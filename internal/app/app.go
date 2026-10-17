@@ -23,6 +23,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/mcpgw"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
+	"github.com/ncecere/open-mcp-gateway/internal/providers"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/secrets"
 	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
@@ -96,7 +97,7 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	}
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	defer stopLoops()
-	go cleanupLoop(loopCtx, deps.Auth, log)
+	go cleanupLoop(loopCtx, deps.Auth, deps.Providers, log)
 	go deps.Registry.HealthLoop(loopCtx, cfg.HealthCheckInterval, log)
 	go deps.Identity.RotationLoop(loopCtx, log)
 	if err := serve(ctx, srv, log); err != nil {
@@ -132,6 +133,9 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	as.Log = log
 	ids := identity.New(pool, box, cfg.AppURL, log)
 	ids.Prepublish = cfg.SigningKeyPrepublish
+	// Provider endpoints are dialled behind the same address guard as MCP
+	// servers.
+	provs := providers.New(pool, box, client, cfg.AppURL, log)
 	return httpapi.Deps{
 		Config:          cfg,
 		Pool:            pool,
@@ -146,8 +150,9 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 		Calls:           calls.New(pool),
 		OAuth:           as,
 		ServiceAccounts: sas,
-		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, OAuth: as, ServiceAccounts: sas, Identity: ids, Registry: reg, Pool: pool,
-			AppURL: cfg.AppURL, Log: log},
+		Providers:       provs,
+		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, OAuth: as, ServiceAccounts: sas, Identity: ids, Registry: reg, Providers: provs,
+			Pool: pool, AppURL: cfg.AppURL, Log: log},
 	}, nil
 }
 
@@ -168,9 +173,10 @@ func secretBox(cfg config.Config) (*secrets.Box, error) {
 	return secrets.New(key, previous...)
 }
 
-// cleanupLoop deletes expired sessions and sign-in states. Deletes are
-// idempotent, so every replica may run it; no leader election is needed.
-func cleanupLoop(ctx context.Context, a *auth.Service, log *slog.Logger) {
+// cleanupLoop deletes expired sessions and sign-in states, and expired
+// authorization states and consent links of delegated credentials. Deletes
+// are idempotent, so every replica may run it; no leader election is needed.
+func cleanupLoop(ctx context.Context, a *auth.Service, p *providers.Service, log *slog.Logger) {
 	t := time.NewTicker(cleanupInterval)
 	defer t.Stop()
 	for {
@@ -180,6 +186,11 @@ func cleanupLoop(ctx context.Context, a *auth.Service, log *slog.Logger) {
 			log.Warn("session cleanup failed", "err", err)
 		case sessions+logins > 0:
 			log.Debug("expired sessions deleted", "sessions", sessions, "loginStates", logins)
+		}
+		if n, err := p.Cleanup(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("connect request cleanup failed", "err", err)
+		} else if n > 0 {
+			log.Debug("expired connect requests and states deleted", "count", n)
 		}
 		select {
 		case <-ctx.Done():

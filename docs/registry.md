@@ -11,7 +11,8 @@ Code: `internal/registry` (servers, capabilities, publishing, health loop), `int
 | Slug | Unique across the platform and **immutable**: `^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$`. Gateways will name tools `slug__tool` |
 | Name, description | 1–100 and up to 2000 characters |
 | URL | The Streamable HTTP endpoint (see [Security](#security)). Problems return `422 url_not_allowed` with `details.reason` (`invalid`, `too_long`, `userinfo`, `query`, `fragment`, `scheme`, `private_address`, `blocked_address`) |
-| Header and value | Optional static header, such as `Authorization: Bearer …` or `X-API-Key: …`. The value is sealed with `ENCRYPTION_KEY` (AES-256-GCM, bound to the server's ID). It is never returned, logged or audited. Responses show only `hasAuth`, the header name and `authValueHint` (the last 4 characters, and only when the value has at least 8). When you update the server, leaving `authValue` out keeps the stored value, and `authHeaderName: ""` removes both |
+| Header and value | Optional static header, such as `Authorization: Bearer …` or `X-API-Key: …`. The value is sealed with `ENCRYPTION_KEY` (AES-256-GCM, bound to the server's ID). It is never returned, logged or audited. Responses show only `hasAuth`, the header name and `authValueHint` (the last 4 characters, and only when the value has at least 8). When you update the server, leaving `authValue` out keeps the stored value, and `authHeaderName: ""` removes both. The names `MCP-Gateway-Identity`, `MCP-Gateway-Provider` and `MCP-Gateway-Provider-Token` are reserved (`400 invalid_auth_header`) |
+| User authorization | Optional `requirement` (an auth provider and scopes) whose user token calls receive, with per-capability overrides (`PUT …/capabilities/{id}/requirement`). A change that widens what is sent sends a published server back to review under `approval_required` (reason `requirement_changed`). See [phase5-delegated-credentials.md](phase5-delegated-credentials.md) |
 | Timeout | 1–120 s (default 30). It bounds the whole exchange |
 | Enabled | A disabled server is skipped by the health loop, can't be published and drops out of the catalog |
 
@@ -84,7 +85,7 @@ The loop runs at start-up and then every `HEALTH_CHECK_INTERVAL` (default `5m`, 
 
 ## Local fake server
 
-`make fake-mcp` starts `cmd/fakemcp` on `http://127.0.0.1:8091/mcp`. It has tools `check_outage`, `search_tickets`, `create_ticket`, and for gateways `whoami` and `echo` (see [upstream-identity.md](upstream-identity.md); `-gateway-tools=false` leaves them out), the resource `status://services`, the template `status://services/{service}` and the prompt `incident_summary`. `-header`/`-value` make it require a header. `-describe tool=text` (or `FAKEMCP_DESCRIBE`, with entries separated by `;`) changes a tool's description, so the next refresh sees a change.
+`make fake-mcp` starts `cmd/fakemcp` on `http://127.0.0.1:8091/mcp`. It has tools `check_outage`, `search_tickets`, `create_ticket`, and for gateways `whoami`, `provider_token` and `echo` (see [upstream-identity.md](upstream-identity.md); `-gateway-tools=false` leaves them out), the resource `status://services`, the template `status://services/{service}` and the prompt `incident_summary`. `-header`/`-value` make it require a header. `-describe tool=text` (or `FAKEMCP_DESCRIBE`, with entries separated by `;`) changes a tool's description, so the next refresh sees a change.
 
 ## API
 
@@ -98,4 +99,4 @@ See [`../api/openapi.yaml`](../api/openapi.yaml) (tags `mcp-servers`, `catalog`,
 - `GET`/`PUT /v1/admin/settings/publishing`, `GET`/`PUT /v1/admin/teams/{team}/publishing`
 - `GET`/`PUT /v1/admin/settings/network`, `POST /v1/admin/settings/network/check` (internal networks; see [Security](#security))
 
-Audit actions: `mcp_server.create`, `.update`, `.delete`, `.refresh`, `.publish_request`, `.publish` (self-publish or approval), `.reject`, `.unpublish`, `mcp_capability.approve`, `settings.publishing_update`, `settings.network_update`, `team.publishing_override`.
+Audit actions: `mcp_server.create`, `.update`, `.delete`, `.refresh`, `.publish_request`, `.publish` (self-publish or approval), `.reject`, `.unpublish`, `mcp_capability.approve`, `mcp_capability.requirement_set`, `settings.publishing_update`, `settings.network_update`, `team.publishing_override`.

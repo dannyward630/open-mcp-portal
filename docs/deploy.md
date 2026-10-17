@@ -162,14 +162,17 @@ pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `A
   - ingress on TCP 8088 from the ingress controller's namespace (placeholder `ingress-controller`; patch it);
   - DNS to kube-dns in `kube-system`;
   - TCP 5432 to anywhere (narrow it to your database);
-  - TCP 443 to anywhere, for upstream MCP servers and the OIDC provider.
+  - TCP 443 to anywhere, for upstream MCP servers, the OIDC provider and auth providers' token, revocation and
+    userinfo endpoints (delegated credentials).
 
   **Upstream MCP servers on another port** (for example `https://mcp.example.com:8443`) need an extra egress rule in the
   overlay, as the example shows, and so do internal servers allowed by
   [`UPSTREAM_ALLOWED_NETWORKS`](#internal-mcp-servers) or Admin › Internal networks on ports other than 443. The
   gateway's SSRF guard applies whatever the policy allows. Outside development it connects to public addresses, and to
   internal ones only when an allowlist entry covers them; never to loopback or link-local addresses, and never through
-  an HTTP(S) proxy.
+  an HTTP(S) proxy. Auth providers' endpoints (Admin › Auth providers) go through the same guard, so an internal
+  identity provider needs an allowlist entry too. Register `<APP_URL>/connect/callback` as the redirect URI of each
+  provider's OAuth app; the ingress must route `/connect/` to the gateway like every other path.
 
 ### Ingress
 

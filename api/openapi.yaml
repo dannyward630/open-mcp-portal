@@ -30,6 +30,13 @@ tags:
     trusted clients. The protocol endpoints (/oauth/*, /.well-known/oauth-*) are outside this contract, like /mcp.
 - name: service-accounts
   description: Team-owned identities for headless agents, CI and scripts
+- name: auth-providers
+  description: OAuth apps of third-party services (GitHub, Google, ...) that platform admins configure so tools can
+    act with a person's own account (docs/phase5-delegated-credentials.md)
+- name: connections
+  description: A person's connected third-party accounts (tokens the gateway holds for them) and the consent links
+    that create them. The browser routes /connect/{provider} (web app) and /connect/callback are outside this
+    contract, like /oauth/*.
 paths:
   /healthz:
     get:
@@ -786,7 +793,9 @@ paths:
       description: 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused
         (details.reason invalid, too_long, userinfo, query, fragment, scheme, private_address or blocked_address;
         private_address can be allowed by a platform admin in Internal networks). The server is created even when
-        discovery fails; refresh then says why.
+        discovery fails; refresh then says why. requirement (optional) names an enabled auth provider (422
+        provider_not_found otherwise) and its scopes (400 invalid_scope, details.scope). 400 invalid_auth_header also
+        for the reserved MCP-Gateway-Identity, MCP-Gateway-Provider and MCP-Gateway-Provider-Token.
       requestBody:
         required: true
         content:
@@ -846,6 +855,12 @@ paths:
       - mcp-servers
       operationId: updateTeamMcpServer
       summary: Change a server's settings (editors and above); the slug never changes
+      description: 'requirement: omit to keep, null to remove (capability overrides with mode scopes go back to inherit;
+        so do they when the provider changes). A newly chosen provider must be enabled (422 provider_not_found); a
+        turned-off one can be kept. 400 invalid_scope (details.scope). Under approval_required, a published server
+        goes back to pending when its URL changes or its requirement widens what any capability receives (a provider
+        where there was none, another provider, or a scope not in effect before), audited as mcp_server.publish_request
+        with reason url_changed or requirement_changed. Removing or narrowing a requirement never needs review.'
       parameters:
       - $ref: '#/components/parameters/IfMatchHeader'
       requestBody:
@@ -1002,6 +1017,60 @@ paths:
         '404':
           $ref: '#/components/responses/ErrorReply'
         '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/mcp-servers/{serverId}/capabilities/{capabilityId}/requirement:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/ServerIdParam'
+    - $ref: '#/components/parameters/CapabilityIdParam'
+    put:
+      tags:
+      - mcp-servers
+      - auth-providers
+      operationId: setTeamMcpCapabilityRequirement
+      summary: Override the server's user-authorization requirement for one capability (editors and above)
+      description: 'inherit: the server''s requirement applies. none: calls to this capability get no provider token
+        and never ask for consent. scopes: the server''s provider with these scopes instead. The token always goes to
+        the server, so overrides limit what is asked for and sent, not which code of the server sees it. If-Match is
+        the server''s revision, which this bumps (ETag). 400 invalid_mode (scopes sent with inherit or none, or missing
+        with scopes); 400 invalid_scope (details.scope); 409 no_server_requirement (mode scopes on a server without
+        a requirement); 409 team_archived. Under approval_required a published server goes back to pending when the
+        override widens what the capability receives (audited mcp_server.publish_request, reason requirement_changed).
+        Audited as mcp_capability.requirement_set.'
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapabilityRequirementOverride'
+      responses:
+        '200':
+          description: The capability with its new override
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/McpCapability'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
           $ref: '#/components/responses/ErrorReply'
   /v1/teams/{team}/mcp-servers/{serverId}/health-checks:
     parameters:
@@ -1186,6 +1255,13 @@ paths:
         description: Team slug or ID
         schema:
           type: string
+      - name: provider
+        in: query
+        required: false
+        description: Auth provider ID; only servers that require it (as their requirement or in a capability override)
+        schema:
+          type: string
+          format: uuid
       - $ref: '#/components/parameters/CursorParam'
       - $ref: '#/components/parameters/LimitParam'
       responses:
@@ -2844,6 +2920,378 @@ paths:
           $ref: '#/components/responses/ErrorReply'
         '403':
           $ref: '#/components/responses/ErrorReply'
+  /v1/auth-providers:
+    get:
+      tags:
+      - auth-providers
+      operationId: listAuthProviders
+      summary: Auth providers a server's team can require (any active signed-in person)
+      description: Enabled providers only, ordered by name, with the fields needed to pick one. Never a client ID,
+        secret or endpoint.
+      responses:
+        '200':
+          description: Providers ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuthProviderSummary'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/auth-providers:
+    get:
+      tags:
+      - admin
+      - auth-providers
+      operationId: adminListAuthProviders
+      summary: Every auth provider, enabled or not (platform admins and auditors)
+      description: At most 100 providers exist, so this is not paged. The client secret is never returned.
+      responses:
+        '200':
+          description: Providers ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuthProvider'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - admin
+      - auth-providers
+      operationId: adminCreateAuthProvider
+      summary: Configure an auth provider (platform admins)
+      description: 'Endpoints must be https (plain http only where the internal-network allowlist allows it, or on
+        loopback in development) without user info or a fragment; tokenUrl, revocationUrl and userinfoUrl are dialled
+        through the same address guard as MCP servers, authorizationUrl only by browsers. 422 url_not_allowed
+        (details.field, details.reason as for MCP servers). 422 invalid_slug (details.reason reserved) for done and
+        callback, which are paths under /connect/. 409 slug_taken; 409 too_many_providers (at most 100). 400
+        invalid_scope (details.scope). 422 invalid_param (details.key, details.reason reserved, invalid or too_many)
+        for extraAuthorizeParams. 422 pkce_required (tokenAuthMethod none without pkce); 422 client_secret_required
+        (another tokenAuthMethod without clientSecret). The secret is sealed with ENCRYPTION_KEY and never returned,
+        logged or audited. Audited as auth_provider.create.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthProviderCreate'
+      responses:
+        '201':
+          description: Created
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthProvider'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/auth-providers/{providerId}:
+    parameters:
+    - $ref: '#/components/parameters/ProviderIdParam'
+    get:
+      tags:
+      - admin
+      - auth-providers
+      operationId: adminGetAuthProvider
+      summary: One auth provider (platform admins and auditors)
+      responses:
+        '200':
+          description: Provider
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthProvider'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - admin
+      - auth-providers
+      operationId: adminUpdateAuthProvider
+      summary: Change an auth provider (platform admins); the slug never changes
+      description: 'Omit clientSecret to keep it. Changing clientId marks every connection to the provider
+        needs_reconsent and erases their tokens (they belong to the old app). Turning the provider off refuses calls
+        that require it and new connections at once; connections are kept. Errors as for create. Audited as
+        auth_provider.update (clientSecretChanged, never the secret).'
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthProviderUpdate'
+      responses:
+        '200':
+          description: Updated provider
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthProvider'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - admin
+      - auth-providers
+      operationId: adminDeleteAuthProvider
+      summary: Delete an auth provider and every connection to it (platform admins)
+      description: 409 in_use (details.serverCount, details.servers with up to 20 {id, slug, name, teamSlug}) while any MCP
+        server requires it, as its requirement or in a capability override (Admin servers filter by provider).
+        Otherwise each connection's tokens are erased and, where the provider has a revocation endpoint, revoked
+        there (best effort). Audited as auth_provider.delete (connectionCount) and provider_connection.revoke (reason
+        provider_deleted) per connection.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/auth-provider-presets:
+    get:
+      tags:
+      - admin
+      - auth-providers
+      operationId: adminListAuthProviderPresets
+      summary: Built-in starting points for common providers (platform admins and auditors)
+      description: A preset only pre-fills the create form; the provider stores whatever is sent. Values in braces in
+        a preset's URLs (such as {tenant}) are listed in urlParameters for the form to ask for.
+      responses:
+        '200':
+          description: Presets
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuthProviderPreset'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/users/{userId}/connections:
+    parameters:
+    - $ref: '#/components/parameters/UserIdParam'
+    get:
+      tags:
+      - admin
+      - connections
+      operationId: adminListUserConnections
+      summary: A person's connected accounts, without tokens (platform admins and auditors)
+      responses:
+        '200':
+          description: Connections ordered by provider name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProviderConnection'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/users/{userId}/connections/{connectionId}:
+    parameters:
+    - $ref: '#/components/parameters/UserIdParam'
+    - $ref: '#/components/parameters/ConnectionIdParam'
+    delete:
+      tags:
+      - admin
+      - connections
+      operationId: adminRevokeUserConnection
+      summary: Disconnect a person's account (platform admins)
+      description: As revokeMyConnection, audited with reason admin. Auditors get 403.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/connections:
+    get:
+      tags:
+      - me
+      - connections
+      operationId: listMyConnections
+      summary: The caller's connected accounts (never tokens)
+      responses:
+        '200':
+          description: Connections ordered by provider name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProviderConnection'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/connections/start:
+    post:
+      tags:
+      - me
+      - connections
+      operationId: startMyConnection
+      summary: Begin connecting (or reconnecting) an account; returns where to send the browser
+      description: 'Browser session only (403 session_required with an API key). The authorization URL is built from
+        the provider''s stored settings, with PKCE S256 when the provider uses it and a single-use state bound to this
+        session, person, provider and connect request; it expires after 10 minutes. The scopes asked for are the union
+        of the connection''s granted scopes (when active), scopes (or the provider''s default scopes when both scopes
+        and requestId are absent) and the connect request''s required scopes. 404 provider_not_found (unknown or
+        turned off). 404 connect_request_not_found (unknown, or another person''s); 410 connect_request_expired
+        (expired or used); 409 provider_mismatch (the request is for another provider). 400 invalid_scope; 400
+        invalid_return_to (returnTo must be a path on this site). 429 slow_down (20 a minute per person).'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectStart'
+      responses:
+        '200':
+          description: Where to send the browser
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ConnectStarted'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '410':
+          $ref: '#/components/responses/ErrorReply'
+        '429':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/connections/{connectionId}:
+    parameters:
+    - $ref: '#/components/parameters/ConnectionIdParam'
+    delete:
+      tags:
+      - me
+      - connections
+      operationId: revokeMyConnection
+      summary: Disconnect one of the caller's accounts; its tokens are erased at once
+      description: Where the provider has a revocation endpoint the gateway also revokes the tokens there (best effort,
+        recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again.
+        Audited as provider_connection.revoke (reason user).
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/connect/requests/{requestId}:
+    parameters:
+    - $ref: '#/components/parameters/ConnectRequestIdParam'
+    get:
+      tags:
+      - connections
+      operationId: getConnectRequest
+      summary: What a consent link is for, so the web app can confirm before leaving for the provider
+      description: Signed in, and only the person the link was made for; anyone else gets 404 connect_request_not_found,
+        the same as an unknown ID. 410 connect_request_expired once it expired (10 minutes) or was used.
+      responses:
+        '200':
+          description: The request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ConnectRequest'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '410':
+          $ref: '#/components/responses/ErrorReply'
 components:
   headers:
     ETag:
@@ -3063,6 +3511,28 @@ components:
       schema:
         type: string
         format: uuid
+    ProviderIdParam:
+      name: providerId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ConnectionIdParam:
+      name: connectionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ConnectRequestIdParam:
+      name: requestId
+      in: path
+      required: true
+      description: The opaque ID from a consent link (the request query parameter of /connect/{provider})
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{43}$
   responses:
     AuditPageReply:
       description: A page of audit entries, newest first
@@ -3931,6 +4401,12 @@ components:
         lastRefreshError:
           type: string
           nullable: true
+        requirement:
+          allOf:
+          - $ref: '#/components/schemas/McpServerRequirement'
+          nullable: true
+          description: The auth provider and scopes whose user token the gateway sends with calls to this server's
+            capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride).
         revision:
           $ref: '#/components/schemas/Revision'
         createdAt:
@@ -3988,6 +4464,11 @@ components:
         enabled:
           type: boolean
           default: true
+        requirement:
+          allOf:
+          - $ref: '#/components/schemas/McpServerRequirementInput'
+          nullable: true
+          description: Absent or null; no user authorization
     McpServerUpdate:
       type: object
       properties:
@@ -4014,6 +4495,12 @@ components:
           maximum: 120
         enabled:
           type: boolean
+        requirement:
+          allOf:
+          - $ref: '#/components/schemas/McpServerRequirementInput'
+          nullable: true
+          description: Omit to keep; null removes it. A widening change sends a published server back to review under
+            approval_required
     McpServerCreated:
       type: object
       required:
@@ -4048,6 +4535,8 @@ components:
       - changed
       - firstSeenAt
       - lastSeenAt
+      - requirementOverride
+      - requires
       properties:
         id:
           type: string
@@ -4095,6 +4584,14 @@ components:
           format: date-time
           nullable: true
           description: When a refresh no longer found it (null while listed)
+        requirementOverride:
+          $ref: '#/components/schemas/CapabilityRequirementOverride'
+        requires:
+          allOf:
+          - $ref: '#/components/schemas/CapabilityRequirement'
+          nullable: true
+          description: The effective requirement (the server's, or the override); null when calls get no provider
+            token
     McpRefreshResult:
       type: object
       required:
@@ -4426,7 +4923,13 @@ components:
       - title
       - description
       - definition
+      - requires
       properties:
+        requires:
+          allOf:
+          - $ref: '#/components/schemas/CapabilityRequirement'
+          nullable: true
+          description: The account a person must connect to use it (null; none)
         id:
           type: string
           format: uuid
@@ -4604,7 +5107,15 @@ components:
       - title
       - description
       - available
+      - requires
       properties:
+        requires:
+          allOf:
+          - $ref: '#/components/schemas/CapabilityRequirement'
+          nullable: true
+          description: The account a person must connect to use it (null; none). Service accounts can't call
+            capabilities that require one. In MyGatewayDetail, connected says whether the caller's connection covers
+            it now
         capabilityId:
           type: string
           format: uuid
@@ -4690,7 +5201,13 @@ components:
       - exposedName
       - title
       - description
+      - requires
       properties:
+        requires:
+          allOf:
+          - $ref: '#/components/schemas/CapabilityRequirement'
+          nullable: true
+          description: The account a person must connect to use it (null; none)
         capabilityId:
           type: string
           format: uuid
@@ -4858,7 +5375,8 @@ components:
           $ref: '#/components/schemas/MyGateway'
         capabilities:
           type: array
-          description: Available to the caller now (role and availability applied)
+          description: Available to the caller now (role and availability applied). A capability that requires an
+            account is listed whether or not the caller connected it; requires.connected says which
           items:
             $ref: '#/components/schemas/GatewayCapability'
     ApiKey:
@@ -4970,9 +5488,12 @@ components:
       - timeout
       - too_large
       - bad_request
-      description: 'ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the
-        client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client''s request
-        was invalid.'
+      - needs_authorization
+      description: 'ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the
+        client saw not found, or for a service account calling a capability that requires an account, a clear
+        refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider''s token
+        endpoint failed). bad_request: the client''s request was invalid. needs_authorization: not forwarded because
+        the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).'
     McpCall:
       type: object
       required:
@@ -5014,8 +5535,13 @@ components:
           $ref: '#/components/schemas/McpCallOutcome'
         errorClass:
           type: string
-          description: Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API
-            key is limited to other gateways), gateway_disabled or an unavailability reason
+          description: 'Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API
+            key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that
+            require an account; needs_authorization with not_connected, missing_scopes or needs_reconsent; denied with
+            service_account or provider_disabled; upstream_error with provider_unavailable.'
+        providerSlug:
+          type: string
+          description: The auth provider the capability required at the time of the call (absent when none)
         latencyMs:
           type: integer
           format: int32
@@ -5409,3 +5935,687 @@ components:
         secret:
           type: string
           description: The full key, shown only now
+    ScopeList:
+      type: array
+      maxItems: 50
+      description: OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes);
+        duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the
+        gateway can't tell that they were granted.
+      items:
+        type: string
+        minLength: 1
+        maxLength: 200
+        pattern: '^[!#-\[\]-~]+$'
+    AuthProviderKind:
+      type: string
+      enum:
+      - oauth2
+      description: 'oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)'
+    AuthProviderPresetName:
+      type: string
+      enum:
+      - github
+      - google
+      - microsoft
+      - atlassian
+      - slack
+      - gitlab
+      description: Which built-in preset the provider started from; only used for its icon and help text
+    AuthProviderTokenAuthMethod:
+      type: string
+      enum:
+      - client_secret_basic
+      - client_secret_post
+      - none
+      description: How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+    AuthProviderTokenResponseFormat:
+      type: string
+      enum:
+      - standard
+      - slack_authed_user
+      description: 'standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level).
+        slack_authed_user: Slack''s user-token response, where they are under authed_user'
+    AuthProviderSummary:
+      type: object
+      description: What any signed-in person may see about a provider
+      required:
+      - id
+      - slug
+      - name
+      - kind
+      - preset
+      - defaultScopes
+      - logoUrl
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: Immutable; sent to MCP servers in MCP-Gateway-Provider and the identity token's provider claim
+          example: github
+        name:
+          type: string
+          example: GitHub
+        kind:
+          $ref: '#/components/schemas/AuthProviderKind'
+        preset:
+          allOf:
+          - $ref: '#/components/schemas/AuthProviderPresetName'
+          nullable: true
+        defaultScopes:
+          $ref: '#/components/schemas/ScopeList'
+        logoUrl:
+          type: string
+          nullable: true
+    AuthProvider:
+      type: object
+      description: An OAuth app configured by platform admins. The client secret is never returned
+      required:
+      - id
+      - slug
+      - name
+      - kind
+      - preset
+      - enabled
+      - clientId
+      - hasClientSecret
+      - clientSecretHint
+      - tokenAuthMethod
+      - pkce
+      - authorizationUrl
+      - tokenUrl
+      - revocationUrl
+      - userinfoUrl
+      - defaultScopes
+      - scopeParam
+      - scopeSeparator
+      - tokenResponseFormat
+      - extraAuthorizeParams
+      - logoUrl
+      - redirectUri
+      - serverCount
+      - connectionCount
+      - revision
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: Immutable; sent to MCP servers in MCP-Gateway-Provider and the identity token's provider claim
+          example: github
+        name:
+          type: string
+          example: GitHub
+        kind:
+          $ref: '#/components/schemas/AuthProviderKind'
+        preset:
+          allOf:
+          - $ref: '#/components/schemas/AuthProviderPresetName'
+          nullable: true
+        enabled:
+          type: boolean
+          description: Turned off, calls that require it are refused and nobody can connect; connections are kept
+        clientId:
+          type: string
+        hasClientSecret:
+          type: boolean
+        clientSecretHint:
+          type: string
+          description: Last 4 characters of the secret when it has at least 8, otherwise empty
+        tokenAuthMethod:
+          $ref: '#/components/schemas/AuthProviderTokenAuthMethod'
+        pkce:
+          type: boolean
+          description: Send a PKCE S256 challenge (on unless the provider rejects it)
+        authorizationUrl:
+          type: string
+          example: https://github.com/login/oauth/authorize
+        tokenUrl:
+          type: string
+          example: https://github.com/login/oauth/access_token
+        revocationUrl:
+          type: string
+          nullable: true
+          description: RFC 7009 endpoint used when a connection is removed (null; tokens are only erased here)
+        userinfoUrl:
+          type: string
+          nullable: true
+          description: Read once after connecting to label the account (preferred_username, email, login, username or
+            name); the label is informational only
+        defaultScopes:
+          $ref: '#/components/schemas/ScopeList'
+        scopeParam:
+          type: string
+          description: The authorization request parameter that carries scopes (scope; Slack user tokens use
+            user_scope)
+        scopeSeparator:
+          type: string
+          enum:
+          - ' '
+          - ','
+        tokenResponseFormat:
+          $ref: '#/components/schemas/AuthProviderTokenResponseFormat'
+        extraAuthorizeParams:
+          type: object
+          additionalProperties:
+            type: string
+          description: Added to every authorization request, such as access_type=offline for Google
+        logoUrl:
+          type: string
+          nullable: true
+        redirectUri:
+          type: string
+          description: APP_URL + /connect/callback, to register with the provider's OAuth app
+          example: https://mcp.example.com/connect/callback
+        serverCount:
+          type: integer
+          format: int64
+          description: MCP servers that require it (as their requirement or in a capability override)
+        connectionCount:
+          type: integer
+          format: int64
+        revision:
+          $ref: '#/components/schemas/Revision'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdByName:
+          type: string
+          nullable: true
+    AuthProviderCreate:
+      type: object
+      required:
+      - slug
+      - name
+      - clientId
+      - authorizationUrl
+      - tokenUrl
+      properties:
+        slug:
+          type: string
+          pattern: ^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$
+          description: Unique, immutable
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        preset:
+          $ref: '#/components/schemas/AuthProviderPresetName'
+        enabled:
+          type: boolean
+          default: true
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 500
+        clientSecret:
+          type: string
+          maxLength: 2000
+          description: Sealed with ENCRYPTION_KEY, never returned. Required unless tokenAuthMethod is none
+        tokenAuthMethod:
+          allOf:
+          - $ref: '#/components/schemas/AuthProviderTokenAuthMethod'
+          default: client_secret_post
+        pkce:
+          type: boolean
+          default: true
+        authorizationUrl:
+          type: string
+          maxLength: 500
+        tokenUrl:
+          type: string
+          maxLength: 500
+        revocationUrl:
+          type: string
+          maxLength: 500
+        userinfoUrl:
+          type: string
+          maxLength: 500
+        defaultScopes:
+          $ref: '#/components/schemas/ScopeList'
+        scopeParam:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          default: scope
+        scopeSeparator:
+          type: string
+          enum:
+          - ' '
+          - ','
+          default: ' '
+        tokenResponseFormat:
+          allOf:
+          - $ref: '#/components/schemas/AuthProviderTokenResponseFormat'
+          default: standard
+        extraAuthorizeParams:
+          type: object
+          maxProperties: 10
+          additionalProperties:
+            type: string
+            maxLength: 500
+          description: Keys match ^[A-Za-z0-9_.-]{1,64}$; response_type, client_id, redirect_uri, state, scope (and
+            scopeParam), code_challenge and code_challenge_method are reserved
+        logoUrl:
+          type: string
+          maxLength: 500
+          description: An https URL or a same-origin path
+    AuthProviderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        preset:
+          allOf:
+          - $ref: '#/components/schemas/AuthProviderPresetName'
+          nullable: true
+        enabled:
+          type: boolean
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Changing it marks every connection needs_reconsent
+        clientSecret:
+          type: string
+          maxLength: 2000
+          description: Omit to keep the stored secret
+        tokenAuthMethod:
+          $ref: '#/components/schemas/AuthProviderTokenAuthMethod'
+        pkce:
+          type: boolean
+        authorizationUrl:
+          type: string
+          maxLength: 500
+        tokenUrl:
+          type: string
+          maxLength: 500
+        revocationUrl:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: null removes it
+        userinfoUrl:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: null removes it
+        defaultScopes:
+          $ref: '#/components/schemas/ScopeList'
+        scopeParam:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+        scopeSeparator:
+          type: string
+          enum:
+          - ' '
+          - ','
+        tokenResponseFormat:
+          $ref: '#/components/schemas/AuthProviderTokenResponseFormat'
+        extraAuthorizeParams:
+          type: object
+          maxProperties: 10
+          additionalProperties:
+            type: string
+            maxLength: 500
+          description: Replaces the whole set
+        logoUrl:
+          type: string
+          maxLength: 500
+          nullable: true
+    AuthProviderUrlParameter:
+      type: object
+      required:
+      - name
+      - label
+      properties:
+        name:
+          type: string
+          description: The placeholder in the preset's URLs, without braces
+          example: tenant
+        label:
+          type: string
+          example: Directory (tenant) ID, or organizations
+        default:
+          type: string
+          nullable: true
+          example: organizations
+    AuthProviderPreset:
+      type: object
+      required:
+      - preset
+      - name
+      - authorizationUrl
+      - tokenUrl
+      - revocationUrl
+      - userinfoUrl
+      - defaultScopes
+      - tokenAuthMethod
+      - pkce
+      - scopeParam
+      - scopeSeparator
+      - tokenResponseFormat
+      - extraAuthorizeParams
+      - urlParameters
+      - docsUrl
+      properties:
+        preset:
+          $ref: '#/components/schemas/AuthProviderPresetName'
+        name:
+          type: string
+          example: GitHub
+        authorizationUrl:
+          type: string
+        tokenUrl:
+          type: string
+        revocationUrl:
+          type: string
+          nullable: true
+        userinfoUrl:
+          type: string
+          nullable: true
+        defaultScopes:
+          $ref: '#/components/schemas/ScopeList'
+        tokenAuthMethod:
+          $ref: '#/components/schemas/AuthProviderTokenAuthMethod'
+        pkce:
+          type: boolean
+        scopeParam:
+          type: string
+        scopeSeparator:
+          type: string
+          enum:
+          - ' '
+          - ','
+        tokenResponseFormat:
+          $ref: '#/components/schemas/AuthProviderTokenResponseFormat'
+        extraAuthorizeParams:
+          type: object
+          additionalProperties:
+            type: string
+        urlParameters:
+          type: array
+          description: Placeholders in the URLs the form asks for (Microsoft's tenant, a self-managed GitLab's host)
+          items:
+            $ref: '#/components/schemas/AuthProviderUrlParameter'
+        docsUrl:
+          type: string
+          description: Where to create the OAuth app
+        redirectUri:
+          type: string
+          description: APP_URL + /connect/callback, to register with the provider's OAuth app (the same for every
+            provider)
+          example: https://mcp.example.com/connect/callback
+        notes:
+          type: string
+          description: Provider quirks worth knowing, shown in the form
+    ProviderRef:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - preset
+      - logoUrl
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        preset:
+          allOf:
+          - $ref: '#/components/schemas/AuthProviderPresetName'
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+    McpServerRequirement:
+      type: object
+      required:
+      - providerId
+      - providerSlug
+      - providerName
+      - providerEnabled
+      - scopes
+      properties:
+        providerId:
+          type: string
+          format: uuid
+        providerSlug:
+          type: string
+        providerName:
+          type: string
+        providerEnabled:
+          type: boolean
+          description: false while a platform admin has turned the provider off (calls that need it are refused)
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: Empty means the provider's default scopes
+    McpServerRequirementInput:
+      type: object
+      required:
+      - providerId
+      properties:
+        providerId:
+          type: string
+          format: uuid
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: Absent or empty means the provider's default scopes
+    CapabilityRequirementOverride:
+      type: object
+      required:
+      - mode
+      properties:
+        mode:
+          type: string
+          enum:
+          - inherit
+          - none
+          - scopes
+          description: 'inherit: the server''s requirement. none: no provider token and no consent. scopes: the
+            server''s provider with these scopes'
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: Only with mode scopes (at least one)
+    CapabilityRequirement:
+      type: object
+      description: The account a capability needs, with its effective scopes
+      required:
+      - providerId
+      - providerSlug
+      - providerName
+      - scopes
+      properties:
+        providerId:
+          type: string
+          format: uuid
+        providerSlug:
+          type: string
+          example: github
+        providerName:
+          type: string
+          example: GitHub
+        scopes:
+          $ref: '#/components/schemas/ScopeList'
+        connected:
+          type: boolean
+          description: 'Only in the caller''s own views (MyGatewayDetail): true when the caller has an active connection
+            to the provider whose granted scopes include these, so a call would be forwarded without asking'
+    ProviderConnectionStatus:
+      type: string
+      enum:
+      - active
+      - needs_reconsent
+      description: 'needs_reconsent: the tokens were erased (a refresh failed, the access token expired without a
+        refresh token, or the provider''s client ID changed); the next call asks the person to connect again'
+    ProviderConnection:
+      type: object
+      description: A person's connected account. Tokens are never returned
+      required:
+      - id
+      - provider
+      - accountLabel
+      - scopes
+      - status
+      - connectedAt
+      - refreshedAt
+      - lastUsedAt
+      - expiresAt
+      - refreshable
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          $ref: '#/components/schemas/ProviderRef'
+        accountLabel:
+          type: string
+          nullable: true
+          description: The provider account as its userinfo endpoint named it (such as octocat); informational
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: Scopes granted (as the provider reported them, else as asked for)
+        status:
+          $ref: '#/components/schemas/ProviderConnectionStatus'
+        connectedAt:
+          type: string
+          format: date-time
+          description: When the person last completed consent
+        refreshedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When a token was last sent to an MCP server
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current access token expires (null; the provider gave no expiry). The gateway refreshes
+            it before then when it has a refresh token
+        refreshable:
+          type: boolean
+          description: The gateway holds a refresh token
+    ConnectStart:
+      type: object
+      required:
+      - providerId
+      properties:
+        providerId:
+          type: string
+          format: uuid
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: Extra scopes to ask for (absent, with no requestId; the provider's default scopes)
+        requestId:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{43}$
+          description: The consent link's request; its required scopes are added, and it is used up on success
+        returnTo:
+          type: string
+          maxLength: 2000
+          description: A path on this site to return to (starting with a single /). Default; /connect/done
+    ConnectStarted:
+      type: object
+      required:
+      - authorizeUrl
+      - scopes
+      - expiresAt
+      properties:
+        authorizeUrl:
+          type: string
+          description: The provider's authorization URL; send the browser there
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: Everything asked for
+        expiresAt:
+          type: string
+          format: date-time
+          description: The state expires then (10 minutes)
+    ConnectRequestCapability:
+      type: object
+      required:
+      - kind
+      - exposedName
+      - title
+      properties:
+        kind:
+          $ref: '#/components/schemas/GatewayCapabilityKind'
+        exposedName:
+          type: string
+          example: github-tools__create_issue
+        title:
+          type: string
+    ConnectRequest:
+      type: object
+      description: Why a call asked the person to connect an account (a consent link from JSON-RPC -32042)
+      required:
+      - id
+      - provider
+      - reason
+      - requiredScopes
+      - requestScopes
+      - grantedScopes
+      - accountLabel
+      - gateway
+      - capability
+      - createdAt
+      - expiresAt
+      properties:
+        id:
+          type: string
+        provider:
+          $ref: '#/components/schemas/ProviderRef'
+        reason:
+          type: string
+          enum:
+          - not_connected
+          - missing_scopes
+          - needs_reconsent
+        requiredScopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: What the capability needs
+        requestScopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: What will be asked for (granted scopes kept, plus the required ones)
+        grantedScopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: What the person's active connection has now (empty when none)
+        accountLabel:
+          type: string
+          nullable: true
+          description: The account connected now, if any
+        gateway:
+          $ref: '#/components/schemas/CallRef'
+        capability:
+          $ref: '#/components/schemas/ConnectRequestCapability'
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time

@@ -47,6 +47,35 @@ type AuditLog struct {
 	ClientIP    string
 }
 
+type AuthProvider struct {
+	ID                   uuid.UUID
+	Slug                 string
+	Name                 string
+	Kind                 string
+	Preset               *string
+	Enabled              bool
+	ClientID             string
+	ClientSecretCipher   []byte
+	ClientSecretHint     string
+	TokenAuthMethod      string
+	Pkce                 bool
+	AuthorizationUrl     string
+	TokenUrl             string
+	RevocationUrl        *string
+	UserinfoUrl          *string
+	DefaultScopes        []string
+	ScopeParam           string
+	ScopeSeparator       string
+	TokenResponseFormat  string
+	ExtraAuthorizeParams json.RawMessage
+	LogoUrl              *string
+	Revision             int64
+	CreatedBy            uuid.NullUUID
+	CreatedAt            time.Time
+	UpdatedBy            uuid.NullUUID
+	UpdatedAt            time.Time
+}
+
 type Gateway struct {
 	ID              uuid.UUID
 	Slug            string
@@ -122,6 +151,7 @@ type McpCall struct {
 	OauthClientName      *string
 	KeyName              *string
 	OauthClientKind      *string
+	ProviderSlug         *string
 }
 
 type McpCapability struct {
@@ -139,6 +169,8 @@ type McpCapability struct {
 	FirstSeenAt         time.Time
 	LastSeenAt          time.Time
 	GoneAt              *time.Time
+	RequirementMode     string
+	RequirementScopes   []string
 }
 
 type McpHealthCheck struct {
@@ -183,6 +215,8 @@ type McpServer struct {
 	CreatedAt          time.Time
 	UpdatedBy          uuid.NullUUID
 	UpdatedAt          time.Time
+	AuthProviderID     uuid.NullUUID
+	AuthScopes         []string
 }
 
 type NetworkSetting struct {
@@ -262,6 +296,55 @@ type PlatformSetting struct {
 	Revision             int64
 	UpdatedBy            uuid.NullUUID
 	UpdatedAt            time.Time
+}
+
+type ProviderAuthState struct {
+	StateDigest        string
+	UserID             uuid.UUID
+	SessionDigest      string
+	ProviderID         uuid.UUID
+	Scopes             []string
+	RequiredScopes     []string
+	CodeVerifierCipher []byte
+	RequestDigest      *string
+	ReturnTo           *string
+	CreatedAt          time.Time
+	ExpiresAt          time.Time
+}
+
+type ProviderConnectRequest struct {
+	IDDigest        string
+	IDCipher        []byte
+	UserID          uuid.UUID
+	ProviderID      uuid.UUID
+	RequiredScopes  []string
+	Reason          string
+	GatewayID       uuid.UUID
+	GatewaySlug     string
+	GatewayName     string
+	CapabilityID    uuid.UUID
+	CapabilityKind  string
+	ExposedName     string
+	CapabilityTitle string
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	UsedAt          *time.Time
+}
+
+type ProviderConnection struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	ProviderID         uuid.UUID
+	Status             string
+	Scopes             []string
+	AccountLabel       *string
+	AccessTokenCipher  []byte
+	RefreshTokenCipher []byte
+	ExpiresAt          *time.Time
+	ConnectedAt        time.Time
+	RefreshedAt        *time.Time
+	LastUsedAt         *time.Time
+	LastErrorClass     *string
 }
 
 type ServiceAccount struct {

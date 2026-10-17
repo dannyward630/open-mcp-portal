@@ -2,7 +2,8 @@
  * A server's Overview tab: what it offers (a tile per capability kind, each
  * opening the Capabilities tab on that kind), the connection with its
  * health and last refresh, Test and Refresh for editors and above (with
- * their results here), and its place in the catalog (catalog-card.tsx).
+ * their results here), what it receives on behalf of its callers
+ * (requirement-card.tsx), and its place in the catalog (catalog-card.tsx).
  * Right after Add, the first discovery's result shows on top, until it's
  * dismissed or a Test or Refresh shows a newer result.
  */
@@ -21,6 +22,7 @@ import { toast } from "@/components/ui/toast/toast";
 import s from "../../pages/shared.module.css";
 import { EnabledBadge, HealthBadge } from "./badges";
 import { CatalogCard } from "./catalog-card";
+import { RequirementCard } from "./requirement-card";
 import { type CapabilityKind, countOf, kindTitle, type McpServer } from "./labels";
 import { FailureLine, FirstDiscovery, RefreshError, refreshChanges, RefreshSummary, TestResultAlert } from "./results";
 import { capabilitiesQuery, firstDiscoveryKey, invalidateServer, type ServerAbilities, type ServerScope } from "./scope";
@@ -57,6 +59,7 @@ export function OverviewTab({ server, scope, abilities }: Props) {
         })}
       </div>
       <ConnectionCard server={server} scope={scope} abilities={abilities} onRun={dismiss} />
+      <RequirementCard server={server} scope={scope} />
       <CatalogCard server={server} scope={scope} abilities={abilities} />
     </>
   );

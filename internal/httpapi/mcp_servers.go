@@ -168,6 +168,7 @@ func (a *api) createTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	setIf(&ci.AuthValue, in.AuthValue)
 	setIf(&ci.TimeoutSeconds, in.TimeoutSeconds)
 	setIf(&ci.Enabled, in.Enabled)
+	ci.Requirement = fromAPIRequirement(in.Requirement)
 	res, err := a.Registry.Create(r.Context(), a.actor(r), r.PathValue("team"), ci)
 	if failed(w, r, err) {
 		return
@@ -207,13 +208,18 @@ func (a *api) updateTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	in, rev, ok := decodeRevised[apitypes.McpServerUpdate](w, r)
+	rev, ok := ifMatch(w, r)
 	if !ok {
 		return
 	}
+	in, keys, ok := decodeKeys[apitypes.McpServerUpdate](w, r)
+	if !ok {
+		return
+	}
+	_, setRequirement := keys["requirement"]
 	v, err := a.Registry.Update(r.Context(), a.actor(r), r.PathValue("team"), id, registry.UpdateInput{
 		Name: in.Name, Description: in.Description, URL: in.Url, AuthHeaderName: in.AuthHeaderName, AuthValue: in.AuthValue,
-		TimeoutSeconds: in.TimeoutSeconds, Enabled: in.Enabled,
+		TimeoutSeconds: in.TimeoutSeconds, Enabled: in.Enabled, SetRequirement: setRequirement, Requirement: fromAPIRequirement(in.Requirement),
 	}, rev)
 	if failed(w, r, err) {
 		return
@@ -380,6 +386,14 @@ func (a *api) adminListMcpServers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.ChangesOnly = b
+	}
+	if v := q.Get("provider"); v != "" {
+		pid, err := uuid.Parse(v)
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "invalid_provider", "provider must be an auth provider ID")
+			return
+		}
+		p.ProviderID = &pid
 	}
 	if v := q.Get("team"); v != "" {
 		if len(v) > 100 {

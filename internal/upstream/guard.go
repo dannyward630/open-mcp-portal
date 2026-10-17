@@ -257,12 +257,14 @@ type headerTransport struct {
 	value         string
 	identity      string
 	identityValue string
+	provider      string
+	providerToken string
 	maxResponse   int64
 	ex            *exchange
 }
 
 func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.header != "" || t.identity != "" {
+	if t.header != "" || t.identity != "" || t.providerToken != "" {
 		req = req.Clone(req.Context())
 	}
 	if t.header != "" {
@@ -272,6 +274,11 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// a different header name when the static one is Authorization.
 	if t.identity != "" && !strings.EqualFold(t.identity, t.header) {
 		req.Header.Set(t.identity, t.identityValue)
+	}
+	// A static header can't use these names (the registry refuses them).
+	if t.providerToken != "" {
+		req.Header.Set("MCP-Gateway-Provider", t.provider)
+		req.Header.Set("MCP-Gateway-Provider-Token", t.providerToken)
 	}
 	res, err := t.next.RoundTrip(req)
 	if err != nil {
@@ -319,7 +326,7 @@ func (c *Client) httpClient(t Target, ex *exchange) (client *http.Client, done f
 	}
 	return &http.Client{
 		Transport: &headerTransport{next: tr, header: t.HeaderName, value: t.HeaderValue, identity: t.IdentityHeader,
-			identityValue: t.IdentityValue, maxResponse: c.maxResponse(), ex: ex},
+			identityValue: t.IdentityValue, provider: t.Provider, providerToken: t.ProviderToken, maxResponse: c.maxResponse(), ex: ex},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return fmt.Errorf("%w: MCP servers may not redirect", ErrBlockedAddress)
 		},

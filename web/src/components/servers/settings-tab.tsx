@@ -4,14 +4,18 @@
  * header value, and Delete in the Danger zone (owners and admins). Members
  * and Admin read it: Admin never changes a team's server settings.
  *
- * A new URL is read again at once. Under approval_required, a published
- * server goes back to review (pending): the form says so before the save,
- * and the saved message after it.
+ * A new URL is read again at once. User authorization (requirement-section.tsx)
+ * names the provider and scopes whose user token the server receives. Under
+ * approval_required, a published server goes back to review (pending) when
+ * its URL changes or its requirement widens what a capability receives: the
+ * form says so before the save, and the saved message after it.
  */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { api, ifMatch, unwrap } from "../../api/client";
+import { api, ApiError, ifMatch, unwrap } from "../../api/client";
+import { authProvidersQuery } from "../../api/queries";
+import { invalidScopeText, scopesProblem } from "../providers/labels";
 import { useAuthConfig } from "../../session";
 import { ConfirmMutationDialog } from "../confirm-dialog";
 import { Alert } from "@/components/ui/alert/alert";
@@ -23,26 +27,50 @@ import { Field } from "@/components/ui/field/field";
 import { Input, Textarea } from "@/components/ui/input/input";
 import { toast } from "@/components/ui/toast/toast";
 import type { McpServer } from "./labels";
-import { invalidateServer, type ServerAbilities, type ServerScope, storeServer } from "./scope";
+import { type RequirementForm, requirementBody, requirementFormOf, reviewedAgain, serverChangeWidens } from "./requirement";
+import { RequirementFields } from "./requirement-section";
+import { capabilitiesQuery, invalidateServer, type ServerAbilities, type ServerScope, storeServer } from "./scope";
 import { type AuthEdit, AuthFields, EnabledSwitch, type ServerForm, serverFieldErrors, serverProblems, TimeoutField, UrlField } from "./server-fields";
 
-const formOf = (x: McpServer): ServerForm => ({
+type SettingsForm = ServerForm & { requirement: RequirementForm };
+
+const formOf = (x: McpServer): SettingsForm => ({
   name: x.name,
   description: x.description,
   url: x.url,
   authHeaderName: x.authHeaderName ?? "",
   timeoutSeconds: x.timeoutSeconds,
   enabled: x.enabled,
+  requirement: requirementFormOf(x),
 });
-const labels = { name: "Name", description: "Description", url: "URL", authHeaderName: "Header name", timeoutSeconds: "Timeout (seconds)", enabled: "Enabled" };
+const labels = {
+  name: "Name",
+  description: "Description",
+  url: "URL",
+  authHeaderName: "Header name",
+  timeoutSeconds: "Timeout (seconds)",
+  enabled: "Enabled",
+  requirement: "User authorization",
+};
 const noAuthEdit: AuthEdit = { value: "", remove: false };
+
+/** The requirement's field errors: the form's own, or the server's refusal. */
+function requirementErrors(r: RequirementForm, err: unknown, shown: boolean) {
+  const out: { provider?: string; scopes?: string } = {};
+  if (shown && r.on && !r.providerId) out.provider = "Choose a provider, or turn off Requires a connection.";
+  const scopes = r.on ? scopesProblem(r.scopes) : undefined;
+  if (shown && scopes) out.scopes = scopes;
+  if (err instanceof ApiError && err.code === "provider_not_found") out.provider = "This provider was turned off or removed. Choose another.";
+  if (err instanceof ApiError && err.code === "invalid_scope") out.scopes = invalidScopeText(err.details);
+  return out;
+}
 
 type Props = { server: McpServer; scope: ServerScope; abilities: ServerAbilities };
 
-/** The saved message: what a new URL did (read again; back to review). */
+/** The saved message: what a new URL did (read again; back to review), or a wider requirement (back to review). */
 function savedMessage(before: McpServer, after: McpServer, urlChanged: boolean) {
   if (before.publishState === "published" && after.publishState === "pending") {
-    toast.success("Server settings saved", `${after.name} left the catalog until a platform admin reviews its new URL.`);
+    toast.success("Server settings saved", `${after.name} left the catalog until a platform admin reviews ${urlChanged ? "its new URL" : "what it now receives"}.`);
   } else if (urlChanged && after.lastRefreshError) {
     toast.warning("Server settings saved", "Its capabilities couldn't be read from the new URL. See the Overview tab.");
   } else {
@@ -55,6 +83,8 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
   const dev = Boolean(useAuthConfig().data?.devAuthEnabled);
   const saved = formOf(server);
   const [form, setForm, revision] = useRevisionForm(saved, server.revision, { labels });
+  const providers = useQuery(authProvidersQuery());
+  const caps = useQuery(capabilitiesQuery(scope, server.id));
   const [auth, setAuth] = useState<AuthEdit>(noAuthEdit);
   const [submitted, setSubmitted] = useState(false);
   const save = useMutation({
@@ -62,10 +92,19 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       const name = form.authHeaderName.trim();
       const headerChanged = name !== (server.authHeaderName ?? "");
       const authBody = auth.remove ? { authHeaderName: "" } : { ...(headerChanged || auth.value ? { authHeaderName: name } : {}), ...(auth.value ? { authValue: auth.value } : {}) };
+      const requirement = requirementBody(form.requirement, server);
       return unwrap(
         await api.PATCH("/v1/teams/{team}/mcp-servers/{serverId}", {
           params: { path: { team: server.teamSlug, serverId: server.id }, header: ifMatch(server.revision) },
-          body: { name: form.name.trim(), description: form.description, url: form.url.trim(), timeoutSeconds: form.timeoutSeconds, enabled: form.enabled, ...authBody },
+          body: {
+            name: form.name.trim(),
+            description: form.description,
+            url: form.url.trim(),
+            timeoutSeconds: form.timeoutSeconds,
+            enabled: form.enabled,
+            ...authBody,
+            ...(requirement === undefined ? {} : { requirement }),
+          },
         }),
       );
     },
@@ -73,24 +112,34 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       setAuth(noAuthEdit);
       setSubmitted(false);
       storeServer(qc, updated);
+      // Overrides may have gone back to inherit, and every capability's requirement may differ.
+      void qc.invalidateQueries({ queryKey: capabilitiesQuery(scope, server.id).queryKey });
       savedMessage(before, updated, urlChanged);
     },
   });
   const canEdit = abilities.canEdit && scope.kind === "team";
-  const dirty = JSON.stringify({ ...form, name: form.name.trim(), url: form.url.trim() }) !== JSON.stringify(saved) || Boolean(auth.value) || auth.remove;
+  // Turned off, the provider and scopes left in the fields don't count.
+  const requirement = form.requirement.on ? form.requirement : saved.requirement.on ? { on: false, providerId: "", scopes: [] } : saved.requirement;
+  const dirty =
+    JSON.stringify({ ...form, name: form.name.trim(), url: form.url.trim(), requirement }) !== JSON.stringify(saved) || Boolean(auth.value) || auth.remove;
   const problems = serverProblems(form, auth, { dev, hasAuth: server.hasAuth });
-  const invalid = Object.keys(problems).length > 0;
+  const reqErrors = requirementErrors(form.requirement, save.error, submitted);
+  const invalid = Object.keys(problems).length > 0 || Object.keys(requirementErrors(form.requirement, null, true)).length > 0;
   const shown = submitted ? problems : {};
   const refused = serverFieldErrors(save.error).url;
   const errors = { ...shown, url: shown.url ?? refused };
-  const set = (patch: Partial<ServerForm>) => {
+  const reqRefused = save.error instanceof ApiError && (save.error.code === "provider_not_found" || save.error.code === "invalid_scope");
+  const set = (patch: Partial<SettingsForm>) => {
     // The refusal was for the URL that was sent: editing it clears it.
     if (patch.url !== undefined && refused) save.reset();
     setForm((f) => ({ ...f, ...patch }));
   };
   const fields = { form, set, errors, dev, disabled: !canEdit };
   const urlChanged = form.url.trim() !== server.url;
-  const leavesCatalog = canEdit && urlChanged && server.publishState === "published" && server.effectivePublishPolicy === "approval_required";
+  const requirementWidens = requirementBody(form.requirement, server) !== undefined && serverChangeWidens(server, form.requirement, caps.data, providers.data);
+  const leavesCatalog = canEdit && reviewedAgain(server) && (urlChanged || requirementWidens);
+  const providerChanges = Boolean(server.requirement) && (!form.requirement.on || form.requirement.providerId !== server.requirement?.providerId);
+  const resetsOverrides = providerChanges ? (caps.data ?? []).filter((c) => !c.goneAt && c.requirementOverride.mode === "scopes").length : 0;
 
   return (
     <SettingsPage
@@ -103,7 +152,7 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       }
       dirty={dirty}
       saving={save.isPending}
-      error={errors.url ? undefined : save.error}
+      error={errors.url || reqRefused ? undefined : save.error}
       onSave={() => {
         setSubmitted(true);
         if (!invalid) save.mutate({ before: server, urlChanged });
@@ -126,7 +175,7 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       </SettingsSection>
       <SettingsSection title="Connection" description="A new URL is read again when you save. After changing only the header, press Refresh on the Overview tab.">
         <UrlField {...fields} />
-        {leavesCatalog && (
+        {leavesCatalog && urlChanged && (
           <Alert tone="warning" title="The server will leave the catalog">
             Your team needs approval to publish, so a new URL is reviewed again: once you save, {server.name} is out of the company catalog until a platform admin approves it.
           </Alert>
@@ -136,6 +185,29 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       </SettingsSection>
       <SettingsSection title="Authentication" description="One static header sent with every request. Its value is stored encrypted; only its last four characters are ever shown.">
         <AuthFields {...fields} auth={auth} setAuth={setAuth} hasAuth={server.hasAuth} hint={server.authValueHint} />
+      </SettingsSection>
+      <SettingsSection
+        title="User authorization"
+        description="Whether calls to this server carry each caller's own token for another service, such as GitHub. Each capability can override it on the Capabilities tab."
+      >
+        <RequirementFields
+          server={server}
+          value={form.requirement}
+          onChange={(requirement) => {
+            if (reqRefused) save.reset();
+            set({ requirement });
+          }}
+          errors={reqErrors}
+          disabled={!canEdit}
+          resetsOverrides={resetsOverrides}
+        />
+        {leavesCatalog && requirementWidens && (
+          <Alert tone="warning" title="The server will leave the catalog">
+            Your team needs approval to publish, and this sends more to the server than before (a provider, another provider or a new scope), so it&apos;s reviewed
+            again: once you save, {server.name} is out of the company catalog until a platform admin approves it. Removing or narrowing a requirement never needs a
+            review.
+          </Alert>
+        )}
       </SettingsSection>
       {scope.kind === "team" && abilities.canManage && <DeleteServer server={server} />}
     </SettingsPage>

@@ -206,7 +206,7 @@ func (q *Queries) GatewayStats(ctx context.Context, ids []uuid.UUID) ([]GatewayS
 }
 
 const getCapability = `-- name: GetCapability :one
-SELECT id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at FROM mcp_capabilities WHERE id = $1
+SELECT id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at, requirement_mode, requirement_scopes FROM mcp_capabilities WHERE id = $1
 `
 
 func (q *Queries) GetCapability(ctx context.Context, id uuid.UUID) (McpCapability, error) {
@@ -227,6 +227,8 @@ func (q *Queries) GetCapability(ctx context.Context, id uuid.UUID) (McpCapabilit
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
 		&i.GoneAt,
+		&i.RequirementMode,
+		&i.RequirementScopes,
 	)
 	return i, err
 }
@@ -464,8 +466,9 @@ func (q *Queries) ListGatewayGrants(ctx context.Context, gatewayID uuid.UUID) ([
 }
 
 const listGatewayOptions = `-- name: ListGatewayOptions :many
-SELECT c.id, c.kind, c.name, c.title, c.description,
+SELECT c.id, c.kind, c.name, c.title, c.description, c.requirement_mode, c.requirement_scopes,
        s.id AS server_id, s.slug AS server_slug, s.name AS server_name, s.team_id AS server_team_id,
+       s.auth_provider_id AS server_auth_provider_id, s.auth_scopes AS server_auth_scopes,
        t.slug AS team_slug, t.name AS team_name
 FROM mcp_capabilities c
 JOIN mcp_servers s ON s.id = c.server_id
@@ -504,17 +507,21 @@ type ListGatewayOptionsParams struct {
 }
 
 type ListGatewayOptionsRow struct {
-	ID           uuid.UUID
-	Kind         string
-	Name         string
-	Title        string
-	Description  string
-	ServerID     uuid.UUID
-	ServerSlug   string
-	ServerName   string
-	ServerTeamID uuid.UUID
-	TeamSlug     string
-	TeamName     string
+	ID                   uuid.UUID
+	Kind                 string
+	Name                 string
+	Title                string
+	Description          string
+	RequirementMode      string
+	RequirementScopes    []string
+	ServerID             uuid.UUID
+	ServerSlug           string
+	ServerName           string
+	ServerTeamID         uuid.UUID
+	ServerAuthProviderID uuid.NullUUID
+	ServerAuthScopes     []string
+	TeamSlug             string
+	TeamName             string
 }
 
 // One page of the tools, prompts, resources and resource templates a
@@ -552,10 +559,14 @@ func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptions
 			&i.Name,
 			&i.Title,
 			&i.Description,
+			&i.RequirementMode,
+			&i.RequirementScopes,
 			&i.ServerID,
 			&i.ServerSlug,
 			&i.ServerName,
 			&i.ServerTeamID,
+			&i.ServerAuthProviderID,
+			&i.ServerAuthScopes,
 			&i.TeamSlug,
 			&i.TeamName,
 		); err != nil {
@@ -570,7 +581,7 @@ func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptions
 }
 
 const listGatewaySelection = `-- name: ListGatewaySelection :many
-SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
+SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, c.requirement_mode, c.requirement_scopes, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes, gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
 FROM gateway_capabilities gc
 JOIN mcp_capabilities c ON c.id = gc.capability_id
 JOIN mcp_servers s ON s.id = c.server_id
@@ -615,6 +626,8 @@ func (q *Queries) ListGatewaySelection(ctx context.Context, gatewayID uuid.UUID)
 			&i.McpCapability.FirstSeenAt,
 			&i.McpCapability.LastSeenAt,
 			&i.McpCapability.GoneAt,
+			&i.McpCapability.RequirementMode,
+			&i.McpCapability.RequirementScopes,
 			&i.McpServer.ID,
 			&i.McpServer.TeamID,
 			&i.McpServer.Slug,
@@ -642,6 +655,8 @@ func (q *Queries) ListGatewaySelection(ctx context.Context, gatewayID uuid.UUID)
 			&i.McpServer.CreatedAt,
 			&i.McpServer.UpdatedBy,
 			&i.McpServer.UpdatedAt,
+			&i.McpServer.AuthProviderID,
+			&i.McpServer.AuthScopes,
 			&i.MinTeamRole,
 			&i.TeamSlug,
 			&i.TeamName,

@@ -38,7 +38,7 @@ const approveMCPCapability = `-- name: ApproveMCPCapability :one
 UPDATE mcp_capabilities
 SET approved_fingerprint = fingerprint, approved_by = $1, approved_at = now()
 WHERE id = $2 AND gone_at IS NULL
-RETURNING id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at
+RETURNING id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at, requirement_mode, requirement_scopes
 `
 
 type ApproveMCPCapabilityParams struct {
@@ -64,6 +64,56 @@ func (q *Queries) ApproveMCPCapability(ctx context.Context, arg ApproveMCPCapabi
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
 		&i.GoneAt,
+		&i.RequirementMode,
+		&i.RequirementScopes,
+	)
+	return i, err
+}
+
+const bumpMCPServerRevision = `-- name: BumpMCPServerRevision :one
+UPDATE mcp_servers SET revision = revision + 1, updated_by = $1, updated_at = now()
+WHERE id = $2
+RETURNING id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at, auth_provider_id, auth_scopes
+`
+
+type BumpMCPServerRevisionParams struct {
+	UpdatedBy uuid.NullUUID
+	ID        uuid.UUID
+}
+
+func (q *Queries) BumpMCPServerRevision(ctx context.Context, arg BumpMCPServerRevisionParams) (McpServer, error) {
+	row := q.db.QueryRow(ctx, bumpMCPServerRevision, arg.UpdatedBy, arg.ID)
+	var i McpServer
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.URL,
+		&i.Transport,
+		&i.AuthHeaderName,
+		&i.AuthValueCipher,
+		&i.AuthValueHint,
+		&i.TimeoutSeconds,
+		&i.Enabled,
+		&i.PublishState,
+		&i.PublishRequestedAt,
+		&i.PublishRequestedBy,
+		&i.PublishRequestNote,
+		&i.PublishReviewedAt,
+		&i.PublishReviewedBy,
+		&i.PublishReviewNote,
+		&i.PublishedAt,
+		&i.RefreshedAt,
+		&i.LastRefreshError,
+		&i.Revision,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.AuthProviderID,
+		&i.AuthScopes,
 	)
 	return i, err
 }
@@ -97,7 +147,7 @@ func (q *Queries) ForgetMCPHealthChecks(ctx context.Context, serverID uuid.UUID)
 }
 
 const getMCPServer = `-- name: GetMCPServer :one
-SELECT id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at FROM mcp_servers WHERE id = $1
+SELECT id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at, auth_provider_id, auth_scopes FROM mcp_servers WHERE id = $1
 `
 
 func (q *Queries) GetMCPServer(ctx context.Context, id uuid.UUID) (McpServer, error) {
@@ -131,12 +181,14 @@ func (q *Queries) GetMCPServer(ctx context.Context, id uuid.UUID) (McpServer, er
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.AuthProviderID,
+		&i.AuthScopes,
 	)
 	return i, err
 }
 
 const getMCPServerView = `-- name: GetMCPServerView :one
-SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes, t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
        t.status AS team_status,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
            AS reviewed_by_name
@@ -185,6 +237,8 @@ func (q *Queries) GetMCPServerView(ctx context.Context, id uuid.UUID) (GetMCPSer
 		&i.McpServer.CreatedAt,
 		&i.McpServer.UpdatedBy,
 		&i.McpServer.UpdatedAt,
+		&i.McpServer.AuthProviderID,
+		&i.McpServer.AuthScopes,
 		&i.TeamSlug,
 		&i.TeamName,
 		&i.TeamPolicyOverride,
@@ -284,12 +338,12 @@ func (q *Queries) InsertMCPHealthCheck(ctx context.Context, arg InsertMCPHealthC
 const insertMCPServer = `-- name: InsertMCPServer :one
 INSERT INTO mcp_servers (
     id, team_id, slug, name, description, url, auth_header_name, auth_value_cipher, auth_value_hint,
-    timeout_seconds, enabled, created_by, updated_by
+    timeout_seconds, enabled, auth_provider_id, auth_scopes, created_by, updated_by
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-    $10, $11, $12, $12
+    $10, $11, $12, $13, $14, $14
 )
-RETURNING id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at
+RETURNING id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at, auth_provider_id, auth_scopes
 `
 
 type InsertMCPServerParams struct {
@@ -304,6 +358,8 @@ type InsertMCPServerParams struct {
 	AuthValueHint   string
 	TimeoutSeconds  int32
 	Enabled         bool
+	AuthProviderID  uuid.NullUUID
+	AuthScopes      []string
 	CreatedBy       uuid.NullUUID
 }
 
@@ -320,6 +376,8 @@ func (q *Queries) InsertMCPServer(ctx context.Context, arg InsertMCPServerParams
 		arg.AuthValueHint,
 		arg.TimeoutSeconds,
 		arg.Enabled,
+		arg.AuthProviderID,
+		arg.AuthScopes,
 		arg.CreatedBy,
 	)
 	var i McpServer
@@ -351,6 +409,8 @@ func (q *Queries) InsertMCPServer(ctx context.Context, arg InsertMCPServerParams
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.AuthProviderID,
+		&i.AuthScopes,
 	)
 	return i, err
 }
@@ -395,7 +455,7 @@ func (q *Queries) LatestMCPHealthChecks(ctx context.Context, serverIds []uuid.UU
 }
 
 const listApprovedMCPCapabilities = `-- name: ListApprovedMCPCapabilities :many
-SELECT id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at FROM mcp_capabilities c
+SELECT id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at, requirement_mode, requirement_scopes FROM mcp_capabilities c
 WHERE c.server_id = $1 AND c.gone_at IS NULL AND c.approved_fingerprint = c.fingerprint
 ORDER BY CASE c.kind WHEN 'tool' THEN 0 WHEN 'resource' THEN 1 WHEN 'resource_template' THEN 2 ELSE 3 END, c.name
 `
@@ -425,6 +485,8 @@ func (q *Queries) ListApprovedMCPCapabilities(ctx context.Context, serverID uuid
 			&i.FirstSeenAt,
 			&i.LastSeenAt,
 			&i.GoneAt,
+			&i.RequirementMode,
+			&i.RequirementScopes,
 		); err != nil {
 			return nil, err
 		}
@@ -437,7 +499,7 @@ func (q *Queries) ListApprovedMCPCapabilities(ctx context.Context, serverID uuid
 }
 
 const listMCPCapabilities = `-- name: ListMCPCapabilities :many
-SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at,
+SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, c.requirement_mode, c.requirement_scopes,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = c.approved_by), '')::text
            AS approved_by_name
 FROM mcp_capabilities c
@@ -482,6 +544,8 @@ func (q *Queries) ListMCPCapabilities(ctx context.Context, arg ListMCPCapabiliti
 			&i.McpCapability.FirstSeenAt,
 			&i.McpCapability.LastSeenAt,
 			&i.McpCapability.GoneAt,
+			&i.McpCapability.RequirementMode,
+			&i.McpCapability.RequirementScopes,
 			&i.ApprovedByName,
 		); err != nil {
 			return nil, err
@@ -536,7 +600,7 @@ func (q *Queries) ListMCPHealthChecks(ctx context.Context, arg ListMCPHealthChec
 }
 
 const listMCPServers = `-- name: ListMCPServers :many
-SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
+SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes, t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
        t.status AS team_status,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
            AS reviewed_by_name
@@ -544,22 +608,24 @@ FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE ($1::uuid IS NULL OR s.team_id = $1::uuid)
   AND ($2::text IS NULL OR s.publish_state = $2::text)
-  AND (NOT $3::bool OR (s.publish_state = 'published' AND s.enabled AND t.status = 'active'))
-  AND (NOT $4::bool OR (s.publish_state = 'published' AND EXISTS (
+  AND ($3::uuid IS NULL OR s.auth_provider_id = $3::uuid)
+  AND (NOT $4::bool OR (s.publish_state = 'published' AND s.enabled AND t.status = 'active'))
+  AND (NOT $5::bool OR (s.publish_state = 'published' AND EXISTS (
         SELECT 1 FROM mcp_capabilities c
         WHERE c.server_id = s.id AND c.gone_at IS NULL AND c.approved_fingerprint IS DISTINCT FROM c.fingerprint)))
-  AND ($5::text IS NULL
-       OR s.name ILIKE '%' || $5::text || '%' ESCAPE '\'
-       OR s.slug ILIKE '%' || $5::text || '%' ESCAPE '\'
-       OR ($3::bool AND s.description ILIKE '%' || $5::text || '%' ESCAPE '\'))
-  AND ($6::text IS NULL OR (s.name, s.id) > ($6::text, $7::uuid))
+  AND ($6::text IS NULL
+       OR s.name ILIKE '%' || $6::text || '%' ESCAPE '\'
+       OR s.slug ILIKE '%' || $6::text || '%' ESCAPE '\'
+       OR ($4::bool AND s.description ILIKE '%' || $6::text || '%' ESCAPE '\'))
+  AND ($7::text IS NULL OR (s.name, s.id) > ($7::text, $8::uuid))
 ORDER BY s.name, s.id
-LIMIT $8
+LIMIT $9
 `
 
 type ListMCPServersParams struct {
 	TeamID       uuid.NullUUID
 	PublishState *string
+	ProviderID   uuid.NullUUID
 	Catalog      bool
 	ChangesOnly  bool
 	Search       *string
@@ -580,12 +646,13 @@ type ListMCPServersRow struct {
 // One page of servers ordered by (name, id), with their team and reviewer.
 // team_id narrows to one team; publish_state to one state; changes_only to
 // published servers with capabilities waiting for approval; catalog to
-// published, enabled servers of active teams. search is LIKE-escaped by the
-// caller.
+// published, enabled servers of active teams; provider_id to servers that
+// require that auth provider. search is LIKE-escaped by the caller.
 func (q *Queries) ListMCPServers(ctx context.Context, arg ListMCPServersParams) ([]ListMCPServersRow, error) {
 	rows, err := q.db.Query(ctx, listMCPServers,
 		arg.TeamID,
 		arg.PublishState,
+		arg.ProviderID,
 		arg.Catalog,
 		arg.ChangesOnly,
 		arg.Search,
@@ -628,6 +695,8 @@ func (q *Queries) ListMCPServers(ctx context.Context, arg ListMCPServersParams) 
 			&i.McpServer.CreatedAt,
 			&i.McpServer.UpdatedBy,
 			&i.McpServer.UpdatedAt,
+			&i.McpServer.AuthProviderID,
+			&i.McpServer.AuthScopes,
 			&i.TeamSlug,
 			&i.TeamName,
 			&i.TeamPolicyOverride,
@@ -645,7 +714,7 @@ func (q *Queries) ListMCPServers(ctx context.Context, arg ListMCPServersParams) 
 }
 
 const listMCPServersDueForCheck = `-- name: ListMCPServersDueForCheck :many
-SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at FROM mcp_servers s
+SELECT s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE s.enabled AND t.status = 'active'
   AND NOT EXISTS (SELECT 1 FROM mcp_health_checks h WHERE h.server_id = s.id AND h.checked_at >= $1)
@@ -692,6 +761,8 @@ func (q *Queries) ListMCPServersDueForCheck(ctx context.Context, dueBefore time.
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.AuthProviderID,
+			&i.AuthScopes,
 		); err != nil {
 			return nil, err
 		}
@@ -704,7 +775,7 @@ func (q *Queries) ListMCPServersDueForCheck(ctx context.Context, dueBefore time.
 }
 
 const lockMCPCapability = `-- name: LockMCPCapability :one
-SELECT id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at FROM mcp_capabilities WHERE id = $1 AND server_id = $2 FOR UPDATE
+SELECT id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at, requirement_mode, requirement_scopes FROM mcp_capabilities WHERE id = $1 AND server_id = $2 FOR UPDATE
 `
 
 type LockMCPCapabilityParams struct {
@@ -730,12 +801,14 @@ func (q *Queries) LockMCPCapability(ctx context.Context, arg LockMCPCapabilityPa
 		&i.FirstSeenAt,
 		&i.LastSeenAt,
 		&i.GoneAt,
+		&i.RequirementMode,
+		&i.RequirementScopes,
 	)
 	return i, err
 }
 
 const lockMCPServer = `-- name: LockMCPServer :one
-SELECT id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at FROM mcp_servers WHERE id = $1 FOR UPDATE
+SELECT id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at, auth_provider_id, auth_scopes FROM mcp_servers WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockMCPServer(ctx context.Context, id uuid.UUID) (McpServer, error) {
@@ -769,6 +842,8 @@ func (q *Queries) LockMCPServer(ctx context.Context, id uuid.UUID) (McpServer, e
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.AuthProviderID,
+		&i.AuthScopes,
 	)
 	return i, err
 }
@@ -915,6 +990,63 @@ func (q *Queries) PruneMCPHealthChecks(ctx context.Context, arg PruneMCPHealthCh
 	return result.RowsAffected(), nil
 }
 
+const resetMCPCapabilityScopeOverrides = `-- name: ResetMCPCapabilityScopeOverrides :execrows
+UPDATE mcp_capabilities SET requirement_mode = 'inherit', requirement_scopes = '{}'
+WHERE server_id = $1 AND requirement_mode = 'scopes'
+`
+
+// The server's requirement was removed or now names another provider:
+// overrides with other scopes of the old provider go back to inherit.
+func (q *Queries) ResetMCPCapabilityScopeOverrides(ctx context.Context, serverID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, resetMCPCapabilityScopeOverrides, serverID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setMCPCapabilityRequirement = `-- name: SetMCPCapabilityRequirement :one
+UPDATE mcp_capabilities SET requirement_mode = $1, requirement_scopes = $2
+WHERE id = $3 AND server_id = $4
+RETURNING id, server_id, kind, name, title, description, definition, fingerprint, approved_fingerprint, approved_by, approved_at, first_seen_at, last_seen_at, gone_at, requirement_mode, requirement_scopes
+`
+
+type SetMCPCapabilityRequirementParams struct {
+	RequirementMode   string
+	RequirementScopes []string
+	ID                uuid.UUID
+	ServerID          uuid.UUID
+}
+
+func (q *Queries) SetMCPCapabilityRequirement(ctx context.Context, arg SetMCPCapabilityRequirementParams) (McpCapability, error) {
+	row := q.db.QueryRow(ctx, setMCPCapabilityRequirement,
+		arg.RequirementMode,
+		arg.RequirementScopes,
+		arg.ID,
+		arg.ServerID,
+	)
+	var i McpCapability
+	err := row.Scan(
+		&i.ID,
+		&i.ServerID,
+		&i.Kind,
+		&i.Name,
+		&i.Title,
+		&i.Description,
+		&i.Definition,
+		&i.Fingerprint,
+		&i.ApprovedFingerprint,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.GoneAt,
+		&i.RequirementMode,
+		&i.RequirementScopes,
+	)
+	return i, err
+}
+
 const setMCPServerPublishState = `-- name: SetMCPServerPublishState :one
 UPDATE mcp_servers
 SET publish_state        = $1,
@@ -929,7 +1061,7 @@ SET publish_state        = $1,
     updated_by           = $3::uuid,
     updated_at           = now()
 WHERE id = $6
-RETURNING id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at
+RETURNING id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at, auth_provider_id, auth_scopes
 `
 
 type SetMCPServerPublishStateParams struct {
@@ -982,6 +1114,8 @@ func (q *Queries) SetMCPServerPublishState(ctx context.Context, arg SetMCPServer
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.AuthProviderID,
+		&i.AuthScopes,
 	)
 	return i, err
 }
@@ -1044,10 +1178,10 @@ const updateMCPServer = `-- name: UpdateMCPServer :one
 UPDATE mcp_servers
 SET name = $1, description = $2, url = $3, auth_header_name = $4,
     auth_value_cipher = $5, auth_value_hint = $6,
-    timeout_seconds = $7, enabled = $8,
-    revision = revision + 1, updated_by = $9, updated_at = now()
-WHERE id = $10
-RETURNING id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at
+    timeout_seconds = $7, enabled = $8, auth_provider_id = $9, auth_scopes = $10,
+    revision = revision + 1, updated_by = $11, updated_at = now()
+WHERE id = $12
+RETURNING id, team_id, slug, name, description, url, transport, auth_header_name, auth_value_cipher, auth_value_hint, timeout_seconds, enabled, publish_state, publish_requested_at, publish_requested_by, publish_request_note, publish_reviewed_at, publish_reviewed_by, publish_review_note, published_at, refreshed_at, last_refresh_error, revision, created_by, created_at, updated_by, updated_at, auth_provider_id, auth_scopes
 `
 
 type UpdateMCPServerParams struct {
@@ -1059,6 +1193,8 @@ type UpdateMCPServerParams struct {
 	AuthValueHint   string
 	TimeoutSeconds  int32
 	Enabled         bool
+	AuthProviderID  uuid.NullUUID
+	AuthScopes      []string
 	UpdatedBy       uuid.NullUUID
 	ID              uuid.UUID
 }
@@ -1073,6 +1209,8 @@ func (q *Queries) UpdateMCPServer(ctx context.Context, arg UpdateMCPServerParams
 		arg.AuthValueHint,
 		arg.TimeoutSeconds,
 		arg.Enabled,
+		arg.AuthProviderID,
+		arg.AuthScopes,
 		arg.UpdatedBy,
 		arg.ID,
 	)
@@ -1105,6 +1243,8 @@ func (q *Queries) UpdateMCPServer(ctx context.Context, arg UpdateMCPServerParams
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.AuthProviderID,
+		&i.AuthScopes,
 	)
 	return i, err
 }

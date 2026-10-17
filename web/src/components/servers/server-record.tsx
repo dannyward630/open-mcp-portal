@@ -8,6 +8,7 @@ import { Link } from "@tanstack/react-router";
 import { Activity, ExternalLink, LayoutDashboard, ListTree, Settings2, Shield } from "lucide-react";
 import type { ReactNode } from "react";
 import { serverTabs } from "../../lib/tabs";
+import { needsText } from "../providers/labels";
 import { DetailPage } from "../templates/detail-page";
 import type { ActionItem } from "../templates/action-menu";
 import { TextLink } from "@/components/ui/text-link/text-link";
@@ -52,6 +53,7 @@ export function ServerRecord({ server, scope, abilities, notices, links = [] }: 
           ? [{ label: "Team", value: <TextLink render={<Link to="/admin/teams/$team" params={{ team: server.teamSlug }} />}>{server.teamName}</TextLink> }]
           : []),
         { label: "Capabilities", value: server.refreshedAt ? countsText(server.counts) : "Not read yet" },
+        { label: "User authorization", value: server.requirement ? needsText(server.requirement) : undefined },
       ]}
       menuLabel="More server actions"
       menuActions={links}

@@ -2,7 +2,7 @@ import { Outlet, createRootRoute, createRoute, createRouter, lazyRouteComponent,
 import { type ReactNode } from "react";
 import { AppLayout } from "./components/layout/shell";
 import { NotFoundState } from "./components/not-found";
-import { adminTeamTabs, gatewayTabs, serverTabs, serviceAccountTabs, tabSearch, teamSettingsTabs } from "./lib/tabs";
+import { adminTeamTabs, authProviderTabs, gatewayTabs, serverTabs, serviceAccountTabs, tabSearch, teamSettingsTabs } from "./lib/tabs";
 import { InstanceSync, SignInPage, useCurrentUser, useMe } from "./session";
 import { useSessionUnavailable } from "./components/layout/session-unavailable";
 import { ColorModeSync } from "./components/layout/theme";
@@ -18,9 +18,10 @@ import styles from "./router.module.css";
  * Areas: the team's MCP servers and gateways under teams/$team, the Catalog
  * and My gateways at the top level, API keys and Connected apps next to
  * Profile, the team's Service accounts, MCP servers, Publishing, Internal
- * networks, Gateways, Trusted clients and Calls under admin. The OAuth consent
- * page (/oauth/consent) sits outside the app's shell. Later phases add theirs
- * here and in components/layout/nav.tsx.
+ * networks, Gateways, Trusted clients, Auth providers and Calls under admin.
+ * The OAuth consent page (/oauth/consent) and the account-connect pages
+ * (/connect/$provider, /connect/done) sit outside the app's shell. Later
+ * phases add theirs here and in components/layout/nav.tsx.
  */
 const pages = {
   home: () => import("./pages/home"),
@@ -39,6 +40,8 @@ const pages = {
   oauth: () => import("./pages/oauth/routes"),
   adminOAuth: () => import("./pages/admin/oauth/routes"),
   serviceAccounts: () => import("./pages/team/service-accounts/routes"),
+  adminProviders: () => import("./pages/admin/providers/routes"),
+  connect: () => import("./pages/connect/routes"),
 };
 const lazy = lazyRouteComponent;
 type Page = ReturnType<typeof lazyRouteComponent>;
@@ -111,6 +114,8 @@ const apiKeysRoute = createRoute({
 });
 /** The MCP clients the person allowed with OAuth sign-in. */
 const connectedAppsRoute = createRoute({ getParentRoute: () => appRoute, path: "settings/connected-apps", component: lazy(pages.oauth, "ConnectedAppsPage") });
+/** The accounts the person connected with auth providers (GitHub, Google…) so tools can act as them. */
+const myConnectionsRoute = createRoute({ getParentRoute: () => appRoute, path: "settings/connections", component: lazy(pages.account, "MyConnectionsPage") });
 
 /* ---------------- my gateways (everyone signed in) ---------------- */
 
@@ -213,6 +218,7 @@ const appTree = appRoute.addChildren([
   profileRoute,
   apiKeysRoute,
   connectedAppsRoute,
+  myConnectionsRoute,
   catalogRoute,
   catalogServerRoute,
   myGatewaysRoute,
@@ -240,6 +246,8 @@ const appTree = appRoute.addChildren([
     adminList("gateways", lazy(pages.adminGateways, "AdminGatewaysPage")),
     adminTabs("gateways/$gatewayId", gatewayTabs, lazy(pages.adminGateways, "AdminGatewayPage")),
     adminList("trusted-clients", lazy(pages.adminOAuth, "AdminTrustedClientsPage")),
+    adminList("auth-providers", lazy(pages.adminProviders, "AdminAuthProvidersPage")),
+    adminTabs("auth-providers/$providerId", authProviderTabs, lazy(pages.adminProviders, "AdminAuthProviderPage")),
     adminList("calls", lazy(pages.adminGateways, "AdminCallsPage")),
     adminList("audit", lazy(pages.adminAudit, "AdminAuditPage")),
   ]),
@@ -260,7 +268,31 @@ const oauthConsentRoute = createRoute({
   ),
 });
 
-export const routeTree = rootRoute.addChildren([appTree, oauthConsentRoute]);
+/*
+ * Connecting an account (docs/phase5-delegated-credentials.md): the link a tool's -32042 answer carries
+ * (/connect/{provider}?request=…) and where the callback sends the browser afterwards (/connect/done). No app
+ * shell, like the consent page. The confirm page needs the session of the person the link was made for; signed
+ * out, the sign-in page returns here with the whole query. The result page says only what happened.
+ */
+const ConnectPage = lazy(pages.connect, "ConnectPage");
+const connectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "connect/$provider",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: () => (
+    <SessionGate>
+      <ConnectPage />
+    </SessionGate>
+  ),
+});
+const connectDoneRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "connect/done",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: lazy(pages.connect, "ConnectDonePage"),
+});
+
+export const routeTree = rootRoute.addChildren([appTree, oauthConsentRoute, connectDoneRoute, connectRoute]);
 
 export const router = createRouter({
   routeTree,

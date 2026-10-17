@@ -21,6 +21,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
+	"github.com/ncecere/open-mcp-gateway/internal/providers"
 	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
@@ -44,6 +45,9 @@ type Deps struct {
 	OAuth *oauth.Service
 	// ServiceAccounts manages team service accounts and their keys.
 	ServiceAccounts *serviceaccounts.Service
+	// Providers is delegated credentials: auth providers, connections and
+	// consent links (internal/providers).
+	Providers *providers.Service
 	// MCP serves /mcp/{slug} (internal/mcpgw).
 	MCP http.Handler
 
@@ -87,7 +91,7 @@ func apiRoutes(d Deps) []route {
 	routes := opsRoutes(d)
 	for _, group := range [][]route{a.authRoutes(), a.teamRoutes(), a.platformAdminRoutes(), a.mcpServerRoutes(), a.mcpAdminRoutes(),
 		a.gatewayRoutes(), a.gatewayAdminRoutes(), a.meGatewayRoutes(), a.mcpRoutes(), a.oauthRoutes(), a.oauthRESTRoutes(),
-		a.serviceAccountRoutes(), a.serviceAccountAdminRoutes()} {
+		a.serviceAccountRoutes(), a.serviceAccountAdminRoutes(), a.providerRoutes()} {
 		routes = append(routes, group...)
 	}
 	return routes

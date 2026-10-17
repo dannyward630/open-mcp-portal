@@ -5,13 +5,20 @@
  * can be approved here, after a confirmation, by whoever the policy allows:
  * the team's owners and admins under self_publish, platform admins always
  * (in Admin). Only they are told to read the text before approving.
+ *
+ * Each capability shows the account it needs ("Needs GitHub (repo)"), and
+ * on a server that requires one, editors and above override it per
+ * capability (override-dialog.tsx): the server's, none, or other scopes.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ListTree } from "lucide-react";
+import { Check, KeyRound, ListTree } from "lucide-react";
 import { useState } from "react";
 import { api, unwrap } from "../../api/client";
 import { ConfirmMutationDialog } from "../confirm-dialog";
+import { needsText, serviceAccountsCant } from "../providers/labels";
+import { RequiresBadge } from "../providers/requires";
 import { useListFilters } from "../templates/list-page";
+import { Badge } from "@/components/ui/badge/badge";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { Button } from "@/components/ui/button/button";
 import { Card } from "@/components/ui/card/card";
@@ -25,6 +32,8 @@ import { CapabilityStateBadge } from "./badges";
 import { CapabilityItem } from "./capability-item";
 import { kindOrder, kindTitle, type McpCapability, type McpServer, untrustedApproverText, untrustedText } from "./labels";
 import { capabilitiesQuery, invalidateServer, type ServerAbilities, type ServerScope } from "./scope";
+import { OverrideDialog } from "./override-dialog";
+import { overrideLabels } from "./requirement";
 import m from "./servers.module.css";
 
 const stateOf = (c: McpCapability) => (c.goneAt ? "gone" : c.changed ? "changed" : c.approved ? "approved" : "listed");
@@ -62,6 +71,11 @@ export function CapabilitiesTab({ server, scope, abilities }: Props) {
         {abilities.canApproveChanges || abilities.canReview ? untrustedApproverText : untrustedText}
       </Alert>
       {waitsForAdmin && <Alert tone="info">Your team needs approval to publish, so a platform admin approves changed capabilities.</Alert>}
+      {server.requirement && (
+        <Alert tone="info" title={`Calls carry the caller's ${server.requirement.providerName} token`}>
+          {needsText(server.requirement)} unless a capability says otherwise (its badge shows what it receives). {serviceAccountsCant}
+        </Alert>
+      )}
       <Card title="Capabilities" description={server.refreshedAt ? <>As listed at the last refresh, <Time value={server.refreshedAt} />.</> : "Not read yet."}>
         <div className={m.stack}>
           {all.length > 0 && <FilterBar facets={facets} value={values} onValueChange={setValues} counts={facetCounts(all, facets, values)} />}
@@ -107,6 +121,7 @@ export function CapabilitiesTab({ server, scope, abilities }: Props) {
 function CapabilityRow({ cap, server, scope, abilities, inCatalog }: { cap: McpCapability; inCatalog: boolean } & Props) {
   const qc = useQueryClient();
   const [confirming, setConfirming] = useState<McpCapability | null>(null);
+  const [overriding, setOverriding] = useState(false);
   const approve = useMutation({
     mutationFn: async () =>
       scope.kind === "team"
@@ -124,11 +139,23 @@ function CapabilityRow({ cap, server, scope, abilities, inCatalog }: { cap: McpC
     },
   });
   const canApprove = abilities.canApproveChanges && cap.changed && !cap.goneAt;
+  const canOverride = scope.kind === "team" && abilities.canEdit && Boolean(server.requirement) && !cap.goneAt;
+  const mode = cap.requirementOverride.mode;
   return (
     <CapabilityItem
       cap={cap}
       muted={Boolean(cap.goneAt)}
-      badges={<CapabilityStateBadge cap={cap} inCatalog={inCatalog} />}
+      badges={
+        <>
+          <CapabilityStateBadge cap={cap} inCatalog={inCatalog} />
+          {cap.requires && <RequiresBadge req={cap.requires} note={serviceAccountsCant} />}
+          {mode !== "inherit" && (
+            <Badge size="sm" variant="outline" title="Set on this capability; the server's requirement doesn't apply.">
+              {overrideLabels[mode]}
+            </Badge>
+          )}
+        </>
+      }
       meta={
         <p className={m.capMeta}>
           {cap.goneAt ? (
@@ -150,21 +177,31 @@ function CapabilityRow({ cap, server, scope, abilities, inCatalog }: { cap: McpC
         </p>
       }
       action={
-        canApprove ? (
-          <div>
-            <Button size="sm" variant="secondary" onClick={() => setConfirming(cap)} aria-label={`Approve the change to ${cap.name}`}>
-              <Check aria-hidden /> Approve change
-            </Button>
-            <ConfirmMutationDialog
-              target={confirming}
-              onClose={() => setConfirming(null)}
-              mutation={approve}
-              onConfirm={() => approve.mutate()}
-              tone="primary"
-              title={`Approve the change to ${cap.name}?`}
-              description="The catalog shows its new definition from now on, and a model will read it. Read the definition before you approve."
-              confirmLabel="Approve change"
-            />
+        canApprove || canOverride ? (
+          <div className={m.actions}>
+            {canOverride && (
+              <Button size="sm" variant="secondary" onClick={() => setOverriding(true)} aria-label={`Change the account ${cap.name} needs`}>
+                <KeyRound aria-hidden /> Account…
+              </Button>
+            )}
+            {overriding && scope.kind === "team" && <OverrideDialog cap={cap} server={server} scope={scope} onClose={() => setOverriding(false)} />}
+            {canApprove && (
+              <>
+                <Button size="sm" variant="secondary" onClick={() => setConfirming(cap)} aria-label={`Approve the change to ${cap.name}`}>
+                  <Check aria-hidden /> Approve change
+                </Button>
+                <ConfirmMutationDialog
+                  target={confirming}
+                  onClose={() => setConfirming(null)}
+                  mutation={approve}
+                  onConfirm={() => approve.mutate()}
+                  tone="primary"
+                  title={`Approve the change to ${cap.name}?`}
+                  description="The catalog shows its new definition from now on, and a model will read it. Read the definition before you approve."
+                  confirmLabel="Approve change"
+                />
+              </>
+            )}
           </div>
         ) : undefined
       }

@@ -6,7 +6,7 @@
  * up here when it's added there.
  */
 import { useNavigate } from "@tanstack/react-router";
-import { BadgeCheck, Bot, Boxes, FileClock, KeyRound, Network, Plug, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Bot, Boxes, FileClock, KeyRound, KeySquare, Link2, Network, Plug, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
 import { useMemo } from "react";
 import { requestIntent } from "../../lib/intents";
 import { type TeamSettingsTab } from "../../lib/tabs";
@@ -53,6 +53,14 @@ function pageGroup(navigate: Navigate, me: Me, slug: string | undefined, mine: M
       hint: "Page",
       keywords: ["account", "oauth", "apps", "clients", "claude", "vs code", "cursor", "disconnect", "sign-in", "authorized"],
       onSelect: () => void navigate({ to: "/settings/connected-apps" }),
+    },
+    {
+      id: "my-connections",
+      label: terms.myConnections,
+      icon: icon(Link2),
+      hint: "Page",
+      keywords: ["account", "connections", "connect", "github", "google", "oauth", "provider", "token", "disconnect", "reconnect", "authorize", "scopes"],
+      onSelect: () => void navigate({ to: "/settings/connections" }),
     },
     {
       id: "create-api-key",
@@ -204,6 +212,15 @@ function adminGroup(navigate: Navigate, platformAdmin: boolean): CommandGroup {
       hint: "Admin",
       keywords: ["new gateway", "platform gateway", "grant", "share", "mcp"],
       onSelect: () => void navigate({ to: "/admin/gateways", search: { form: "new" } }),
+    });
+    items.push({
+      id: "admin:add-auth-provider",
+      label: "Add auth provider",
+      icon: <KeySquare aria-hidden />,
+      hint: "Admin",
+      keywords: ["new provider", "oauth", "github", "google", "microsoft", "atlassian", "slack", "gitlab", "client id", "client secret"],
+      // The list's add form is its URL (?form=new).
+      onSelect: () => void navigate({ to: "/admin/auth-providers", search: { form: "new" } }),
     });
     items.push({
       id: "admin:create-team",

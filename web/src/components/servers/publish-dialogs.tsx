@@ -17,6 +17,7 @@ import { Field } from "@/components/ui/field/field";
 import { Textarea } from "@/components/ui/input/input";
 import { toast } from "@/components/ui/toast/toast";
 import { type McpServer, totalCount } from "./labels";
+import { RequirementSummary } from "./requirement-card";
 import { invalidateServer, storeServer } from "./scope";
 
 const maxNote = 2000;
@@ -186,6 +187,14 @@ export function ReviewDialog({ server, decision, onClose }: { server: McpServer;
       busy={review.isPending}
     >
       {decision === "approve" && <ApproveChecks server={server} />}
+      {decision === "approve" && (
+        <section aria-label="What the server receives">
+          <p>
+            <strong>What the server receives on behalf of callers</strong>
+          </p>
+          <RequirementSummary server={server} scope={{ kind: "admin" }} />
+        </section>
+      )}
       {server.publishRequestNote && decision !== "remove" && (
         <p>
           <strong>The team's note:</strong> <span>{server.publishRequestNote}</span>

@@ -27,12 +27,17 @@ const (
 	OutcomeTimeout       = "timeout"
 	OutcomeTooLarge      = "too_large"
 	OutcomeBadRequest    = "bad_request"
+	// OutcomeNeedsAuthorization: not forwarded because the person must
+	// connect (or reconnect) an account; the client got a consent link
+	// (JSON-RPC -32042).
+	OutcomeNeedsAuthorization = "needs_authorization"
 )
 
 // ValidOutcome reports whether o is an outcome.
 func ValidOutcome(o string) bool {
 	switch o {
-	case OutcomeOK, OutcomeToolError, OutcomeDenied, OutcomeUpstreamError, OutcomeTimeout, OutcomeTooLarge, OutcomeBadRequest:
+	case OutcomeOK, OutcomeToolError, OutcomeDenied, OutcomeUpstreamError, OutcomeTimeout, OutcomeTooLarge, OutcomeBadRequest,
+		OutcomeNeedsAuthorization:
 		return true
 	}
 	return false
@@ -74,6 +79,9 @@ type Call struct {
 	Outcome, ErrorClass                    string
 	Latency                                time.Duration
 	RequestBytes, ResponseBytes            int64
+	// ProviderSlug is the auth provider the capability required (empty:
+	// none). Never a token.
+	ProviderSlug string
 }
 
 func clip(s string, n int) *string {
@@ -103,6 +111,7 @@ func Record(ctx context.Context, q *dbgen.Queries, c Call) error {
 		ServiceAccountTeamID: null(c.ServiceAccountTeamID), OauthGrantID: null(c.OAuthGrantID), OauthClientName: clip(c.OAuthClientName, 200),
 		OauthClientKind: clip(c.OAuthClientKind, 20), ClientName: clip(c.ClientName, 200), Outcome: c.Outcome, ErrorClass: clip(c.ErrorClass, 64),
 		LatencyMs: int32(min(c.Latency.Milliseconds(), 1<<31-1)), RequestBytes: max(c.RequestBytes, 0), ResponseBytes: max(c.ResponseBytes, 0),
+		ProviderSlug: clip(c.ProviderSlug, 48),
 	}
 	if c.Server != nil {
 		p.ServerID, p.ServerTeamID = null(c.Server.ID), null(c.Server.TeamID)

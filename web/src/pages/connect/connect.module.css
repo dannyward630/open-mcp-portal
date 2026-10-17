@@ -1,0 +1,51 @@
+/* The connect pages: the consent page's card (../oauth/consent.module.css) plus the scope list and the result's icon. Semantic tokens only. */
+.scopes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+}
+
+.scopeName {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.result {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+
+  & svg {
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: 0.1rem;
+  }
+
+  &[data-tone="success"] svg {
+    color: var(--color-success);
+  }
+
+  &[data-tone="warning"] svg {
+    color: var(--color-warning);
+  }
+
+  &[data-tone="danger"] svg {
+    color: var(--color-danger);
+  }
+}

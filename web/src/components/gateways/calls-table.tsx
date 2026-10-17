@@ -2,7 +2,8 @@
  * Call records (metadata only: never arguments or results) as a list: when,
  * who (a person with the key they used or "via" the connected app, or a
  * team's service account), what was called, through which gateway to which
- * server, the outcome (with why it failed, in words) and how long it took.
+ * server, the outcome (with why it failed, in words, and the auth provider
+ * whose account the capability needed) and how long it took.
  * A gateway's Activity tab and Admin › Calls share the columns and the
  * outcome facet. On a phone, who and when (and the gateway) move under what
  * was called, so the outcome stays in view.
@@ -13,6 +14,7 @@ import { Activity } from "lucide-react";
 import { api, unwrap } from "../../api/client";
 import { serviceAccountsQuery } from "../../api/queries";
 import { RelativeTime, timeColumn } from "../templates/list-page";
+import { Badge } from "@/components/ui/badge/badge";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import type { Facet, FacetOption } from "@/components/ui/filter-bar/filter-bar";
@@ -126,6 +128,17 @@ export function CallError({ code }: { code: string }) {
   );
 }
 
+/** The auth provider whose account the capability needed (its slug, as recorded). */
+function ProviderBadge({ slug }: { slug: string }) {
+  return (
+    <span className={s.secondary}>
+      <Badge size="sm" variant="outline" title="The account the capability needed">
+        {`Account: ${slug}`}
+      </Badge>
+    </span>
+  );
+}
+
 type Opts = {
   gateway?: boolean;
   adminLinks?: boolean;
@@ -199,8 +212,16 @@ export function callColumns({ gateway = false, adminLinks = false, narrow = fals
         <span>
           <OutcomeBadge outcome={c.outcome} />
           {c.errorClass && <CallError code={c.errorClass} />}
+          {c.providerSlug && <ProviderBadge slug={c.providerSlug} />}
         </span>
       ),
+    },
+    {
+      id: "provider",
+      header: "Account",
+      accessor: (c) => c.providerSlug ?? "",
+      defaultHidden: true,
+      cell: (c) => (c.providerSlug ? <span className={s.mono}>{c.providerSlug}</span> : <span className={s.muted}>—</span>),
     },
     { id: "latency", header: "Time", accessor: (c) => c.latencyMs, cell: (c) => <span className={s.nowrap}>{c.latencyMs.toLocaleString()} ms</span>, defaultHiddenNarrow: true },
     { id: "size", header: "Size", accessor: (c) => c.requestBytes + c.responseBytes, defaultHidden: true, cell: (c) => <span className={s.nowrap}>{`${bytes(c.requestBytes)} in · ${bytes(c.responseBytes)} out`}</span> },

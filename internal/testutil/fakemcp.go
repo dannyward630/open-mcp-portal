@@ -142,9 +142,11 @@ func (f *FakeMCP) SetPageSize(n int) {
 	f.pageSize = n
 }
 
-// EnableGatewayTools adds the tools whoami and echo {text}. whoami returns
-// the identity token it received as JSON: which header carried it, its
-// claims and, with SetJWKS, whether it verifies.
+// EnableGatewayTools adds the tools whoami, provider_token and echo {text}.
+// whoami returns the identity token it received as JSON: which header
+// carried it, its claims and, with SetJWKS, whether it verifies.
+// provider_token reports the delegated credential it received
+// (ProviderTokenReport): never the token, only a digest prefix.
 func (f *FakeMCP) EnableGatewayTools() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -266,6 +268,14 @@ func (f *FakeMCP) server() *mcp.Server {
 			h := headerOf(req)
 			f.sawCall("whoami", h)
 			out, _ := json.Marshal(Whoami(ctx, h, jwksURL, audience))
+			return fakeText(string(out)), nil
+		})
+		s.AddTool(&mcp.Tool{Name: "provider_token", Title: "Provider token",
+			Description: describe("provider_token", "Reports whether the gateway sent a provider token with this call (never the token itself)."),
+			InputSchema: map[string]any{"type": "object"}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			h := headerOf(req)
+			f.sawCall("provider_token", h)
+			out, _ := json.Marshal(ProviderTokenReport(ctx, h, jwksURL, audience))
 			return fakeText(string(out)), nil
 		})
 		s.AddTool(&mcp.Tool{Name: "echo", Title: "Echo", Description: describe("echo", "Returns its text."), InputSchema: stringArg("text", "Any text")},

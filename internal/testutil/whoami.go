@@ -118,3 +118,36 @@ func FetchJWKS(ctx context.Context, url string) (jose.JSONWebKeySet, error) {
 	}
 	return set, json.Unmarshal(body, &set)
 }
+
+// ProviderReport is what the fake's provider_token tool reports about a
+// call's delegated credential: never the token itself.
+type ProviderReport struct {
+	// Provider is the MCP-Gateway-Provider header ("" when absent).
+	Provider string `json:"provider"`
+	// Received: an MCP-Gateway-Provider-Token header was present.
+	Received bool `json:"received"`
+	// TokenSHA256 is the first 16 hex characters of the token's SHA-256
+	// (TokenDigest), to compare with the token a test issued.
+	TokenSHA256 string `json:"tokenSha256,omitempty"`
+	// Claim is the identity token's provider claim, and ClaimMatches whether
+	// it equals Provider (the check server authors must make). Verified
+	// says the identity token verified against the JWKS (with SetJWKS).
+	Claim        string `json:"claim"`
+	ClaimMatches bool   `json:"claimMatches"`
+	Verified     bool   `json:"verified"`
+	Error        string `json:"error,omitempty"`
+}
+
+// ProviderTokenReport reads a call's provider headers and identity token.
+func ProviderTokenReport(ctx context.Context, h http.Header, jwksURL, audience string) ProviderReport {
+	token := h.Get("MCP-Gateway-Provider-Token")
+	out := ProviderReport{Provider: h.Get("MCP-Gateway-Provider"), Received: token != ""}
+	if token != "" {
+		out.TokenSHA256 = TokenDigest(token)
+	}
+	who := Whoami(ctx, h, jwksURL, audience)
+	out.Verified, out.Error = who.Verified, who.Error
+	out.Claim, _ = who.Claims["provider"].(string)
+	out.ClaimMatches = out.Claim != "" && out.Claim == out.Provider
+	return out
+}

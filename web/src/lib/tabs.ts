@@ -22,6 +22,10 @@ export type GatewayTab = (typeof gatewayTabs)[number];
 export const serviceAccountTabs = ["overview", "keys", "settings"] as const;
 export type ServiceAccountTab = (typeof serviceAccountTabs)[number];
 
+/** Admin → Auth providers › one provider: Overview (redirect URI, endpoints, use) · Settings. */
+export const authProviderTabs = ["overview", "settings"] as const;
+export type AuthProviderTab = (typeof authProviderTabs)[number];
+
 /** Team settings: Members (with open invites) · Audit log · General. */
 export const teamSettingsTabs = ["members", "audit", "general"] as const;
 export type TeamSettingsTab = (typeof teamSettingsTabs)[number];

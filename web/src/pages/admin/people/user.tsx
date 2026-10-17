@@ -1,8 +1,8 @@
 /*
  * Admin → Users › one person: one page with sections (Profile and access,
- * Teams, Connected apps, Activity). Suspend is a menu action; a platform-role
- * change is confirmed with what the role can do. Platform admins disconnect a
- * person's apps; auditors read them.
+ * Teams, Connected apps, Connections, Activity). Suspend is a menu action; a
+ * platform-role change is confirmed with what the role can do. Platform admins
+ * disconnect a person's apps and accounts; auditors read them.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -11,6 +11,7 @@ import { useRef, useState } from "react";
 import { api, ifMatch, unwrap, type Schemas } from "@/api/client";
 import { adminUserQuery } from "@/api/queries";
 import { ConnectedApps } from "@/components/oauth/connected-apps";
+import { ProviderConnections } from "@/components/providers/connections";
 import { ActionMenu } from "@/components/templates/action-menu";
 import { Time } from "@/components/ui/time/time";
 import { isNotFound, NotFoundState } from "@/components/not-found";
@@ -113,6 +114,14 @@ export function AdminUserPage() {
           description={`MCP clients ${self ? "you" : name} allowed with OAuth sign-in, per gateway.${isAdmin ? " Disconnecting one stops it at once." : ""}`}
         >
           <ConnectedApps owner={{ self: false, userId: user.id, name }} canDisconnect={isAdmin} />
+        </Card>
+        <Card
+          title="Connections"
+          description={`Accounts ${self ? "you" : name} connected with auth providers so tools can act as ${self ? "you" : "them"}. Tokens are never shown.${
+            isAdmin ? " Disconnecting one erases its tokens at once." : ""
+          }`}
+        >
+          <ProviderConnections owner={{ self: false, userId: user.id, name }} canDisconnect={isAdmin} />
         </Card>
         <Card title="Activity" description={`Changes ${name} made, newest first, from the audit log.`}>
           <UserActivity user={user} />

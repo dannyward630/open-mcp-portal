@@ -85,6 +85,7 @@ export const outcomeLabels: Record<CallOutcome, string> = {
   timeout: "Timed out",
   too_large: "Too large",
   bad_request: "Bad request",
+  needs_authorization: "Needed a connection",
 };
 
 export const outcomeHelp: Record<CallOutcome, string> = {
@@ -95,6 +96,7 @@ export const outcomeHelp: Record<CallOutcome, string> = {
   timeout: "The server didn't answer in time.",
   too_large: "The request or response was over 1 MiB.",
   bad_request: "The client's request was invalid.",
+  needs_authorization: "Not sent to the server: the person had to connect or reconnect an account first, and their client got a link to do it.",
 };
 
 export const outcomeTone: Record<CallOutcome, "success" | "warning" | "danger" | "neutral"> = {
@@ -105,6 +107,7 @@ export const outcomeTone: Record<CallOutcome, "success" | "warning" | "danger" |
   timeout: "danger",
   too_large: "warning",
   bad_request: "warning",
+  needs_authorization: "warning",
 };
 
 export const callOutcomes = Object.keys(outcomeLabels) as CallOutcome[];
@@ -112,7 +115,9 @@ export const callOutcomes = Object.keys(outcomeLabels) as CallOutcome[];
 /**
  * Why a call was refused or failed, in words (McpCall.errorClass). The backend
  * records: refusals (internal/mcpgw: gateway_disabled, no_access, role,
- * unknown, key_scope, or an unavailable reason), invalid requests (invalid_params,
+ * unknown, key_scope, or an unavailable reason), a capability's account
+ * (not_connected, missing_scopes, needs_reconsent, service_account,
+ * provider_disabled, provider_unavailable), invalid requests (invalid_params,
  * invalid_cursor) and the registry's upstream error classes.
  */
 export const callErrorLabels: Record<string, string> = {
@@ -123,6 +128,13 @@ export const callErrorLabels: Record<string, string> = {
   key_scope: "API key limited to other gateways",
   unknown: "Not offered by the gateway",
   ...unavailableLabels,
+  // Capabilities that need a person's account (Phase 5).
+  not_connected: "Account not connected",
+  missing_scopes: "Account lacks the scopes needed",
+  needs_reconsent: "Account needs reconnecting",
+  service_account: "Service accounts can't use it",
+  provider_disabled: "Auth provider turned off",
+  provider_unavailable: "Auth provider unavailable",
   // The client's request.
   invalid_params: "Invalid parameters",
   invalid_cursor: "Invalid page cursor",

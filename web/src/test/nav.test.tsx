@@ -33,6 +33,7 @@ describe("navigation lists", () => {
       "/admin/networks",
       "/admin/gateways",
       "/admin/trusted-clients",
+      "/admin/auth-providers",
       "/admin/audit",
       "/admin/calls",
     ]);
@@ -40,7 +41,7 @@ describe("navigation lists", () => {
     expect(labels).not.toContain("Connect");
   });
 
-  it("resolve the record routes the lists link to (a server, a catalog entry, gateways, API keys, connected apps, service accounts, consent)", () => {
+  it("resolve the record routes the lists link to (a server, a catalog entry, gateways, API keys, connected apps, service accounts, consent, connections, auth providers, connect)", () => {
     const paths = routePaths();
     const records = [
       "/teams/$team/servers/$serverId",
@@ -53,6 +54,10 @@ describe("navigation lists", () => {
       "/settings/connected-apps",
       "/teams/$team/service-accounts/$serviceAccountId",
       "/oauth/consent",
+      "/settings/connections",
+      "/admin/auth-providers/$providerId",
+      "/connect/$provider",
+      "/connect/done",
     ];
     for (const to of records) expect(paths, to).toContain(to);
   });
@@ -80,6 +85,7 @@ describe("navigation lists", () => {
     expect(adminSections.map((s) => s.label)).toEqual(["People", "Catalog", "Access", "Records"]);
     expect(activeAdminGroup("/admin/gateways/abc")).toBe("Access");
     expect(activeAdminGroup("/admin/trusted-clients")).toBe("Access");
+    expect(activeAdminGroup("/admin/auth-providers/abc")).toBe("Access");
     expect(activeAdminGroup("/admin/calls")).toBe("Records");
     expect(activeAdminGroup("/admin/users/abc")).toBe("People");
     expect(activeAdminGroup("/admin/servers/abc")).toBe("Catalog");

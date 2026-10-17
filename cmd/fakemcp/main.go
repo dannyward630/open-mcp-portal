@@ -15,8 +15,11 @@
 // addresses.
 //
 // For gateways it also has the tools whoami (the identity token the gateway
-// sent, its claims and whether it verifies) and echo {text} (-gateway-tools,
-// on by default), and logs the identity of every tool call. With -jwks (for
+// sent, its claims and whether it verifies), provider_token (whether the
+// call carried a delegated provider token: the provider, a SHA-256 prefix of
+// the token, never the token, and whether the identity token's provider
+// claim matches) and echo {text} (-gateway-tools, on by default), and logs
+// the identity of every tool call. With -jwks (for
 // example http://localhost:8088/.well-known/jwks.json) tokens are verified
 // for -audience, by default this server's URL:
 //
@@ -44,7 +47,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8091", "listen address")
 	header := flag.String("header", "", "require this request header (for example Authorization)")
 	value := flag.String("value", "", "the header's value")
-	gatewayTools := flag.Bool("gateway-tools", true, "add the whoami and echo tools")
+	gatewayTools := flag.Bool("gateway-tools", true, "add the whoami, provider_token and echo tools")
 	jwks := flag.String("jwks", "", "verify identity tokens against this JWKS URL")
 	audience := flag.String("audience", "", "the audience identity tokens must have (default: this server's URL)")
 	var describe descriptions
@@ -81,8 +84,10 @@ func main() {
 					who.Claims["sub"], who.Claims["aud"], who.Claims["gateway"], who.Claims["resource"], who.Verified, who.Error)
 				return
 			}
-			log.Printf("tool %s: identity in %q, sub=%v aud=%v gateway=%v tool=%v verified=%v %s", c.Tool, header,
-				who.Claims["sub"], who.Claims["aud"], who.Claims["gateway"], who.Claims["tool"], who.Verified, who.Error)
+			prov := testutil.ProviderTokenReport(context.Background(), c.Header, *jwks, aud)
+			log.Printf("tool %s: identity in %q, sub=%v aud=%v gateway=%v tool=%v verified=%v provider=%q token=%v claim=%q %s", c.Tool, header,
+				who.Claims["sub"], who.Claims["aud"], who.Claims["gateway"], who.Claims["tool"], who.Verified, prov.Provider, prov.Received,
+				prov.Claim, who.Error)
 		}
 	}
 	mux := http.NewServeMux()

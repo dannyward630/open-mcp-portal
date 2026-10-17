@@ -249,6 +249,9 @@ type CapabilityView struct {
 	ApprovedByName string
 	// Published: the server is published (changed only applies then).
 	Published bool
+	// Requires is the effective user-authorization requirement (nil: calls
+	// get no provider token).
+	Requires *Requirement
 }
 
 // Approved reports whether the current definition is approved.
@@ -275,9 +278,14 @@ func capabilities(ctx context.Context, q *dbgen.Queries, sv dbgen.McpServer, kin
 	if err != nil {
 		return nil, err
 	}
+	ps, err := LoadProviders(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]CapabilityView, len(rows))
 	for i, r := range rows {
-		out[i] = CapabilityView{Capability: r.McpCapability, ApprovedByName: r.ApprovedByName, Published: sv.PublishState == StatePublished}
+		out[i] = CapabilityView{Capability: r.McpCapability, ApprovedByName: r.ApprovedByName, Published: sv.PublishState == StatePublished,
+			Requires: EffectiveFor(sv, r.McpCapability, ps)}
 	}
 	return out, nil
 }

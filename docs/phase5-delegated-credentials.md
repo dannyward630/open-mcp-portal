@@ -1,6 +1,6 @@
 # Phase 5: Delegated credentials (design)
 
-Status: **designed, not built**. Decisions 25–30 in [decisions.md](decisions.md) are defaults the assistant
+Status: **backend built** (see "As built" at the end; the web UI is built separately from the same contract). Decisions 25–30 in [decisions.md](decisions.md) are defaults the assistant
 accepted under the instruction "continue until both are done". The contract is in [`../api/openapi.yaml`](../api/openapi.yaml)
 (tags `auth-providers` and `connections`). Builds on decisions 7–8, 12, 19 and 21–24. Inspired by Arcade's tool-level
 authorization (`requires_auth=GitHub(scopes=[…])`) and MCP 2025-11-25 URL-mode elicitation (`URLElicitationRequiredError`, `-32042`).
@@ -250,3 +250,80 @@ classification test fail, and `make check-generated` reports stale types. Build 
 `make generate`. New required response fields (`requirement`, `requirementOverride`, `requires`) need web fixtures
 updated. A test fake OAuth provider (httptest, and `cmd/fakemcp -oauth` for local use) issues expiring and rotating
 tokens.
+
+## As built (backend)
+
+Code: `internal/providers` (`providers.go` provider CRUD, `presets.go`, `endpoint.go` guarded token/revocation/userinfo
+exchanges, `connections.go`, `connect.go` consent links, start and callback, `runtime.go` credentials and refresh),
+`internal/registry/requirements.go` (requirements, effective requirement, widening, overrides), `internal/mcpgw/delegated.go`
+(the runtime steps), `internal/httpapi/providers.go`, migration `00010_delegated_credentials.sql`, `cmd/fakeoauth` and
+`internal/testutil/fakeoauth.go`. Every contract operation is served; no setting was added.
+
+- **Providers.** URLs go through `upstream.Client.NormalizeURL` (the same rules and reasons as MCP servers, plus
+  `details.field`); the token, revocation and userinfo endpoints are dialled with the guarded dialer (allowlist,
+  development allowance, pinned addresses), no proxy, no redirects, 10 s (userinfo 5 s), bodies ≤ 64 KiB. Token requests
+  are form-encoded with `Accept: application/json`; answers may be JSON or form-encoded, `scope` may be space- or
+  comma-separated. An OAuth `error` (also in a 200, as GitHub does) or a 4xx is a refusal; 5xx, 429, network errors,
+  timeouts and malformed answers are "unavailable". Error bodies are reduced to the error code. The secret is sealed
+  (AAD `auth_provider:<id>`); `clientSecret: ""` on update removes it (only allowed with `none`). Slugs `done` and
+  `callback` are reserved (`422 invalid_slug`, `details.reason` `reserved`). Create is serialized by an advisory lock so
+  the limit of 100 holds. The refresh request also sends `redirect_uri` (GitLab wants it). Delete revokes connections at
+  the provider first (four at a time, at most a minute), then deletes and audits in one transaction.
+- **Presets** (checked October 2026 against the providers' docs and, for Google, Microsoft and GitLab, their OpenID
+  configuration): GitHub (`read:user`; no RFC 7009 endpoint), Google (`openid`, `…/auth/userinfo.email`;
+  `access_type=offline`, `prompt=consent`, `include_granted_scopes=true`), Microsoft Entra ID (`{tenant}`, default
+  `organizations`; `openid profile email offline_access User.Read`; userinfo `graph.microsoft.com/oidc/userinfo`),
+  Atlassian (`read:me offline_access`, `audience`, `prompt=consent`, PKCE off), Slack (`user_scope`, comma,
+  `slack_authed_user`, PKCE off; no RFC 7009 endpoint: `auth.revoke` isn't one), GitLab (`{host}`, default `gitlab.com`;
+  `openid read_user`; revoke and userinfo). Not verified: whether Atlassian's token endpoint accepts form-encoded
+  requests (its docs show JSON bodies; the gateway sends forms) and whether Google/Atlassian/Slack accept the extra
+  `redirect_uri` on refresh (RFC 6749 says unknown parameters are ignored); Google and Atlassian PKCE support isn't stated
+  on the pages checked (Google's discovery lists S256). `AuthProviderPreset.redirectUri` (added) is the redirect URI to
+  register before a provider exists.
+- **Requirements.** The effective requirement is computed in Go (`registry.Effective`) everywhere it is shown or used:
+  server views, capability lists, catalog, gateway selections, gateway options and the runtime. Widening is checked per
+  capability (all capabilities, gone ones too) before and after the change; a URL change and a widening in one PATCH
+  produce one review with reason `url_changed`. A provider change or removal resets `scopes` overrides
+  (`mcp_server.update` metadata `overridesReset`). A turned-off provider can be kept but not newly chosen
+  (`422 provider_not_found`). The override PUT answers the capability (`McpCapability`) with the server's new revision as
+  ETag; its audit has `widened`.
+- **Runtime.** After the existing checks, for `tools/call`, `prompts/get` and `resources/read` of a capability with a
+  requirement: service account → `-32010` `{reason: service_account, provider}`; provider off → `-32010`
+  `provider_disabled`; no usable connection → `-32042` (message with the link; `data.elicitations[0]` with `mode`,
+  `elicitationId` = the request ID, `url`, `message`), recorded `needs_authorization` with the reason; refresh when
+  `expires_at` is within 60 s, under `SELECT … FOR UPDATE` (a waiting replica sees the new token and doesn't refresh
+  again; tested with concurrent calls); unavailable provider → `-32010` `provider_unavailable`, recorded
+  `upstream_error`. A token that can't be decrypted (rotated `ENCRYPTION_KEY` without the previous key) also becomes
+  `needs_reconsent` (class `config`). Refused calls that name a capability also record `providerSlug`.
+- **Consent links.** IDs are 32 random bytes (base64url); stored as a base64url SHA-256 digest plus the ID sealed
+  (AAD = digest) so a repeated call returns the same link while it stays valid for at least 2 more minutes. Expired and
+  used links answer `410` for a day, then the cleanup loop (every 15 minutes, with sessions) deletes them; expired states
+  are deleted at once.
+- **Start and callback.** States are 32 random bytes, stored as a hex SHA-256, bound to the hex SHA-256 of the session
+  ID; the PKCE verifier is sealed (AAD = state digest). `GET /connect/callback` always answers `303`, to the request's
+  `returnTo` when connected with every required scope, else to `/connect/done?…&result=` `connected`,
+  `missing_scopes` (with one `missing=` per scope not granted), `denied` (provider `error`), `expired` (unknown, used or
+  expired state), `wrong_person` (another or no session) or `error` (exchange failed, provider turned off). A reconnect
+  keeps the held refresh token when the provider sends none (Google). Accounts are labelled from userinfo
+  (`preferred_username`, `email`, `login`, `username`, `name`). Start is rate limited per person (20/min, `429 slow_down`,
+  in memory per process).
+- **Audit.** As designed; connection entries carry `name` ("person · provider"), `provider` and `userId` metadata; the
+  audit log resolves live labels for `auth_provider` and `provider_connection`.
+
+**Local development:** `make fake-oauth` runs `cmd/fakeoauth` on `http://127.0.0.1:8092` (client `fake-client`, secret
+`fake-secret-0123456789`; `-ttl 2m` to watch refreshes, `-auto` to skip its consent page). The fake MCP server's
+`provider_token` tool reports the provider header, a SHA-256 prefix of the token (never the token), the identity token's
+`provider` claim and whether they match.
+
+**Tests:** `internal/providers` (URL rules through the guard without the development allowance, a blocked resolved
+address never dialled, token answer parsing incl. form, GitHub-style errors in a 200 and Slack, return paths);
+`internal/httpapi/providers_integration_test.go` (the whole flow against the fake provider and fake MCP server: -32042
+shape and reuse, request ownership 404/410, open redirects, state single use, wrong person, signed out, expired state,
+denial, mix-up, PKCE and scopes in the authorization URL, headers and claim verified by the server, override `none`,
+resources, `connected`, missing scopes and the union, refresh with rotation, concurrent refresh, outage, refused refresh,
+expired without refresh token, revocation, service account, turned-off provider, reserved headers and slugs, provider
+validation, presets, `in_use`, client ID change, delete, request cap, admin views, requirement review under both policies,
+and a sentinel over responses, audit, `mcp_calls` and logs); the authz matrix covers all 14 operations.
+
+**Not built / gaps:** as listed under "Not in this phase"; the start rate limit is per process.
+

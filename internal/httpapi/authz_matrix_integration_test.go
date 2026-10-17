@@ -2,6 +2,8 @@ package httpapi_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
@@ -55,7 +57,9 @@ type matrixEnv struct {
 	platformGateway string
 	// oauthClient is a registered OAuth client's ID.
 	oauthClient string
-	n           int
+	// provider is an enabled auth provider (a public client: no secret).
+	provider string
+	n        int
 }
 
 func (e *matrixEnv) next() int { e.n++; return e.n }
@@ -204,7 +208,35 @@ func newMatrixEnv(t *testing.T) *matrixEnv {
 		VALUES ('omcl_' || repeat('m', 43), 'Matrix client', ARRAY['http://127.0.0.1/callback']) RETURNING client_id`)
 	e.spareUser = e.newUser("spare@example.com", "none")
 	e.spareTeam = e.newTeam("spare", "Spare Team").slug
+	e.provider = e.newProvider()
 	return e
+}
+
+// newProvider inserts an enabled auth provider (a public client with PKCE,
+// no revocation endpoint, so disconnecting never dials anything).
+func (e *matrixEnv) newProvider() string {
+	n := e.next()
+	return e.exec(`INSERT INTO auth_providers (slug, name, client_id, token_auth_method, pkce, authorization_url, token_url)
+		VALUES ($1, $2, 'matrix-client', 'none', true, 'https://auth.example.com/authorize', 'https://auth.example.com/token')
+		RETURNING id::text`, fmt.Sprintf("prov-%d", n), fmt.Sprintf("Provider %d", n))
+}
+
+// newConnection inserts a person's active connection to a fresh provider.
+func (e *matrixEnv) newConnection(userID string) string {
+	return e.exec(`INSERT INTO provider_connections (user_id, provider_id, status, access_token_cipher)
+		VALUES ($1, $2, 'active', '\x00') RETURNING id::text`, userID, e.newProvider())
+}
+
+// newConnectRequest inserts an open consent link of a person and returns its ID.
+func (e *matrixEnv) newConnectRequest(userID string) string {
+	id := fmt.Sprintf("%043d", e.next())
+	sum := sha256.Sum256([]byte(id))
+	e.exec(`INSERT INTO provider_connect_requests (id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id,
+		gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, expires_at)
+		VALUES ($1, '\x00', $2, $3, '{repo}', 'not_connected', $4, 'gw', 'Gateway', gen_random_uuid(), 'tool', 'srv__tool',
+		        now() + interval '10 minutes') RETURNING id_digest`,
+		base64.RawURLEncoding.EncodeToString(sum[:]), userID, e.provider, e.platformGateway)
+	return id
 }
 
 // mctx is what a request builder sees.
@@ -321,6 +353,47 @@ func (c *mctx) serviceAccountKey() (sa, key string) {
 		return sa, c.e.newServiceAccountKey(sa)
 	}
 	return c.tf.serviceAccount, c.tf.saKey
+}
+
+// authProvider is a fresh provider when the call is expected to succeed,
+// else the fixture one.
+func (c *mctx) authProvider() string {
+	if c.allowed {
+		return c.e.newProvider()
+	}
+	return c.e.provider
+}
+
+// connection is a connection of the caller (mine) or of the spare user when
+// the call is expected to succeed, else of another person.
+func (c *mctx) connection(mine bool) string {
+	owner := c.e.spareUser
+	if c.allowed && mine {
+		owner = c.e.userIDs[c.who]
+	} else if !c.allowed && !mine {
+		owner = c.e.userIDs[cMember]
+	}
+	return c.e.newConnection(owner)
+}
+
+// connectRequest is a consent link of the caller when the call is expected
+// to succeed, else of another person.
+func (c *mctx) connectRequest() string {
+	owner := c.e.spareUser
+	if c.allowed {
+		owner = c.e.userIDs[c.who]
+	}
+	return c.e.newConnectRequest(owner)
+}
+
+// serverCapability is a server and one of its capabilities: fresh ones (of
+// revision 1) when the call is expected to succeed.
+func (c *mctx) serverCapability() (server, capability string) {
+	if c.allowed {
+		srv := c.e.newServer(*c.tf, "private")
+		return srv, c.e.newChangedCapability(srv)
+	}
+	return c.tf.server, c.tf.capability
 }
 
 func (c *mctx) user() string {

@@ -34,10 +34,10 @@ RETURNING *;
 -- name: InsertMCPServer :one
 INSERT INTO mcp_servers (
     id, team_id, slug, name, description, url, auth_header_name, auth_value_cipher, auth_value_hint,
-    timeout_seconds, enabled, created_by, updated_by
+    timeout_seconds, enabled, auth_provider_id, auth_scopes, created_by, updated_by
 ) VALUES (
     @id, @team_id, @slug, @name, @description, @url, @auth_header_name, @auth_value_cipher, @auth_value_hint,
-    @timeout_seconds, @enabled, @created_by, @created_by
+    @timeout_seconds, @enabled, @auth_provider_id, @auth_scopes, @created_by, @created_by
 )
 RETURNING *;
 
@@ -51,9 +51,25 @@ SELECT * FROM mcp_servers WHERE id = $1 FOR UPDATE;
 UPDATE mcp_servers
 SET name = @name, description = @description, url = @url, auth_header_name = @auth_header_name,
     auth_value_cipher = @auth_value_cipher, auth_value_hint = @auth_value_hint,
-    timeout_seconds = @timeout_seconds, enabled = @enabled,
+    timeout_seconds = @timeout_seconds, enabled = @enabled, auth_provider_id = @auth_provider_id, auth_scopes = @auth_scopes,
     revision = revision + 1, updated_by = @updated_by, updated_at = now()
 WHERE id = @id
+RETURNING *;
+
+-- name: BumpMCPServerRevision :one
+UPDATE mcp_servers SET revision = revision + 1, updated_by = @updated_by, updated_at = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: ResetMCPCapabilityScopeOverrides :execrows
+-- The server's requirement was removed or now names another provider:
+-- overrides with other scopes of the old provider go back to inherit.
+UPDATE mcp_capabilities SET requirement_mode = 'inherit', requirement_scopes = '{}'
+WHERE server_id = @server_id AND requirement_mode = 'scopes';
+
+-- name: SetMCPCapabilityRequirement :one
+UPDATE mcp_capabilities SET requirement_mode = @requirement_mode, requirement_scopes = @requirement_scopes
+WHERE id = @id AND server_id = @server_id
 RETURNING *;
 
 -- name: DeleteMCPServer :exec
@@ -92,8 +108,8 @@ UPDATE mcp_servers SET last_refresh_error = @message WHERE id = @id;
 -- One page of servers ordered by (name, id), with their team and reviewer.
 -- team_id narrows to one team; publish_state to one state; changes_only to
 -- published servers with capabilities waiting for approval; catalog to
--- published, enabled servers of active teams. search is LIKE-escaped by the
--- caller.
+-- published, enabled servers of active teams; provider_id to servers that
+-- require that auth provider. search is LIKE-escaped by the caller.
 SELECT sqlc.embed(s), t.slug AS team_slug, t.name AS team_name, t.publish_policy_override AS team_policy_override,
        t.status AS team_status,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = s.publish_reviewed_by), '')::text
@@ -102,6 +118,7 @@ FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE (sqlc.narg(team_id)::uuid IS NULL OR s.team_id = sqlc.narg(team_id)::uuid)
   AND (sqlc.narg(publish_state)::text IS NULL OR s.publish_state = sqlc.narg(publish_state)::text)
+  AND (sqlc.narg(provider_id)::uuid IS NULL OR s.auth_provider_id = sqlc.narg(provider_id)::uuid)
   AND (NOT @catalog::bool OR (s.publish_state = 'published' AND s.enabled AND t.status = 'active'))
   AND (NOT @changes_only::bool OR (s.publish_state = 'published' AND EXISTS (
         SELECT 1 FROM mcp_capabilities c

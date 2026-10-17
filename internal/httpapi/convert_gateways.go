@@ -33,6 +33,7 @@ func toAPIGatewayCapability(s gateways.Selected) apitypes.GatewayCapability {
 		CapabilityId: s.Capability.ID, ServerId: s.Server.ID, ServerSlug: s.Server.Slug, ServerName: s.Server.Name,
 		TeamSlug: s.TeamSlug, Kind: apitypes.GatewayCapabilityKind(s.Capability.Kind), Name: s.Capability.Name,
 		ExposedName: s.ExposedName, Title: s.Capability.Title, Description: s.Capability.Description, Available: s.Available,
+		Requires: toAPIRequirement(s.Requires, nil),
 	}
 	if s.MinRole != nil {
 		r := apitypes.TeamRole(*s.MinRole)
@@ -58,6 +59,7 @@ func toAPIGatewayOption(o gateways.Option) apitypes.GatewayOption {
 		CapabilityId: o.ID, ServerId: o.ServerID, ServerSlug: o.ServerSlug, ServerName: o.ServerName, TeamSlug: o.TeamSlug,
 		TeamName: o.TeamName, Source: apitypes.GatewayOptionSource(o.Source), Kind: apitypes.GatewayCapabilityKind(o.Kind),
 		Name: o.Name, ExposedName: o.ExposedName, Title: o.Title, Description: o.Description,
+		Requires: toAPIRequirement(o.Requires, nil),
 	}
 }
 
@@ -117,7 +119,7 @@ func toAPICall(r dbgen.ListMCPCallsRow) apitypes.McpCall {
 		Gateway:    apitypes.CallRef{Id: r.GatewayID, Slug: r.GatewaySlug, Name: r.GatewayName, Exists: r.GatewayExists},
 		Principal:  toAPICallPrincipal(r),
 		ClientName: r.ClientName, Outcome: apitypes.McpCallOutcome(r.Outcome), ErrorClass: r.ErrorClass, LatencyMs: r.LatencyMs,
-		RequestBytes: r.RequestBytes, ResponseBytes: r.ResponseBytes, RequestId: r.RequestID,
+		RequestBytes: r.RequestBytes, ResponseBytes: r.ResponseBytes, RequestId: r.RequestID, ProviderSlug: r.ProviderSlug,
 	}
 	if r.ServerID.Valid {
 		out.Server = &apitypes.CallRef{Id: r.ServerID.UUID, Slug: r.ServerSlug, Name: r.ServerName, Exists: r.ServerExists}

@@ -34,6 +34,14 @@ const trustedClients: Format = (v) =>
 
 const clientKindLabels: Record<string, string> = { metadata: "Yes (metadata document)", registered: "No (registered itself)" };
 
+/** Extra authorization parameters as words: "access_type=offline". */
+const params: Format = (v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.entries(v as Record<string, unknown>).map(([k, x]) => `${k}=${String(x)}`) : v);
+
+/** Whether a disconnected account was revoked at the provider too. */
+const revoked: Format = (v) => (v === true ? "Yes" : v === false ? "No (failed)" : v === "not_supported" ? "Not supported by the provider" : v);
+
+const overrideModeLabels: Record<string, string> = { inherit: "Same as the server", none: "No account", scopes: "Other scopes" };
+
 const serviceAccountRoleLabels: Record<string, string> = { member: roleLabels.member, editor: roleLabels.editor };
 
 function fieldsFor(action: string): Fields | undefined {
@@ -61,6 +69,24 @@ function fieldsFor(action: string): Fields | undefined {
         gatewayId: null,
         userId: null,
       };
+    case "auth_provider.create":
+    case "auth_provider.update":
+    case "auth_provider.delete":
+      return {
+        enabled: ["Enabled", onOff],
+        pkce: ["PKCE", onOff],
+        clientId: ["Client ID"],
+        extraAuthorizeParams: ["Extra authorization parameters", params],
+        hasClientSecret: null,
+        clientSecretHint: null,
+        id: null,
+      };
+    case "provider_connection.create":
+    case "provider_connection.refresh_failed":
+    case "provider_connection.revoke":
+      return { providerId: null, userId: null, connectionId: null, providerRevoked: ["Revoked at the provider", revoked] };
+    case "mcp_capability.requirement_set":
+      return { mode: ["Requirement", label(overrideModeLabels)] };
     case "platform.bootstrap_role":
     case "platform.user_suspend":
     case "platform.user_reactivate":

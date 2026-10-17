@@ -13,7 +13,7 @@ Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list
 | none, or any header other than `Authorization` (for example `X-API-Key`) | `Authorization: Bearer <jwt>` |
 | `Authorization` | `MCP-Gateway-Identity: <jwt>` (the bare token). Your static `Authorization` value is sent unchanged |
 
-With no static header, your server can act as an ordinary OAuth resource server that accepts bearer tokens from the gateway's JWKS. Servers can't register a static header named `MCP-Gateway-Identity`.
+With no static header, your server can act as an ordinary OAuth resource server that accepts bearer tokens from the gateway's JWKS. Servers can't register a static header named `MCP-Gateway-Identity`, `MCP-Gateway-Provider` or `MCP-Gateway-Provider-Token`.
 
 ## What to check
 
@@ -39,6 +39,7 @@ The claims:
 | `resource` | The exposed URI read (`resources/read`): `omcp://{server-slug}/{your-uri}`, for example `omcp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set |
 | `client` | For a client connected with OAuth, the client's name as it signed in (such as `Claude Code`), with `client_verified`. Otherwise the MCP client's `clientInfo.name` when the request carried it, else the name of the API key or service account key |
 | `client_verified` | Present whenever `client` comes from an OAuth client. `true`: the client is identified by a Client ID Metadata Document, so its name is vouched for by the host that publishes it. `false`: the client registered itself (Dynamic Client Registration) and its name is **self-asserted**: anyone can register any name, so don't trust `client` for decisions in that case. Absent for API keys and service account keys (then `client` is the MCP client's or the key's own label, never verified) |
+| `provider` | The slug of the auth provider whose user token came with this call in `MCP-Gateway-Provider-Token` (see [Provider tokens](#provider-tokens)). **Absent** when the call carries no provider token |
 | `jti` | A unique ID for the token (useful in your logs) |
 
 `client` is informational: decide on `principal_type`, `sub`, `email` and `teams`, which the gateway checked. Treat `client` as a hint, and as plain self-asserted text unless `client_verified` is `true`.
@@ -52,6 +53,32 @@ A service account's token, for example:
  "sub": "2f2e1390-9eca-4c8e-ac70-701505d92272", "name": "ci-bot", "teams": ["platform-tools"],
  "gateway": "support", "tool": "status__check_outage", "client": "deploy", "jti": "…", "iat": 1760650000, "nbf": 1760649970, "exp": 1760650300}
 ```
+
+## Provider tokens
+
+A server can need to act **as the person** on a third-party service, for example to create a GitHub issue as them
+(decisions 25–30, [phase5-delegated-credentials.md](phase5-delegated-credentials.md)). Your team sets a **user
+authorization requirement** on the server (an auth provider a platform admin configured, and scopes), optionally
+overridden per capability. The first call asks the person to connect their account in a browser; after that, every call
+of a capability that requires the provider arrives with:
+
+| Header | Value |
+|---|---|
+| `MCP-Gateway-Provider` | The provider's slug, for example `github` |
+| `MCP-Gateway-Provider-Token` | The person's access token for that provider, **bare** (no `Bearer`). The gateway refreshes it before it expires |
+
+and the identity token gains `"provider": "github"`. Calls without a requirement (or with the override "none") never get
+these headers or the claim, and neither do discovery, tests or health checks. Service accounts can't call such
+capabilities. The client and the model never see the token.
+
+1. **Verify the identity token first** (above).
+2. **Check that its `provider` claim equals `MCP-Gateway-Provider`.** A request with the headers but without the claim (or
+   with another value) did not come from the gateway for this provider: reject it.
+3. **Use the token only with that provider's API**, as the person, and never log or store it.
+
+The gateway doesn't check that the provider account belongs to the person (for example by email); if that matters, ask
+the provider who the token belongs to and compare it with the identity token's `email` or `sub`. If the provider answers
+`401` the token was revoked: return a tool error; the person reconnects under Account › My connections.
 
 ## Go (go-jose)
 
@@ -116,7 +143,7 @@ func verify(r *http.Request, keys jose.JSONWebKeySet) (jwt.Claims, Identity, err
 }
 ```
 
-`cmd/fakemcp` has a working version of this check (`testutil.VerifyIdentity`), and its `whoami` tool reports the token it received.
+`cmd/fakemcp` has a working version of this check (`testutil.VerifyIdentity`), and its `whoami` tool reports the token it received. Its `provider_token` tool reports the provider header, a SHA-256 prefix of the provider token (never the token) and whether the identity token's `provider` claim matches (`testutil.ProviderTokenReport`).
 
 ## Python (PyJWT)
 
@@ -173,3 +200,9 @@ curl -s http://localhost:8088/mcp/<gateway> -H "Authorization: Bearer omcp_..." 
 ```
 
 The result shows the header the token arrived in, its claims (including `principal_type`) and `"verified": true` (with `-jwks`; without it, the claims are only decoded). The fake server also logs each call's identity.
+
+To try provider tokens, run `make fake-oauth` (a fake OAuth provider on `http://127.0.0.1:8092`), add it under Admin ›
+Auth providers (authorization `http://127.0.0.1:8092/authorize`, token `/token`, revocation `/revoke`, userinfo
+`/userinfo`, client `fake-client`, secret `fake-secret-0123456789`, and register nothing: the fake accepts any redirect
+URI), set it as the fake server's requirement, select `provider_token` in a gateway and call it: the first call answers
+`-32042` with a link; open it, connect, and call again.

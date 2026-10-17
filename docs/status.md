@@ -1,7 +1,7 @@
 # Status and handoff
 
-Last updated: 2026-10-16 (Phase 5 designed: decisions 25–30, [phase5-delegated-credentials.md](phase5-delegated-credentials.md),
-contract added to `api/openapi.yaml`; before that, Phase 4 QA follow-ups).
+Last updated: 2026-10-16 (Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md)
+"As built"; before that, Phase 5 designed, decisions 25–30).
 
 ## Where things stand
 
@@ -110,6 +110,23 @@ contract added to `api/openapi.yaml`; before that, Phase 4 QA follow-ups).
     `mcp_calls.oauth_client_kind`, an index). CIMD fetches logged at info level; the OAuth error page follows the
     color mode; UI fixes (rotation note, sign-in note for apps, combined notices, wording, focus).
 
+- **Phase 5 (delegated credentials): backend done.** Auth providers (presets for GitHub, Google, Microsoft Entra ID,
+  Atlassian, Slack, GitLab), server requirements and capability overrides (review when widened), consent links
+  (JSON-RPC `-32042`), the connect flow (`POST /v1/me/connections/start`, `GET /connect/callback`), tokens sealed and
+  refreshed under a row lock, revocation, and the runtime headers `MCP-Gateway-Provider`/`MCP-Gateway-Provider-Token` with
+  the identity claim `provider`. See [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built" and
+  [upstream-identity.md](upstream-identity.md#provider-tokens).
+  - Migration `00010_delegated_credentials` (`auth_providers`, `provider_connections`, `provider_connect_requests`,
+    `provider_auth_states`; requirement columns on `mcp_servers`/`mcp_capabilities`; `mcp_calls.provider_slug` and the
+    outcome `needs_authorization`).
+  - New package `internal/providers`; `cmd/fakeoauth` (`make fake-oauth`, port 8092); the fake MCP server's
+    `provider_token` tool. No new settings.
+  - Contract: all 14 operations served. Additive changes made while building: `AuthProviderPreset.redirectUri`, `name`
+    in `in_use` details' servers, provider slugs `done` and `callback` reserved (`422 invalid_slug`).
+  - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), `make k8s-validate`.
+    Not browser-checked; not tried against a real provider.
+  - Gaps: the start rate limit is per process; no background refresh; see the design's "Not in this phase".
+
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
   example overlay in `deploy/kubernetes` (one Deployment with a migrate init container, Service, PDB, NetworkPolicies,
@@ -134,6 +151,7 @@ cd ~/projects/golang/open-mcp-gateway
 make deps-up                  # Postgres on 127.0.0.1:55442
 cp -n .env.example .env       # DEV_AUTH=true, APP_URL=http://localhost:8088, ENCRYPTION_KEY
 make fake-mcp                 # fake MCP server on http://127.0.0.1:8091/mcp (separate terminal)
+make fake-oauth               # fake OAuth provider on http://127.0.0.1:8092 (delegated credentials)
 make dev-seed                 # after make run: team demo, published server, gateways demo + company
 make web && make build        # embed UI
 make run                      # http://localhost:8088, sign in as admin@localhost
@@ -144,13 +162,9 @@ make test && make web-test
 
 1. Browser re-check of the Phase 4 QA follow-ups (390px service account header, Admin › Calls filter, dark error page)
    and QA of the OAuth flow with real clients (Claude Code, VS Code, Cursor) against a reachable deployment.
-2. Phase 5 (delegated credentials): **designed, not built.** Design in
-   [phase5-delegated-credentials.md](phase5-delegated-credentials.md), decisions 25–30 (accepted defaults; the user may
-   revise them), contract in `api/openapi.yaml` (tags `auth-providers`, `connections`; 14 new operations, plus
-   `requirement`/`requirementOverride`/`requires` fields, `needs_authorization`, `McpCall.providerSlug`). The
-   contract is ahead of the code: `TestRoutesMatchOpenAPI`, the authz-matrix classification test and
-   `make check-generated` fail until the backend serves the new routes. Build order: migration `00010`, providers and
-   requirements, runtime (`-32042`, headers, refresh), `/connect/callback`, then `make generate` and the UI.
+2. Phase 5 (delegated credentials): **backend built**; the web UI is built in parallel from the same contract. Then a
+   browser QA pass of the connect flow (`/connect/{provider}`, `/connect/done`) with `make fake-oauth`, and a check
+   against one real provider (GitHub is the simplest).
 3. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, metrics; see [deploy.md](deploy.md)
    "Not covered yet".
 

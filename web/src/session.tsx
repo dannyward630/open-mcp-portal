@@ -109,6 +109,8 @@ export function SignInPage() {
   const next = returnTo ?? window.location.pathname + window.location.search;
   // Sent here by an MCP client's sign-in (/oauth/authorize, or the consent page itself).
   const appWaiting = next.startsWith("/oauth/");
+  // Sent here by a tool's consent link (/connect/{provider}?request=…): sign in as the person it was made for.
+  const connecting = next.startsWith("/connect/");
 
   return (
     <main className={styles.page}>
@@ -137,6 +139,11 @@ export function SignInPage() {
                 {appWaiting && (
                   <Alert tone="info" title="An app is waiting to connect">
                     Sign in to continue. Then you&apos;ll be asked to approve the app before it can use a gateway as you.
+                  </Alert>
+                )}
+                {connecting && (
+                  <Alert tone="info" title="A tool needs one of your accounts">
+                    Sign in as yourself to continue. Then you&apos;ll see what the tool asks for before anything is connected.
                   </Alert>
                 )}
                 {config.data.oidcEnabled && (

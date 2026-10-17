@@ -458,7 +458,7 @@ export interface paths {
         put?: never;
         /**
          * Register a remote MCP server (editors and above); reads its capabilities at once
-         * @description 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused (details.reason invalid, too_long, userinfo, query, fragment, scheme, private_address or blocked_address; private_address can be allowed by a platform admin in Internal networks). The server is created even when discovery fails; refresh then says why.
+         * @description 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused (details.reason invalid, too_long, userinfo, query, fragment, scheme, private_address or blocked_address; private_address can be allowed by a platform admin in Internal networks). The server is created even when discovery fails; refresh then says why. requirement (optional) names an enabled auth provider (422 provider_not_found otherwise) and its scopes (400 invalid_scope, details.scope). 400 invalid_auth_header also for the reserved MCP-Gateway-Identity, MCP-Gateway-Provider and MCP-Gateway-Provider-Token.
          */
         post: operations["createTeamMcpServer"];
         delete?: never;
@@ -486,7 +486,10 @@ export interface paths {
         delete: operations["deleteTeamMcpServer"];
         options?: never;
         head?: never;
-        /** Change a server's settings (editors and above); the slug never changes */
+        /**
+         * Change a server's settings (editors and above); the slug never changes
+         * @description requirement: omit to keep, null to remove (capability overrides with mode scopes go back to inherit; so do they when the provider changes). A newly chosen provider must be enabled (422 provider_not_found); a turned-off one can be kept. 400 invalid_scope (details.scope). Under approval_required, a published server goes back to pending when its URL changes or its requirement widens what any capability receives (a provider where there was none, another provider, or a scope not in effect before), audited as mcp_server.publish_request with reason url_changed or requirement_changed. Removing or narrowing a requirement never needs review.
+         */
         patch: operations["updateTeamMcpServer"];
         trace?: never;
     };
@@ -574,6 +577,31 @@ export interface paths {
          * @description 403 approval_required when the team's effective policy is approval_required (a platform admin approves instead). 409 not_changed when the capability has no unapproved change; 409 capability_gone.
          */
         put: operations["approveTeamMcpCapability"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/mcp-servers/{serverId}/capabilities/{capabilityId}/requirement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serverId: components["parameters"]["ServerIdParam"];
+                capabilityId: components["parameters"]["CapabilityIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Override the server's user-authorization requirement for one capability (editors and above)
+         * @description inherit: the server's requirement applies. none: calls to this capability get no provider token and never ask for consent. scopes: the server's provider with these scopes instead. The token always goes to the server, so overrides limit what is asked for and sent, not which code of the server sees it. If-Match is the server's revision, which this bumps (ETag). 400 invalid_mode (scopes sent with inherit or none, or missing with scopes); 400 invalid_scope (details.scope); 409 no_server_requirement (mode scopes on a server without a requirement); 409 team_archived. Under approval_required a published server goes back to pending when the override widens what the capability receives (audited mcp_server.publish_request, reason requirement_changed). Audited as mcp_capability.requirement_set.
+         */
+        put: operations["setTeamMcpCapabilityRequirement"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1508,6 +1536,221 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth providers a server's team can require (any active signed-in person)
+         * @description Enabled providers only, ordered by name, with the fields needed to pick one. Never a client ID, secret or endpoint.
+         */
+        get: operations["listAuthProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/auth-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every auth provider, enabled or not (platform admins and auditors)
+         * @description At most 100 providers exist, so this is not paged. The client secret is never returned.
+         */
+        get: operations["adminListAuthProviders"];
+        put?: never;
+        /**
+         * Configure an auth provider (platform admins)
+         * @description Endpoints must be https (plain http only where the internal-network allowlist allows it, or on loopback in development) without user info or a fragment; tokenUrl, revocationUrl and userinfoUrl are dialled through the same address guard as MCP servers, authorizationUrl only by browsers. 422 url_not_allowed (details.field, details.reason as for MCP servers). 422 invalid_slug (details.reason reserved) for done and callback, which are paths under /connect/. 409 slug_taken; 409 too_many_providers (at most 100). 400 invalid_scope (details.scope). 422 invalid_param (details.key, details.reason reserved, invalid or too_many) for extraAuthorizeParams. 422 pkce_required (tokenAuthMethod none without pkce); 422 client_secret_required (another tokenAuthMethod without clientSecret). The secret is sealed with ENCRYPTION_KEY and never returned, logged or audited. Audited as auth_provider.create.
+         */
+        post: operations["adminCreateAuthProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/auth-providers/{providerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: components["parameters"]["ProviderIdParam"];
+            };
+            cookie?: never;
+        };
+        /** One auth provider (platform admins and auditors) */
+        get: operations["adminGetAuthProvider"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an auth provider and every connection to it (platform admins)
+         * @description 409 in_use (details.serverCount, details.servers with up to 20 {id, slug, name, teamSlug}) while any MCP server requires it, as its requirement or in a capability override (Admin servers filter by provider). Otherwise each connection's tokens are erased and, where the provider has a revocation endpoint, revoked there (best effort). Audited as auth_provider.delete (connectionCount) and provider_connection.revoke (reason provider_deleted) per connection.
+         */
+        delete: operations["adminDeleteAuthProvider"];
+        options?: never;
+        head?: never;
+        /**
+         * Change an auth provider (platform admins); the slug never changes
+         * @description Omit clientSecret to keep it. Changing clientId marks every connection to the provider needs_reconsent and erases their tokens (they belong to the old app). Turning the provider off refuses calls that require it and new connections at once; connections are kept. Errors as for create. Audited as auth_provider.update (clientSecretChanged, never the secret).
+         */
+        patch: operations["adminUpdateAuthProvider"];
+        trace?: never;
+    };
+    "/v1/admin/auth-provider-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Built-in starting points for common providers (platform admins and auditors)
+         * @description A preset only pre-fills the create form; the provider stores whatever is sent. Values in braces in a preset's URLs (such as {tenant}) are listed in urlParameters for the form to ask for.
+         */
+        get: operations["adminListAuthProviderPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+            };
+            cookie?: never;
+        };
+        /** A person's connected accounts, without tokens (platform admins and auditors) */
+        get: operations["adminListUserConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+                connectionId: components["parameters"]["ConnectionIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect a person's account (platform admins)
+         * @description As revokeMyConnection, audited with reason admin. Auditors get 403.
+         */
+        delete: operations["adminRevokeUserConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's connected accounts (never tokens) */
+        get: operations["listMyConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/connections/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin connecting (or reconnecting) an account; returns where to send the browser
+         * @description Browser session only (403 session_required with an API key). The authorization URL is built from the provider's stored settings, with PKCE S256 when the provider uses it and a single-use state bound to this session, person, provider and connect request; it expires after 10 minutes. The scopes asked for are the union of the connection's granted scopes (when active), scopes (or the provider's default scopes when both scopes and requestId are absent) and the connect request's required scopes. 404 provider_not_found (unknown or turned off). 404 connect_request_not_found (unknown, or another person's); 410 connect_request_expired (expired or used); 409 provider_mismatch (the request is for another provider). 400 invalid_scope; 400 invalid_return_to (returnTo must be a path on this site). 429 slow_down (20 a minute per person).
+         */
+        post: operations["startMyConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: components["parameters"]["ConnectionIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect one of the caller's accounts; its tokens are erased at once
+         * @description Where the provider has a revocation endpoint the gateway also revokes the tokens there (best effort, recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again. Audited as provider_connection.revoke (reason user).
+         */
+        delete: operations["revokeMyConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connect/requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The opaque ID from a consent link (the request query parameter of /connect/{provider}) */
+                requestId: components["parameters"]["ConnectRequestIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What a consent link is for, so the web app can confirm before leaving for the provider
+         * @description Signed in, and only the person the link was made for; anyone else gets 404 connect_request_not_found, the same as an unknown ID. 410 connect_request_expired once it expired (10 minutes) or was used.
+         */
+        get: operations["getConnectRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1891,6 +2134,8 @@ export interface components {
              */
             refreshedAt?: string | null;
             lastRefreshError?: string | null;
+            /** @description The auth provider and scopes whose user token the gateway sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride). */
+            requirement?: components["schemas"]["McpServerRequirement"] | null;
             revision: components["schemas"]["Revision"];
             /** Format: date-time */
             createdAt: string;
@@ -1919,6 +2164,8 @@ export interface components {
             timeoutSeconds: number;
             /** @default true */
             enabled: boolean;
+            /** @description Absent or null; no user authorization */
+            requirement?: components["schemas"]["McpServerRequirementInput"] | null;
         };
         McpServerUpdate: {
             name?: string;
@@ -1931,6 +2178,8 @@ export interface components {
             /** Format: int32 */
             timeoutSeconds?: number;
             enabled?: boolean;
+            /** @description Omit to keep; null removes it. A widening change sends a published server back to review under approval_required */
+            requirement?: components["schemas"]["McpServerRequirementInput"] | null;
         };
         McpServerCreated: {
             server: components["schemas"]["McpServer"];
@@ -1972,6 +2221,9 @@ export interface components {
              * @description When a refresh no longer found it (null while listed)
              */
             goneAt?: string | null;
+            requirementOverride: components["schemas"]["CapabilityRequirementOverride"];
+            /** @description The effective requirement (the server's, or the override); null when calls get no provider token */
+            requires: components["schemas"]["CapabilityRequirement"] | null;
         };
         McpRefreshResult: {
             listed: number;
@@ -2101,6 +2353,8 @@ export interface components {
             nextCursor?: string | null;
         };
         CatalogCapability: {
+            /** @description The account a person must connect to use it (null; none) */
+            requires: components["schemas"]["CapabilityRequirement"] | null;
             /** Format: uuid */
             id: string;
             kind: components["schemas"]["CapabilityKind"];
@@ -2192,6 +2446,8 @@ export interface components {
          */
         GatewayUnavailableReason: "server_disabled" | "not_published" | "not_approved" | "changed" | "gone" | "team_archived";
         GatewayCapability: {
+            /** @description The account a person must connect to use it (null; none). Service accounts can't call capabilities that require one. In MyGatewayDetail, connected says whether the caller's connection covers it now */
+            requires: components["schemas"]["CapabilityRequirement"] | null;
             /** Format: uuid */
             capabilityId: string;
             /** Format: uuid */
@@ -2229,6 +2485,8 @@ export interface components {
             items: components["schemas"]["GatewayCapabilitySelection"][];
         };
         GatewayOption: {
+            /** @description The account a person must connect to use it (null; none) */
+            requires: components["schemas"]["CapabilityRequirement"] | null;
             /** Format: uuid */
             capabilityId: string;
             /** Format: uuid */
@@ -2307,7 +2565,7 @@ export interface components {
         };
         MyGatewayDetail: {
             gateway: components["schemas"]["MyGateway"];
-            /** @description Available to the caller now (role and availability applied) */
+            /** @description Available to the caller now (role and availability applied). A capability that requires an account is listed whether or not the caller connected it; requires.connected says which */
             capabilities: components["schemas"]["GatewayCapability"][];
         };
         ApiKey: {
@@ -2355,10 +2613,10 @@ export interface components {
             secret: string;
         };
         /**
-         * @description ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
+         * @description ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
          * @enum {string}
          */
-        McpCallOutcome: "ok" | "tool_error" | "denied" | "upstream_error" | "timeout" | "too_large" | "bad_request";
+        McpCallOutcome: "ok" | "tool_error" | "denied" | "upstream_error" | "timeout" | "too_large" | "bad_request" | "needs_authorization";
         McpCall: {
             /** Format: int64 */
             id: number;
@@ -2377,8 +2635,10 @@ export interface components {
             /** @description clientInfo.name from initialize, when sent */
             clientName?: string;
             outcome: components["schemas"]["McpCallOutcome"];
-            /** @description Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason */
+            /** @description Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that require an account; needs_authorization with not_connected, missing_scopes or needs_reconsent; denied with service_account or provider_disabled; upstream_error with provider_unavailable. */
             errorClass?: string;
+            /** @description The auth provider the capability required at the time of the call (absent when none) */
+            providerSlug?: string;
             /** Format: int32 */
             latencyMs: number;
             /** Format: int64 */
@@ -2561,6 +2821,335 @@ export interface components {
             /** @description The full key, shown only now */
             secret: string;
         };
+        /** @description OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted. */
+        ScopeList: string[];
+        /**
+         * @description oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+         * @enum {string}
+         */
+        AuthProviderKind: "oauth2";
+        /**
+         * @description Which built-in preset the provider started from; only used for its icon and help text
+         * @enum {string}
+         */
+        AuthProviderPresetName: "github" | "google" | "microsoft" | "atlassian" | "slack" | "gitlab";
+        /**
+         * @description How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+         * @enum {string}
+         */
+        AuthProviderTokenAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
+        /**
+         * @description standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
+         * @enum {string}
+         */
+        AuthProviderTokenResponseFormat: "standard" | "slack_authed_user";
+        /** @description What any signed-in person may see about a provider */
+        AuthProviderSummary: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Immutable; sent to MCP servers in MCP-Gateway-Provider and the identity token's provider claim
+             * @example github
+             */
+            slug: string;
+            /** @example GitHub */
+            name: string;
+            kind: components["schemas"]["AuthProviderKind"];
+            preset: components["schemas"]["AuthProviderPresetName"] | null;
+            defaultScopes: components["schemas"]["ScopeList"];
+            logoUrl: string | null;
+        };
+        /** @description An OAuth app configured by platform admins. The client secret is never returned */
+        AuthProvider: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Immutable; sent to MCP servers in MCP-Gateway-Provider and the identity token's provider claim
+             * @example github
+             */
+            slug: string;
+            /** @example GitHub */
+            name: string;
+            kind: components["schemas"]["AuthProviderKind"];
+            preset: components["schemas"]["AuthProviderPresetName"] | null;
+            /** @description Turned off, calls that require it are refused and nobody can connect; connections are kept */
+            enabled: boolean;
+            clientId: string;
+            hasClientSecret: boolean;
+            /** @description Last 4 characters of the secret when it has at least 8, otherwise empty */
+            clientSecretHint: string;
+            tokenAuthMethod: components["schemas"]["AuthProviderTokenAuthMethod"];
+            /** @description Send a PKCE S256 challenge (on unless the provider rejects it) */
+            pkce: boolean;
+            /** @example https://github.com/login/oauth/authorize */
+            authorizationUrl: string;
+            /** @example https://github.com/login/oauth/access_token */
+            tokenUrl: string;
+            /** @description RFC 7009 endpoint used when a connection is removed (null; tokens are only erased here) */
+            revocationUrl: string | null;
+            /** @description Read once after connecting to label the account (preferred_username, email, login, username or name); the label is informational only */
+            userinfoUrl: string | null;
+            defaultScopes: components["schemas"]["ScopeList"];
+            /** @description The authorization request parameter that carries scopes (scope; Slack user tokens use user_scope) */
+            scopeParam: string;
+            /** @enum {string} */
+            scopeSeparator: " " | ",";
+            tokenResponseFormat: components["schemas"]["AuthProviderTokenResponseFormat"];
+            /** @description Added to every authorization request, such as access_type=offline for Google */
+            extraAuthorizeParams: {
+                [key: string]: string;
+            };
+            logoUrl: string | null;
+            /**
+             * @description APP_URL + /connect/callback, to register with the provider's OAuth app
+             * @example https://mcp.example.com/connect/callback
+             */
+            redirectUri: string;
+            /**
+             * Format: int64
+             * @description MCP servers that require it (as their requirement or in a capability override)
+             */
+            serverCount: number;
+            /** Format: int64 */
+            connectionCount: number;
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            createdByName?: string | null;
+        };
+        AuthProviderCreate: {
+            /** @description Unique, immutable */
+            slug: string;
+            name: string;
+            preset?: components["schemas"]["AuthProviderPresetName"];
+            /** @default true */
+            enabled: boolean;
+            clientId: string;
+            /** @description Sealed with ENCRYPTION_KEY, never returned. Required unless tokenAuthMethod is none */
+            clientSecret?: string;
+            /** @default client_secret_post */
+            tokenAuthMethod: components["schemas"]["AuthProviderTokenAuthMethod"];
+            /** @default true */
+            pkce: boolean;
+            authorizationUrl: string;
+            tokenUrl: string;
+            revocationUrl?: string;
+            userinfoUrl?: string;
+            defaultScopes?: components["schemas"]["ScopeList"];
+            /** @default scope */
+            scopeParam: string;
+            /**
+             * @default
+             * @enum {string}
+             */
+            scopeSeparator: " " | ",";
+            /** @default standard */
+            tokenResponseFormat: components["schemas"]["AuthProviderTokenResponseFormat"];
+            /** @description Keys match ^[A-Za-z0-9_.-]{1,64}$; response_type, client_id, redirect_uri, state, scope (and scopeParam), code_challenge and code_challenge_method are reserved */
+            extraAuthorizeParams?: {
+                [key: string]: string;
+            };
+            /** @description An https URL or a same-origin path */
+            logoUrl?: string;
+        };
+        AuthProviderUpdate: {
+            name?: string;
+            preset?: components["schemas"]["AuthProviderPresetName"] | null;
+            enabled?: boolean;
+            /** @description Changing it marks every connection needs_reconsent */
+            clientId?: string;
+            /** @description Omit to keep the stored secret */
+            clientSecret?: string;
+            tokenAuthMethod?: components["schemas"]["AuthProviderTokenAuthMethod"];
+            pkce?: boolean;
+            authorizationUrl?: string;
+            tokenUrl?: string;
+            /** @description null removes it */
+            revocationUrl?: string | null;
+            /** @description null removes it */
+            userinfoUrl?: string | null;
+            defaultScopes?: components["schemas"]["ScopeList"];
+            scopeParam?: string;
+            /** @enum {string} */
+            scopeSeparator?: " " | ",";
+            tokenResponseFormat?: components["schemas"]["AuthProviderTokenResponseFormat"];
+            /** @description Replaces the whole set */
+            extraAuthorizeParams?: {
+                [key: string]: string;
+            };
+            logoUrl?: string | null;
+        };
+        AuthProviderUrlParameter: {
+            /**
+             * @description The placeholder in the preset's URLs, without braces
+             * @example tenant
+             */
+            name: string;
+            /** @example Directory (tenant) ID, or organizations */
+            label: string;
+            /** @example organizations */
+            default?: string | null;
+        };
+        AuthProviderPreset: {
+            preset: components["schemas"]["AuthProviderPresetName"];
+            /** @example GitHub */
+            name: string;
+            authorizationUrl: string;
+            tokenUrl: string;
+            revocationUrl: string | null;
+            userinfoUrl: string | null;
+            defaultScopes: components["schemas"]["ScopeList"];
+            tokenAuthMethod: components["schemas"]["AuthProviderTokenAuthMethod"];
+            pkce: boolean;
+            scopeParam: string;
+            /** @enum {string} */
+            scopeSeparator: " " | ",";
+            tokenResponseFormat: components["schemas"]["AuthProviderTokenResponseFormat"];
+            extraAuthorizeParams: {
+                [key: string]: string;
+            };
+            /** @description Placeholders in the URLs the form asks for (Microsoft's tenant, a self-managed GitLab's host) */
+            urlParameters: components["schemas"]["AuthProviderUrlParameter"][];
+            /** @description Where to create the OAuth app */
+            docsUrl: string;
+            /**
+             * @description APP_URL + /connect/callback, to register with the provider's OAuth app (the same for every provider)
+             * @example https://mcp.example.com/connect/callback
+             */
+            redirectUri?: string;
+            /** @description Provider quirks worth knowing, shown in the form */
+            notes?: string;
+        };
+        ProviderRef: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            preset: components["schemas"]["AuthProviderPresetName"] | null;
+            logoUrl: string | null;
+        };
+        McpServerRequirement: {
+            /** Format: uuid */
+            providerId: string;
+            providerSlug: string;
+            providerName: string;
+            /** @description false while a platform admin has turned the provider off (calls that need it are refused) */
+            providerEnabled: boolean;
+            /** @description Empty means the provider's default scopes */
+            scopes: components["schemas"]["ScopeList"];
+        };
+        McpServerRequirementInput: {
+            /** Format: uuid */
+            providerId: string;
+            /** @description Absent or empty means the provider's default scopes */
+            scopes?: components["schemas"]["ScopeList"];
+        };
+        CapabilityRequirementOverride: {
+            /**
+             * @description inherit: the server's requirement. none: no provider token and no consent. scopes: the server's provider with these scopes
+             * @enum {string}
+             */
+            mode: "inherit" | "none" | "scopes";
+            /** @description Only with mode scopes (at least one) */
+            scopes?: components["schemas"]["ScopeList"];
+        };
+        /** @description The account a capability needs, with its effective scopes */
+        CapabilityRequirement: {
+            /** Format: uuid */
+            providerId: string;
+            /** @example github */
+            providerSlug: string;
+            /** @example GitHub */
+            providerName: string;
+            scopes: components["schemas"]["ScopeList"];
+            /** @description Only in the caller's own views (MyGatewayDetail): true when the caller has an active connection to the provider whose granted scopes include these, so a call would be forwarded without asking */
+            connected?: boolean;
+        };
+        /**
+         * @description needs_reconsent: the tokens were erased (a refresh failed, the access token expired without a refresh token, or the provider's client ID changed); the next call asks the person to connect again
+         * @enum {string}
+         */
+        ProviderConnectionStatus: "active" | "needs_reconsent";
+        /** @description A person's connected account. Tokens are never returned */
+        ProviderConnection: {
+            /** Format: uuid */
+            id: string;
+            provider: components["schemas"]["ProviderRef"];
+            /** @description The provider account as its userinfo endpoint named it (such as octocat); informational */
+            accountLabel: string | null;
+            /** @description Scopes granted (as the provider reported them, else as asked for) */
+            scopes: components["schemas"]["ScopeList"];
+            status: components["schemas"]["ProviderConnectionStatus"];
+            /**
+             * Format: date-time
+             * @description When the person last completed consent
+             */
+            connectedAt: string;
+            /** Format: date-time */
+            refreshedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When a token was last sent to an MCP server
+             */
+            lastUsedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the current access token expires (null; the provider gave no expiry). The gateway refreshes it before then when it has a refresh token
+             */
+            expiresAt: string | null;
+            /** @description The gateway holds a refresh token */
+            refreshable: boolean;
+        };
+        ConnectStart: {
+            /** Format: uuid */
+            providerId: string;
+            /** @description Extra scopes to ask for (absent, with no requestId; the provider's default scopes) */
+            scopes?: components["schemas"]["ScopeList"];
+            /** @description The consent link's request; its required scopes are added, and it is used up on success */
+            requestId?: string;
+            /** @description A path on this site to return to (starting with a single /). Default; /connect/done */
+            returnTo?: string;
+        };
+        ConnectStarted: {
+            /** @description The provider's authorization URL; send the browser there */
+            authorizeUrl: string;
+            /** @description Everything asked for */
+            scopes: components["schemas"]["ScopeList"];
+            /**
+             * Format: date-time
+             * @description The state expires then (10 minutes)
+             */
+            expiresAt: string;
+        };
+        ConnectRequestCapability: {
+            kind: components["schemas"]["GatewayCapabilityKind"];
+            /** @example github-tools__create_issue */
+            exposedName: string;
+            title: string;
+        };
+        /** @description Why a call asked the person to connect an account (a consent link from JSON-RPC -32042) */
+        ConnectRequest: {
+            id: string;
+            provider: components["schemas"]["ProviderRef"];
+            /** @enum {string} */
+            reason: "not_connected" | "missing_scopes" | "needs_reconsent";
+            /** @description What the capability needs */
+            requiredScopes: components["schemas"]["ScopeList"];
+            /** @description What will be asked for (granted scopes kept, plus the required ones) */
+            requestScopes: components["schemas"]["ScopeList"];
+            /** @description What the person's active connection has now (empty when none) */
+            grantedScopes: components["schemas"]["ScopeList"];
+            /** @description The account connected now, if any */
+            accountLabel: string | null;
+            gateway: components["schemas"]["CallRef"];
+            capability: components["schemas"]["ConnectRequestCapability"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
     };
     responses: {
         /** @description A page of audit entries, newest first */
@@ -2671,6 +3260,10 @@ export interface components {
         ServiceAccountIdParam: string;
         /** @description Only calls made by this service account */
         CallServiceAccountParam: string;
+        ProviderIdParam: string;
+        ConnectionIdParam: string;
+        /** @description The opaque ID from a consent link (the request query parameter of /connect/{provider}) */
+        ConnectRequestIdParam: string;
     };
     requestBodies: never;
     headers: {
@@ -3689,6 +4282,47 @@ export interface operations {
             409: components["responses"]["ErrorReply"];
         };
     };
+    setTeamMcpCapabilityRequirement: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serverId: components["parameters"]["ServerIdParam"];
+                capabilityId: components["parameters"]["CapabilityIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CapabilityRequirementOverride"];
+            };
+        };
+        responses: {
+            /** @description The capability with its new override */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["McpCapability"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
     listTeamMcpHealthChecks: {
         parameters: {
             query?: never;
@@ -3869,6 +4503,8 @@ export interface operations {
                 changes?: boolean;
                 /** @description Team slug or ID */
                 team?: string;
+                /** @description Auth provider ID; only servers that require it (as their requirement or in a capability override) */
+                provider?: string;
                 /** @description nextCursor from the previous page */
                 cursor?: components["parameters"]["CursorParam"];
                 limit?: components["parameters"]["LimitParam"];
@@ -5476,6 +6112,331 @@ export interface operations {
             };
             400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
+        };
+    };
+    listAuthProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Providers ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuthProviderSummary"][];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListAuthProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Providers ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuthProvider"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminCreateAuthProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuthProvider"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetAuthProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: components["parameters"]["ProviderIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuthProvider"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminDeleteAuthProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: components["parameters"]["ProviderIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateAuthProvider: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                providerId: components["parameters"]["ProviderIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated provider */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuthProvider"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListAuthProviderPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Presets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuthProviderPreset"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListUserConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connections ordered by provider name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ProviderConnection"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminRevokeUserConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserIdParam"];
+                connectionId: components["parameters"]["ConnectionIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    listMyConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connections ordered by provider name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ProviderConnection"][];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    startMyConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectStart"];
+            };
+        };
+        responses: {
+            /** @description Where to send the browser */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ConnectStarted"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            401: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            410: components["responses"]["ErrorReply"];
+            429: components["responses"]["ErrorReply"];
+        };
+    };
+    revokeMyConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: components["parameters"]["ConnectionIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    getConnectRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The opaque ID from a consent link (the request query parameter of /connect/{provider}) */
+                requestId: components["parameters"]["ConnectRequestIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ConnectRequest"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            410: components["responses"]["ErrorReply"];
         };
     };
 }

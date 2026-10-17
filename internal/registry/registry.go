@@ -56,8 +56,9 @@ var reservedHeaders = map[string]bool{
 	"transfer-encoding": true, "mcp-protocol-version": true, "mcp-session-id": true, "mcp-method": true, "mcp-name": true,
 	"last-event-id": true, "user-agent": true, "cookie": true, "origin": true,
 	// Gateways send the caller's identity in this header when the static
-	// header is Authorization (docs/upstream-identity.md).
-	"mcp-gateway-identity": true,
+	// header is Authorization (docs/upstream-identity.md), and a person's
+	// provider token with its provider's slug in these (decision 27).
+	"mcp-gateway-identity": true, "mcp-gateway-provider": true, "mcp-gateway-provider-token": true,
 }
 
 // Service is the registry.
@@ -195,6 +196,8 @@ type ServerView struct {
 	PendingChanges int64
 	// Health is the latest check (nil before the first).
 	Health *dbgen.McpHealthCheck
+	// Requirement is the server's user-authorization requirement (nil: none).
+	Requirement *ServerRequirement
 }
 
 // HasAuth reports whether the server has a stored header.
@@ -210,6 +213,10 @@ func views(ctx context.Context, q *dbgen.Queries, rows []dbgen.ListMCPServersRow
 	if err != nil {
 		return nil, err
 	}
+	ps, err := LoadProviders(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	ids := make([]uuid.UUID, len(rows))
 	index := make(map[uuid.UUID]int, len(rows))
 	for i, r := range rows {
@@ -217,6 +224,7 @@ func views(ctx context.Context, q *dbgen.Queries, rows []dbgen.ListMCPServersRow
 		out[i] = ServerView{
 			Server: r.McpServer, TeamSlug: r.TeamSlug, TeamName: r.TeamName, TeamStatus: r.TeamStatus, ReviewedByName: r.ReviewedByName,
 			EffectivePolicy: authz.EffectivePolicy(r.TeamPolicyOverride, settings.PublishDefaultPolicy),
+			Requirement:     RequirementOf(r.McpServer, ps),
 		}
 	}
 	stats, err := q.MCPCapabilityStats(ctx, ids)
@@ -262,9 +270,11 @@ type ListParams struct {
 	PublishState *string
 	ChangesOnly  bool
 	Team         string // admin list: a team slug or ID ("" for all)
-	AfterName    *string
-	AfterID      *uuid.UUID
-	Limit        int32
+	// ProviderID narrows to servers that require that auth provider.
+	ProviderID *uuid.UUID
+	AfterName  *string
+	AfterID    *uuid.UUID
+	Limit      int32
 }
 
 func (p ListParams) query() dbgen.ListMCPServersParams {
@@ -275,6 +285,9 @@ func (p ListParams) query() dbgen.ListMCPServersParams {
 	}
 	if p.AfterID != nil {
 		out.AfterID = uuid.NullUUID{UUID: *p.AfterID, Valid: true}
+	}
+	if p.ProviderID != nil {
+		out.ProviderID = uuid.NullUUID{UUID: *p.ProviderID, Valid: true}
 	}
 	return out
 }
@@ -349,6 +362,8 @@ type CreateInput struct {
 	AuthHeaderName, AuthValue    string
 	TimeoutSeconds               int32 // 0: the default (30)
 	Enabled                      bool
+	// Requirement is the user-authorization requirement (nil: none).
+	Requirement *RequirementInput
 }
 
 // UpdateInput holds optional changes. AuthHeaderName "" removes the header
@@ -358,6 +373,10 @@ type UpdateInput struct {
 	AuthHeaderName, AuthValue *string
 	TimeoutSeconds            *int32
 	Enabled                   *bool
+	// SetRequirement changes the requirement to Requirement (nil removes
+	// it); false keeps it.
+	SetRequirement bool
+	Requirement    *RequirementInput
 }
 
 func checkFields(name, description string, timeout int32) error {
@@ -397,7 +416,7 @@ func valueHint(v string) string {
 func snapshot(s dbgen.McpServer) map[string]any {
 	out := map[string]any{"slug": s.Slug, "name": s.Name, "description": s.Description, "url": s.URL,
 		"timeoutSeconds": s.TimeoutSeconds, "enabled": s.Enabled, "hasAuth": s.AuthValueCipher != nil,
-		"publishState": s.PublishState}
+		"publishState": s.PublishState, "requirement": requirementSnapshot(s)}
 	if s.AuthHeaderName != nil {
 		out["authHeaderName"] = *s.AuthHeaderName
 	}
@@ -432,6 +451,9 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 		}
 		p, err := s.insertParams(ctx, id, ta.team.ID, a, in)
 		if err != nil {
+			return err
+		}
+		if p.AuthProviderID, p.AuthScopes, err = checkRequirement(ctx, q, in.Requirement, uuid.NullUUID{}); err != nil {
 			return err
 		}
 		row, err := q.InsertMCPServer(ctx, p)
@@ -474,7 +496,7 @@ func (s *Service) insertParams(ctx context.Context, id, teamID uuid.UUID, a auth
 		return dbgen.InsertMCPServerParams{}, err
 	}
 	p := dbgen.InsertMCPServerParams{ID: id, TeamID: teamID, Slug: in.Slug, Name: in.Name, Description: in.Description, URL: u,
-		TimeoutSeconds: in.TimeoutSeconds, Enabled: in.Enabled, CreatedBy: by(a)}
+		TimeoutSeconds: in.TimeoutSeconds, Enabled: in.Enabled, CreatedBy: by(a), AuthScopes: []string{}}
 	if in.AuthHeaderName != "" || in.AuthValue != "" {
 		if err := checkHeader(in.AuthHeaderName, in.AuthValue); err != nil {
 			return p, err
@@ -514,18 +536,51 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 		if err != nil {
 			return err
 		}
+		if in.SetRequirement {
+			if p.AuthProviderID, p.AuthScopes, err = checkRequirement(ctx, q, in.Requirement, cur.AuthProviderID); err != nil {
+				return err
+			}
+		}
+		ps, err := LoadProviders(ctx, q)
+		if err != nil {
+			return err
+		}
+		before, err := effectiveAll(ctx, q, cur, ps)
+		if err != nil {
+			return err
+		}
 		p.UpdatedBy = by(a)
 		row, err := q.UpdateMCPServer(ctx, p)
+		if err != nil {
+			return err
+		}
+		reset := int64(0)
+		if row.AuthProviderID != cur.AuthProviderID {
+			// Overrides with other scopes belong to the old provider.
+			if reset, err = q.ResetMCPCapabilityScopeOverrides(ctx, id); err != nil {
+				return err
+			}
+		}
+		after, err := effectiveAll(ctx, q, row, ps)
 		if err != nil {
 			return err
 		}
 		e := a.Audit("mcp_server.update", "mcp_server", id.String())
 		e.TeamID, e.Before, e.After = ta.team.ID, snapshot(cur), snapshot(row)
 		e.Metadata = map[string]any{"authValueChanged": valueChanged}
+		if reset > 0 {
+			e.Metadata["overridesReset"] = reset
+		}
 		if err := audit.Record(ctx, q, e); err != nil {
 			return err
 		}
-		if err := resubmitOnMove(ctx, q, a, ta, cur, row); err != nil {
+		switch {
+		case row.URL != cur.URL:
+			err = resubmit(ctx, q, a, ta.team, cur, "url_changed", "The server's URL changed; review it again.")
+		case widened(before, after):
+			err = resubmit(ctx, q, a, ta.team, cur, "requirement_changed", noteRequirementChanged)
+		}
+		if err != nil {
 			return err
 		}
 		if moved = row.URL != cur.URL; moved {
@@ -557,39 +612,10 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 	return s.view(ctx, s.q, id)
 }
 
-// resubmitOnMove sends a published server back for review when its URL
-// changes under approval_required: the reviewed endpoint is no longer the one
-// the catalog would reach. Under self_publish the team approves its own
-// changes, so the server stays published. Audited as
-// mcp_server.publish_request with reason url_changed.
-func resubmitOnMove(ctx context.Context, q *dbgen.Queries, a authz.Actor, ta teamAccess, cur, row dbgen.McpServer) error {
-	if row.URL == cur.URL || cur.PublishState != StatePublished {
-		return nil
-	}
-	def, err := platformDefault(ctx, q)
-	if err != nil {
-		return err
-	}
-	if authz.EffectivePolicy(ta.team.PublishPolicyOverride, def) != authz.PolicyApprovalRequired {
-		return nil
-	}
-	note := "The server's URL changed; review it again."
-	if _, err := q.SetMCPServerPublishState(ctx, dbgen.SetMCPServerPublishStateParams{
-		ID: row.ID, PublishState: StatePending, Requested: true, Actor: by(a), Note: &note,
-	}); err != nil {
-		return err
-	}
-	e := a.Audit("mcp_server.publish_request", "mcp_server", row.ID.String())
-	e.TeamID = ta.team.ID
-	e.Before, e.After = map[string]any{"publishState": StatePublished}, map[string]any{"publishState": StatePending}
-	e.Metadata = map[string]any{"name": row.Name, "reason": "url_changed", "note": note}
-	return audit.Record(ctx, q, e)
-}
-
 func (s *Service) applyUpdate(ctx context.Context, cur dbgen.McpServer, in UpdateInput) (dbgen.UpdateMCPServerParams, bool, error) {
 	p := dbgen.UpdateMCPServerParams{ID: cur.ID, Name: cur.Name, Description: cur.Description, URL: cur.URL,
 		AuthHeaderName: cur.AuthHeaderName, AuthValueCipher: cur.AuthValueCipher, AuthValueHint: cur.AuthValueHint,
-		TimeoutSeconds: cur.TimeoutSeconds, Enabled: cur.Enabled}
+		TimeoutSeconds: cur.TimeoutSeconds, Enabled: cur.Enabled, AuthProviderID: cur.AuthProviderID, AuthScopes: nonNil(cur.AuthScopes)}
 	setIf(&p.Name, in.Name)
 	p.Name = strings.TrimSpace(p.Name)
 	setIf(&p.Description, in.Description)

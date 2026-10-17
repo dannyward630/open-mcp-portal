@@ -18,12 +18,12 @@ INSERT INTO mcp_calls (
     request_id, method, exposed_name, gateway_id, gateway_slug, gateway_name, gateway_team_id,
     server_id, server_slug, server_name, server_team_id, capability_id, principal_kind, user_id, api_key_id,
     key_name, service_account_id, service_account_name, service_account_team_id, oauth_grant_id, oauth_client_name,
-    oauth_client_kind, client_name, outcome, error_class, latency_ms, request_bytes, response_bytes
+    oauth_client_kind, client_name, outcome, error_class, latency_ms, request_bytes, response_bytes, provider_slug
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13, $14, $15,
     $16, $17, $18, $19, $20, $21,
-    $22, $23, $24, $25, $26, $27, $28
+    $22, $23, $24, $25, $26, $27, $28, $29
 )
 `
 
@@ -56,6 +56,7 @@ type InsertMCPCallParams struct {
 	LatencyMs            int32
 	RequestBytes         int64
 	ResponseBytes        int64
+	ProviderSlug         *string
 }
 
 // Call records of /mcp/{slug} (internal/calls). Metadata only.
@@ -89,6 +90,7 @@ func (q *Queries) InsertMCPCall(ctx context.Context, arg InsertMCPCallParams) er
 		arg.LatencyMs,
 		arg.RequestBytes,
 		arg.ResponseBytes,
+		arg.ProviderSlug,
 	)
 	return err
 }
@@ -96,7 +98,7 @@ func (q *Queries) InsertMCPCall(ctx context.Context, arg InsertMCPCallParams) er
 const listMCPCalls = `-- name: ListMCPCalls :many
 SELECT c.id, c.occurred_at, c.request_id, c.method, c.exposed_name, c.gateway_id, c.server_id,
        c.principal_kind, c.user_id, c.client_name, c.outcome, c.error_class, c.latency_ms,
-       c.request_bytes, c.response_bytes, c.service_account_id, c.oauth_client_name,
+       c.request_bytes, c.response_bytes, c.service_account_id, c.oauth_client_name, c.provider_slug,
        (g.id IS NOT NULL)::bool AS gateway_exists,
        COALESCE(g.slug, c.gateway_slug)::text AS gateway_slug, COALESCE(g.name, c.gateway_name)::text AS gateway_name,
        (s.id IS NOT NULL)::bool AS server_exists,
@@ -162,6 +164,7 @@ type ListMCPCallsRow struct {
 	ResponseBytes          int64
 	ServiceAccountID       uuid.NullUUID
 	OauthClientName        *string
+	ProviderSlug           *string
 	GatewayExists          bool
 	GatewaySlug            string
 	GatewayName            string
@@ -220,6 +223,7 @@ func (q *Queries) ListMCPCalls(ctx context.Context, arg ListMCPCallsParams) ([]L
 			&i.ResponseBytes,
 			&i.ServiceAccountID,
 			&i.OauthClientName,
+			&i.ProviderSlug,
 			&i.GatewayExists,
 			&i.GatewaySlug,
 			&i.GatewayName,

@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "@tanstack/react-router";
-import { Boxes, Home, KeyRound, Library, Network, Plug, Shield, User } from "lucide-react";
+import { Boxes, Home, KeyRound, Library, Link2, Network, Plug, Shield, User } from "lucide-react";
 import {
+  adminAuthProviderQuery,
   adminGatewayQuery,
   adminServerQuery,
   adminTeamQuery,
@@ -81,12 +82,16 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
   // A service account's name, likewise.
   const serviceAccountId = routeId === "/app/teams/$team/service-accounts/$serviceAccountId" ? params.serviceAccountId : undefined;
   const serviceAccount = useQuery({ ...serviceAccountQuery(slug ?? "", serviceAccountId ?? ""), enabled: !!slug && !!serviceAccountId });
+  // An auth provider's name, likewise.
+  const providerId = routeId === "/app/admin/auth-providers/$providerId" ? params.providerId : undefined;
+  const provider = useQuery({ ...adminAuthProviderQuery(providerId ?? ""), enabled: canAdmin && !!providerId });
 
   if (routeId === "/app/") return [{ label: terms.home, icon: icon(Home) }];
   // From the account menu: the page itself, not "Home".
   if (routeId === "/app/settings/profile") return [{ label: "Profile", icon: icon(User) }];
   if (routeId === "/app/settings/api-keys") return [{ label: terms.apiKeys, icon: icon(KeyRound) }];
   if (routeId === "/app/settings/connected-apps") return [{ label: terms.connectedApps, icon: icon(Plug) }];
+  if (routeId === "/app/settings/connections") return [{ label: terms.myConnections, icon: icon(Link2) }];
   if (routeId === "/app/gateways") return [{ label: terms.myGateways, icon: icon(Network) }];
   if (routeId === "/app/gateways/$gatewayId") {
     return [
@@ -145,6 +150,11 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
       crumbs.push(
         { label: terms.gateways, render: <Link to="/admin/gateways" /> },
         ...(isNotFound(adminGateway.error) ? [] : [{ label: adminGateway.data?.name ?? <VisuallyHidden>Gateway</VisuallyHidden> }]),
+      );
+    } else if (providerId) {
+      crumbs.push(
+        { label: terms.authProviders, render: <Link to="/admin/auth-providers" /> },
+        ...(isNotFound(provider.error) ? [] : [{ label: provider.data?.name ?? <VisuallyHidden>Provider</VisuallyHidden> }]),
       );
     } else if (adminTeamSlug) {
       crumbs.push({ label: "Teams", render: <Link to="/admin/teams" /> }, ...(isNotFound(adminTeam.error) ? [] : [{ label: adminTeam.data?.team.name ?? adminTeamSlug }]));

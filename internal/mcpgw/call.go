@@ -10,6 +10,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
+	"github.com/ncecere/open-mcp-gateway/internal/providers"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
 )
@@ -60,6 +61,9 @@ func (rc *request) call(kind string) {
 		c := calls.Call{Outcome: calls.OutcomeDenied, ErrorClass: "unknown", ExposedName: p.Name}
 		if offer != nil {
 			c.ErrorClass, c.Server, c.CapabilityID = offer.Denied, &offer.Server, offer.Capability.ID
+			if offer.Requires != nil {
+				c.ProviderSlug = offer.Requires.Provider.Slug
+			}
 		}
 		rc.record(c, n)
 		return
@@ -71,6 +75,10 @@ func (rc *request) call(kind string) {
 func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) {
 	ctx := rc.r.Context()
 	rec := calls.Call{ExposedName: o.ExposedName, Server: &o.Server, CapabilityID: o.Capability.ID}
+	cred, ok := rc.delegated(o, &rec)
+	if !ok {
+		return
+	}
 	target, err := rc.h.Registry.Target(ctx, o.Server)
 	if err != nil {
 		rc.upstreamFailed(rec, err)
@@ -80,12 +88,13 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 	if kind == upstream.KindPrompt {
 		who = identityFor{prompt: o.ExposedName}
 	}
-	token, err := rc.identityToken(who, o)
+	token, err := rc.identityToken(who, o, cred)
 	if err != nil {
 		rc.internal(err)
 		return
 	}
 	target.IdentityHeader, target.IdentityValue = identity.Header(target.HeaderName, token)
+	withCredential(&target, cred)
 	client := rc.h.Registry.Client()
 	var result any
 	isError := false
@@ -214,9 +223,13 @@ type identityFor struct {
 // account (principal_type service_account: its ID, name and team, no
 // email). client is the connected OAuth client's name (with
 // client_verified), else the request's clientInfo.name, else the key's name.
-func (rc *request) identityToken(what identityFor, o gateways.Offer) (string, error) {
+func (rc *request) identityToken(what identityFor, o gateways.Offer, cred *providers.Credential) (string, error) {
 	p := rc.principal
 	c := identity.Claims{Audience: o.Server.URL, Gateway: rc.gateway.Slug, Tool: what.tool, Prompt: what.prompt, Resource: what.resource}
+	if cred != nil {
+		// Only calls that carry a provider token name the provider.
+		c.Provider = cred.Provider.Slug
+	}
 	if sa := p.account; sa != nil {
 		c.PrincipalType, c.Subject, c.Name, c.Teams = identity.PrincipalServiceAccount, sa.Account.ID.String(), sa.Account.Name, []string{sa.Team.Slug}
 	} else {

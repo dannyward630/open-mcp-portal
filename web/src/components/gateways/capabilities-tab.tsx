@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button/button";
 import { Card } from "@/components/ui/card/card";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { SkeletonText } from "@/components/ui/skeleton/skeleton";
+import { serviceAccountsCant } from "../providers/labels";
 import { untrustedText } from "../servers/labels";
 import { CapabilityList } from "./capability-list";
 import { CapabilityPicker } from "./capability-picker";
@@ -48,7 +49,9 @@ export function GatewayCapabilitiesTab({ gateway, scope, abilities }: Props) {
         title="Capabilities"
         description={
           items.length
-            ? `${capabilityCount(items.length)} selected. Clients see each one as server__name.${roles ? " A minimum role limits who on the team may use it." : ""}`
+            ? `${capabilityCount(items.length)} selected. Clients see each one as server__name.${roles ? " A minimum role limits who on the team may use it." : ""}${
+                items.some((c) => c.requires) ? ` Each person connects the accounts marked Needs once. ${serviceAccountsCant}` : ""
+              }`
             : undefined
         }
         actions={items.length ? edit : undefined}

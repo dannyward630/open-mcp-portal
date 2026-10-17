@@ -1,11 +1,15 @@
 /*
  * A gateway's capabilities grouped by server: the name clients see
  * (server__name), the title and description as the server wrote them (plain
- * text: untrusted), its kind, whether it's served now and, on team
- * gateways, the lowest team role that may use it.
+ * text: untrusted), its kind, whether it's served now, the account it
+ * needs ("Needs GitHub (repo)") and, on team gateways, the lowest team role
+ * that may use it. In the person's own view (My gateways), whether their
+ * connected account covers it.
  */
 import type { ReactNode } from "react";
-import { Badge } from "@/components/ui/badge/badge";
+import { RequiresBadge } from "../providers/requires";
+import { serviceAccountsCant } from "../providers/labels";
+import { Badge, StatusBadge } from "@/components/ui/badge/badge";
 import { AvailabilityBadge } from "./badges";
 import { type GatewayCapability, gatewayKindLabels, minRoleLabels } from "./labels";
 import g from "./gateways.module.css";
@@ -28,9 +32,11 @@ type Props = {
   availability?: boolean;
   /** Show the minimum role (team gateways). */
   roles?: boolean;
+  /** The person's own view: whether their connection covers each capability that needs an account. */
+  connections?: boolean;
 };
 
-export function CapabilityList({ items, availability = true, roles = false }: Props) {
+export function CapabilityList({ items, availability = true, roles = false, connections = false }: Props) {
   return (
     <div className={g.stack}>
       {groupBy(items, (c) => c.serverId).map(([id, caps]) => {
@@ -45,7 +51,7 @@ export function CapabilityList({ items, availability = true, roles = false }: Pr
             </h3>
             <ul className={g.list}>
               {caps.map((c) => (
-                <CapabilityRow key={c.capabilityId} cap={c} side={<RowBadges cap={c} availability={availability} roles={roles} />} />
+                <CapabilityRow key={c.capabilityId} cap={c} side={<RowBadges cap={c} availability={availability} roles={roles} connections={connections} />} />
               ))}
             </ul>
           </section>
@@ -55,12 +61,24 @@ export function CapabilityList({ items, availability = true, roles = false }: Pr
   );
 }
 
-function RowBadges({ cap, availability, roles }: { cap: GatewayCapability; availability: boolean; roles: boolean }) {
+function RowBadges({ cap, availability, roles, connections }: { cap: GatewayCapability; availability: boolean; roles: boolean; connections: boolean }) {
   return (
     <>
       <Badge size="sm" variant="outline">
         {gatewayKindLabels[cap.kind].one}
       </Badge>
+      {cap.requires && <RequiresBadge req={cap.requires} note={connections ? undefined : serviceAccountsCant} />}
+      {cap.requires &&
+        connections &&
+        (cap.requires.connected ? (
+          <StatusBadge size="sm" tone="success">
+            Connected
+          </StatusBadge>
+        ) : (
+          <StatusBadge size="sm" tone="warning">
+            Not connected
+          </StatusBadge>
+        ))}
       {roles && cap.minRole && cap.minRole !== "member" && (
         <Badge size="sm" tone="info">
           {minRoleLabels[cap.minRole]}

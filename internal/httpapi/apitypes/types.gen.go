@@ -93,6 +93,162 @@ func (e AuditViaKind) Valid() bool {
 	}
 }
 
+// Defines values for AuthProviderScopeSeparator.
+const (
+	AuthProviderScopeSeparatorEmpty AuthProviderScopeSeparator = " "
+	AuthProviderScopeSeparatorN1    AuthProviderScopeSeparator = ","
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderScopeSeparator enum.
+func (e AuthProviderScopeSeparator) Valid() bool {
+	switch e {
+	case AuthProviderScopeSeparatorEmpty:
+		return true
+	case AuthProviderScopeSeparatorN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthProviderCreateScopeSeparator.
+const (
+	AuthProviderCreateScopeSeparatorEmpty AuthProviderCreateScopeSeparator = " "
+	AuthProviderCreateScopeSeparatorN1    AuthProviderCreateScopeSeparator = ","
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderCreateScopeSeparator enum.
+func (e AuthProviderCreateScopeSeparator) Valid() bool {
+	switch e {
+	case AuthProviderCreateScopeSeparatorEmpty:
+		return true
+	case AuthProviderCreateScopeSeparatorN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthProviderKind.
+const (
+	Oauth2 AuthProviderKind = "oauth2"
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderKind enum.
+func (e AuthProviderKind) Valid() bool {
+	switch e {
+	case Oauth2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthProviderPresetScopeSeparator.
+const (
+	AuthProviderPresetScopeSeparatorEmpty AuthProviderPresetScopeSeparator = " "
+	AuthProviderPresetScopeSeparatorN1    AuthProviderPresetScopeSeparator = ","
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderPresetScopeSeparator enum.
+func (e AuthProviderPresetScopeSeparator) Valid() bool {
+	switch e {
+	case AuthProviderPresetScopeSeparatorEmpty:
+		return true
+	case AuthProviderPresetScopeSeparatorN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthProviderPresetName.
+const (
+	Atlassian AuthProviderPresetName = "atlassian"
+	Github    AuthProviderPresetName = "github"
+	Gitlab    AuthProviderPresetName = "gitlab"
+	Google    AuthProviderPresetName = "google"
+	Microsoft AuthProviderPresetName = "microsoft"
+	Slack     AuthProviderPresetName = "slack"
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderPresetName enum.
+func (e AuthProviderPresetName) Valid() bool {
+	switch e {
+	case Atlassian:
+		return true
+	case Github:
+		return true
+	case Gitlab:
+		return true
+	case Google:
+		return true
+	case Microsoft:
+		return true
+	case Slack:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthProviderTokenAuthMethod.
+const (
+	AuthProviderTokenAuthMethodClientSecretBasic AuthProviderTokenAuthMethod = "client_secret_basic"
+	AuthProviderTokenAuthMethodClientSecretPost  AuthProviderTokenAuthMethod = "client_secret_post"
+	AuthProviderTokenAuthMethodNone              AuthProviderTokenAuthMethod = "none"
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderTokenAuthMethod enum.
+func (e AuthProviderTokenAuthMethod) Valid() bool {
+	switch e {
+	case AuthProviderTokenAuthMethodClientSecretBasic:
+		return true
+	case AuthProviderTokenAuthMethodClientSecretPost:
+		return true
+	case AuthProviderTokenAuthMethodNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthProviderTokenResponseFormat.
+const (
+	SlackAuthedUser AuthProviderTokenResponseFormat = "slack_authed_user"
+	Standard        AuthProviderTokenResponseFormat = "standard"
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderTokenResponseFormat enum.
+func (e AuthProviderTokenResponseFormat) Valid() bool {
+	switch e {
+	case SlackAuthedUser:
+		return true
+	case Standard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthProviderUpdateScopeSeparator.
+const (
+	AuthProviderUpdateScopeSeparatorEmpty AuthProviderUpdateScopeSeparator = " "
+	AuthProviderUpdateScopeSeparatorN1    AuthProviderUpdateScopeSeparator = ","
+)
+
+// Valid indicates whether the value is a known member of the AuthProviderUpdateScopeSeparator enum.
+func (e AuthProviderUpdateScopeSeparator) Valid() bool {
+	switch e {
+	case AuthProviderUpdateScopeSeparatorEmpty:
+		return true
+	case AuthProviderUpdateScopeSeparatorN1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CallPrincipalKind.
 const (
 	CallPrincipalKindApiKey         CallPrincipalKind = "api_key"
@@ -132,6 +288,48 @@ func (e CapabilityKind) Valid() bool {
 	case CapabilityKindResourceTemplate:
 		return true
 	case CapabilityKindTool:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CapabilityRequirementOverrideMode.
+const (
+	CapabilityRequirementOverrideModeInherit CapabilityRequirementOverrideMode = "inherit"
+	CapabilityRequirementOverrideModeNone    CapabilityRequirementOverrideMode = "none"
+	CapabilityRequirementOverrideModeScopes  CapabilityRequirementOverrideMode = "scopes"
+)
+
+// Valid indicates whether the value is a known member of the CapabilityRequirementOverrideMode enum.
+func (e CapabilityRequirementOverrideMode) Valid() bool {
+	switch e {
+	case CapabilityRequirementOverrideModeInherit:
+		return true
+	case CapabilityRequirementOverrideModeNone:
+		return true
+	case CapabilityRequirementOverrideModeScopes:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectRequestReason.
+const (
+	ConnectRequestReasonMissingScopes  ConnectRequestReason = "missing_scopes"
+	ConnectRequestReasonNeedsReconsent ConnectRequestReason = "needs_reconsent"
+	ConnectRequestReasonNotConnected   ConnectRequestReason = "not_connected"
+)
+
+// Valid indicates whether the value is a known member of the ConnectRequestReason enum.
+func (e ConnectRequestReason) Valid() bool {
+	switch e {
+	case ConnectRequestReasonMissingScopes:
+		return true
+	case ConnectRequestReasonNeedsReconsent:
+		return true
+	case ConnectRequestReasonNotConnected:
 		return true
 	default:
 		return false
@@ -287,13 +485,14 @@ func (e InstanceInfoTheme) Valid() bool {
 
 // Defines values for McpCallOutcome.
 const (
-	McpCallOutcomeBadRequest    McpCallOutcome = "bad_request"
-	McpCallOutcomeDenied        McpCallOutcome = "denied"
-	McpCallOutcomeOk            McpCallOutcome = "ok"
-	McpCallOutcomeTimeout       McpCallOutcome = "timeout"
-	McpCallOutcomeTooLarge      McpCallOutcome = "too_large"
-	McpCallOutcomeToolError     McpCallOutcome = "tool_error"
-	McpCallOutcomeUpstreamError McpCallOutcome = "upstream_error"
+	McpCallOutcomeBadRequest         McpCallOutcome = "bad_request"
+	McpCallOutcomeDenied             McpCallOutcome = "denied"
+	McpCallOutcomeNeedsAuthorization McpCallOutcome = "needs_authorization"
+	McpCallOutcomeOk                 McpCallOutcome = "ok"
+	McpCallOutcomeTimeout            McpCallOutcome = "timeout"
+	McpCallOutcomeTooLarge           McpCallOutcome = "too_large"
+	McpCallOutcomeToolError          McpCallOutcome = "tool_error"
+	McpCallOutcomeUpstreamError      McpCallOutcome = "upstream_error"
 )
 
 // Valid indicates whether the value is a known member of the McpCallOutcome enum.
@@ -302,6 +501,8 @@ func (e McpCallOutcome) Valid() bool {
 	case McpCallOutcomeBadRequest:
 		return true
 	case McpCallOutcomeDenied:
+		return true
+	case McpCallOutcomeNeedsAuthorization:
 		return true
 	case McpCallOutcomeOk:
 		return true
@@ -590,19 +791,37 @@ func (e OAuthConsentDecisionDecision) Valid() bool {
 
 // Defines values for PlatformRole.
 const (
-	None            PlatformRole = "none"
-	PlatformAdmin   PlatformRole = "platform_admin"
-	PlatformAuditor PlatformRole = "platform_auditor"
+	PlatformRoleNone            PlatformRole = "none"
+	PlatformRolePlatformAdmin   PlatformRole = "platform_admin"
+	PlatformRolePlatformAuditor PlatformRole = "platform_auditor"
 )
 
 // Valid indicates whether the value is a known member of the PlatformRole enum.
 func (e PlatformRole) Valid() bool {
 	switch e {
-	case None:
+	case PlatformRoleNone:
 		return true
-	case PlatformAdmin:
+	case PlatformRolePlatformAdmin:
 		return true
-	case PlatformAuditor:
+	case PlatformRolePlatformAuditor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProviderConnectionStatus.
+const (
+	ProviderConnectionStatusActive         ProviderConnectionStatus = "active"
+	ProviderConnectionStatusNeedsReconsent ProviderConnectionStatus = "needs_reconsent"
+)
+
+// Valid indicates whether the value is a known member of the ProviderConnectionStatus enum.
+func (e ProviderConnectionStatus) Valid() bool {
+	switch e {
+	case ProviderConnectionStatusActive:
+		return true
+	case ProviderConnectionStatusNeedsReconsent:
 		return true
 	default:
 		return false
@@ -956,6 +1175,247 @@ type AuthConfig struct {
 	TeamRequestUrl *string `json:"teamRequestUrl,omitempty"`
 }
 
+// AuthProvider An OAuth app configured by platform admins. The client secret is never returned
+type AuthProvider struct {
+	// AuthorizationUrl Example: https://github.com/login/oauth/authorize
+	AuthorizationUrl string `json:"authorizationUrl"`
+	ClientId         string `json:"clientId"`
+
+	// ClientSecretHint Last 4 characters of the secret when it has at least 8, otherwise empty
+	ClientSecretHint string    `json:"clientSecretHint"`
+	ConnectionCount  int64     `json:"connectionCount"`
+	CreatedAt        time.Time `json:"createdAt"`
+	CreatedByName    *string   `json:"createdByName,omitempty"`
+
+	// DefaultScopes OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	DefaultScopes ScopeList `json:"defaultScopes"`
+
+	// Enabled Turned off, calls that require it are refused and nobody can connect; connections are kept
+	Enabled bool `json:"enabled"`
+
+	// ExtraAuthorizeParams Added to every authorization request, such as access_type=offline for Google
+	ExtraAuthorizeParams map[string]string  `json:"extraAuthorizeParams"`
+	HasClientSecret      bool               `json:"hasClientSecret"`
+	Id                   openapi_types.UUID `json:"id"`
+
+	// Kind oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+	Kind    AuthProviderKind `json:"kind"`
+	LogoUrl *string          `json:"logoUrl"`
+
+	// Name Example: GitHub
+	Name string `json:"name"`
+
+	// Pkce Send a PKCE S256 challenge (on unless the provider rejects it)
+	Pkce   bool                    `json:"pkce"`
+	Preset *AuthProviderPresetName `json:"preset"`
+
+	// RedirectUri APP_URL + /connect/callback, to register with the provider's OAuth app
+	//
+	// Example: https://mcp.example.com/connect/callback
+	RedirectUri string `json:"redirectUri"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision Revision `json:"revision"`
+
+	// RevocationUrl RFC 7009 endpoint used when a connection is removed (null; tokens are only erased here)
+	RevocationUrl *string `json:"revocationUrl"`
+
+	// ScopeParam The authorization request parameter that carries scopes (scope; Slack user tokens use user_scope)
+	ScopeParam     string                     `json:"scopeParam"`
+	ScopeSeparator AuthProviderScopeSeparator `json:"scopeSeparator"`
+
+	// ServerCount MCP servers that require it (as their requirement or in a capability override)
+	ServerCount int64 `json:"serverCount"`
+
+	// Slug Immutable; sent to MCP servers in MCP-Gateway-Provider and the identity token's provider claim
+	//
+	// Example: github
+	Slug string `json:"slug"`
+
+	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	TokenAuthMethod AuthProviderTokenAuthMethod `json:"tokenAuthMethod"`
+
+	// TokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
+	TokenResponseFormat AuthProviderTokenResponseFormat `json:"tokenResponseFormat"`
+
+	// TokenUrl Example: https://github.com/login/oauth/access_token
+	TokenUrl  string    `json:"tokenUrl"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	// UserinfoUrl Read once after connecting to label the account (preferred_username, email, login, username or name); the label is informational only
+	UserinfoUrl *string `json:"userinfoUrl"`
+}
+
+// AuthProviderScopeSeparator defines model for AuthProvider.ScopeSeparator.
+type AuthProviderScopeSeparator string
+
+// AuthProviderCreate defines model for AuthProviderCreate.
+type AuthProviderCreate struct {
+	AuthorizationUrl string `json:"authorizationUrl"`
+	ClientId         string `json:"clientId"`
+
+	// ClientSecret Sealed with ENCRYPTION_KEY, never returned. Required unless tokenAuthMethod is none
+	ClientSecret *string `json:"clientSecret,omitempty"`
+
+	// DefaultScopes OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	DefaultScopes *ScopeList `json:"defaultScopes,omitempty"`
+	Enabled       *bool      `json:"enabled,omitempty"`
+
+	// ExtraAuthorizeParams Keys match ^[A-Za-z0-9_.-]{1,64}$; response_type, client_id, redirect_uri, state, scope (and scopeParam), code_challenge and code_challenge_method are reserved
+	ExtraAuthorizeParams *map[string]string `json:"extraAuthorizeParams,omitempty"`
+
+	// LogoUrl An https URL or a same-origin path
+	LogoUrl *string `json:"logoUrl,omitempty"`
+	Name    string  `json:"name"`
+	Pkce    *bool   `json:"pkce,omitempty"`
+
+	// Preset Which built-in preset the provider started from; only used for its icon and help text
+	Preset         *AuthProviderPresetName           `json:"preset,omitempty"`
+	RevocationUrl  *string                           `json:"revocationUrl,omitempty"`
+	ScopeParam     *string                           `json:"scopeParam,omitempty"`
+	ScopeSeparator *AuthProviderCreateScopeSeparator `json:"scopeSeparator,omitempty"`
+
+	// Slug Unique, immutable
+	Slug                string                           `json:"slug"`
+	TokenAuthMethod     *AuthProviderTokenAuthMethod     `json:"tokenAuthMethod,omitempty"`
+	TokenResponseFormat *AuthProviderTokenResponseFormat `json:"tokenResponseFormat,omitempty"`
+	TokenUrl            string                           `json:"tokenUrl"`
+	UserinfoUrl         *string                          `json:"userinfoUrl,omitempty"`
+}
+
+// AuthProviderCreateScopeSeparator defines model for AuthProviderCreate.ScopeSeparator.
+type AuthProviderCreateScopeSeparator string
+
+// AuthProviderKind oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+type AuthProviderKind string
+
+// AuthProviderPreset defines model for AuthProviderPreset.
+type AuthProviderPreset struct {
+	AuthorizationUrl string `json:"authorizationUrl"`
+
+	// DefaultScopes OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	DefaultScopes ScopeList `json:"defaultScopes"`
+
+	// DocsUrl Where to create the OAuth app
+	DocsUrl              string            `json:"docsUrl"`
+	ExtraAuthorizeParams map[string]string `json:"extraAuthorizeParams"`
+
+	// Name Example: GitHub
+	Name string `json:"name"`
+
+	// Notes Provider quirks worth knowing, shown in the form
+	Notes *string `json:"notes,omitempty"`
+	Pkce  bool    `json:"pkce"`
+
+	// Preset Which built-in preset the provider started from; only used for its icon and help text
+	Preset AuthProviderPresetName `json:"preset"`
+
+	// RedirectUri APP_URL + /connect/callback, to register with the provider's OAuth app (the same for every provider)
+	//
+	// Example: https://mcp.example.com/connect/callback
+	RedirectUri    *string                          `json:"redirectUri,omitempty"`
+	RevocationUrl  *string                          `json:"revocationUrl"`
+	ScopeParam     string                           `json:"scopeParam"`
+	ScopeSeparator AuthProviderPresetScopeSeparator `json:"scopeSeparator"`
+
+	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	TokenAuthMethod AuthProviderTokenAuthMethod `json:"tokenAuthMethod"`
+
+	// TokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
+	TokenResponseFormat AuthProviderTokenResponseFormat `json:"tokenResponseFormat"`
+	TokenUrl            string                          `json:"tokenUrl"`
+
+	// UrlParameters Placeholders in the URLs the form asks for (Microsoft's tenant, a self-managed GitLab's host)
+	UrlParameters []AuthProviderUrlParameter `json:"urlParameters"`
+	UserinfoUrl   *string                    `json:"userinfoUrl"`
+}
+
+// AuthProviderPresetScopeSeparator defines model for AuthProviderPreset.ScopeSeparator.
+type AuthProviderPresetScopeSeparator string
+
+// AuthProviderPresetName Which built-in preset the provider started from; only used for its icon and help text
+type AuthProviderPresetName string
+
+// AuthProviderSummary What any signed-in person may see about a provider
+type AuthProviderSummary struct {
+	// DefaultScopes OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	DefaultScopes ScopeList          `json:"defaultScopes"`
+	Id            openapi_types.UUID `json:"id"`
+
+	// Kind oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+	Kind    AuthProviderKind `json:"kind"`
+	LogoUrl *string          `json:"logoUrl"`
+
+	// Name Example: GitHub
+	Name   string                  `json:"name"`
+	Preset *AuthProviderPresetName `json:"preset"`
+
+	// Slug Immutable; sent to MCP servers in MCP-Gateway-Provider and the identity token's provider claim
+	//
+	// Example: github
+	Slug string `json:"slug"`
+}
+
+// AuthProviderTokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+type AuthProviderTokenAuthMethod string
+
+// AuthProviderTokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
+type AuthProviderTokenResponseFormat string
+
+// AuthProviderUpdate defines model for AuthProviderUpdate.
+type AuthProviderUpdate struct {
+	AuthorizationUrl *string `json:"authorizationUrl,omitempty"`
+
+	// ClientId Changing it marks every connection needs_reconsent
+	ClientId *string `json:"clientId,omitempty"`
+
+	// ClientSecret Omit to keep the stored secret
+	ClientSecret *string `json:"clientSecret,omitempty"`
+
+	// DefaultScopes OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	DefaultScopes *ScopeList `json:"defaultScopes,omitempty"`
+	Enabled       *bool      `json:"enabled,omitempty"`
+
+	// ExtraAuthorizeParams Replaces the whole set
+	ExtraAuthorizeParams *map[string]string      `json:"extraAuthorizeParams,omitempty"`
+	LogoUrl              *string                 `json:"logoUrl,omitempty"`
+	Name                 *string                 `json:"name,omitempty"`
+	Pkce                 *bool                   `json:"pkce,omitempty"`
+	Preset               *AuthProviderPresetName `json:"preset,omitempty"`
+
+	// RevocationUrl null removes it
+	RevocationUrl  *string                           `json:"revocationUrl,omitempty"`
+	ScopeParam     *string                           `json:"scopeParam,omitempty"`
+	ScopeSeparator *AuthProviderUpdateScopeSeparator `json:"scopeSeparator,omitempty"`
+
+	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	TokenAuthMethod *AuthProviderTokenAuthMethod `json:"tokenAuthMethod,omitempty"`
+
+	// TokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
+	TokenResponseFormat *AuthProviderTokenResponseFormat `json:"tokenResponseFormat,omitempty"`
+	TokenUrl            *string                          `json:"tokenUrl,omitempty"`
+
+	// UserinfoUrl null removes it
+	UserinfoUrl *string `json:"userinfoUrl,omitempty"`
+}
+
+// AuthProviderUpdateScopeSeparator defines model for AuthProviderUpdate.ScopeSeparator.
+type AuthProviderUpdateScopeSeparator string
+
+// AuthProviderUrlParameter defines model for AuthProviderUrlParameter.
+type AuthProviderUrlParameter struct {
+	// Default Example: organizations
+	Default *string `json:"default,omitempty"`
+
+	// Label Example: Directory (tenant) ID, or organizations
+	Label string `json:"label"`
+
+	// Name The placeholder in the preset's URLs, without braces
+	//
+	// Example: tenant
+	Name string `json:"name"`
+}
+
 // CallPrincipal defines model for CallPrincipal.
 type CallPrincipal struct {
 	// ApiKeyName The key used (api_key and service_account)
@@ -1013,6 +1473,34 @@ type CapabilityCounts struct {
 // CapabilityKind defines model for CapabilityKind.
 type CapabilityKind string
 
+// CapabilityRequirement The account a capability needs, with its effective scopes
+type CapabilityRequirement struct {
+	// Connected Only in the caller's own views (MyGatewayDetail): true when the caller has an active connection to the provider whose granted scopes include these, so a call would be forwarded without asking
+	Connected  *bool              `json:"connected,omitempty"`
+	ProviderId openapi_types.UUID `json:"providerId"`
+
+	// ProviderName Example: GitHub
+	ProviderName string `json:"providerName"`
+
+	// ProviderSlug Example: github
+	ProviderSlug string `json:"providerSlug"`
+
+	// Scopes OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	Scopes ScopeList `json:"scopes"`
+}
+
+// CapabilityRequirementOverride defines model for CapabilityRequirementOverride.
+type CapabilityRequirementOverride struct {
+	// Mode inherit: the server's requirement. none: no provider token and no consent. scopes: the server's provider with these scopes
+	Mode CapabilityRequirementOverrideMode `json:"mode"`
+
+	// Scopes Only with mode scopes (at least one)
+	Scopes *ScopeList `json:"scopes,omitempty"`
+}
+
+// CapabilityRequirementOverrideMode inherit: the server's requirement. none: no provider token and no consent. scopes: the server's provider with these scopes
+type CapabilityRequirementOverrideMode string
+
 // CatalogCapability defines model for CatalogCapability.
 type CatalogCapability struct {
 	Definition  map[string]interface{} `json:"definition"`
@@ -1020,7 +1508,10 @@ type CatalogCapability struct {
 	Id          openapi_types.UUID     `json:"id"`
 	Kind        CapabilityKind         `json:"kind"`
 	Name        string                 `json:"name"`
-	Title       string                 `json:"title"`
+
+	// Requires The account a person must connect to use it (null; none)
+	Requires *CapabilityRequirement `json:"requires"`
+	Title    string                 `json:"title"`
 }
 
 // CatalogServer defines model for CatalogServer.
@@ -1051,6 +1542,67 @@ type CatalogServerDetail struct {
 type CatalogServerPage struct {
 	Items      []CatalogServer `json:"items"`
 	NextCursor *string         `json:"nextCursor,omitempty"`
+}
+
+// ConnectRequest Why a call asked the person to connect an account (a consent link from JSON-RPC -32042)
+type ConnectRequest struct {
+	// AccountLabel The account connected now, if any
+	AccountLabel *string                  `json:"accountLabel"`
+	Capability   ConnectRequestCapability `json:"capability"`
+	CreatedAt    time.Time                `json:"createdAt"`
+	ExpiresAt    time.Time                `json:"expiresAt"`
+	Gateway      CallRef                  `json:"gateway"`
+
+	// GrantedScopes What the person's active connection has now (empty when none)
+	GrantedScopes ScopeList            `json:"grantedScopes"`
+	Id            string               `json:"id"`
+	Provider      ProviderRef          `json:"provider"`
+	Reason        ConnectRequestReason `json:"reason"`
+
+	// RequestScopes What will be asked for (granted scopes kept, plus the required ones)
+	RequestScopes ScopeList `json:"requestScopes"`
+
+	// RequiredScopes What the capability needs
+	RequiredScopes ScopeList `json:"requiredScopes"`
+}
+
+// ConnectRequestReason defines model for ConnectRequest.Reason.
+type ConnectRequestReason string
+
+// ConnectRequestCapability defines model for ConnectRequestCapability.
+type ConnectRequestCapability struct {
+	// ExposedName Example: github-tools__create_issue
+	ExposedName string `json:"exposedName"`
+
+	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+	Kind  GatewayCapabilityKind `json:"kind"`
+	Title string                `json:"title"`
+}
+
+// ConnectStart defines model for ConnectStart.
+type ConnectStart struct {
+	ProviderId openapi_types.UUID `json:"providerId"`
+
+	// RequestId The consent link's request; its required scopes are added, and it is used up on success
+	RequestId *string `json:"requestId,omitempty"`
+
+	// ReturnTo A path on this site to return to (starting with a single /). Default; /connect/done
+	ReturnTo *string `json:"returnTo,omitempty"`
+
+	// Scopes Extra scopes to ask for (absent, with no requestId; the provider's default scopes)
+	Scopes *ScopeList `json:"scopes,omitempty"`
+}
+
+// ConnectStarted defines model for ConnectStarted.
+type ConnectStarted struct {
+	// AuthorizeUrl The provider's authorization URL; send the browser there
+	AuthorizeUrl string `json:"authorizeUrl"`
+
+	// ExpiresAt The state expires then (10 minutes)
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Scopes Everything asked for
+	Scopes ScopeList `json:"scopes"`
 }
 
 // DevAccount defines model for DevAccount.
@@ -1150,10 +1702,13 @@ type GatewayCapability struct {
 	MinRole *TeamRole `json:"minRole,omitempty"`
 
 	// Name The name the server uses
-	Name       string             `json:"name"`
-	ServerId   openapi_types.UUID `json:"serverId"`
-	ServerName string             `json:"serverName"`
-	ServerSlug string             `json:"serverSlug"`
+	Name string `json:"name"`
+
+	// Requires The account a person must connect to use it (null; none). Service accounts can't call capabilities that require one. In MyGatewayDetail, connected says whether the caller's connection covers it now
+	Requires   *CapabilityRequirement `json:"requires"`
+	ServerId   openapi_types.UUID     `json:"serverId"`
+	ServerName string                 `json:"serverName"`
+	ServerSlug string                 `json:"serverSlug"`
 
 	// TeamSlug The server's team
 	TeamSlug string `json:"teamSlug"`
@@ -1222,10 +1777,13 @@ type GatewayOption struct {
 	Kind GatewayCapabilityKind `json:"kind"`
 
 	// Name The name the server uses (a resource's URI, a template's URI template)
-	Name       string             `json:"name"`
-	ServerId   openapi_types.UUID `json:"serverId"`
-	ServerName string             `json:"serverName"`
-	ServerSlug string             `json:"serverSlug"`
+	Name string `json:"name"`
+
+	// Requires The account a person must connect to use it (null; none)
+	Requires   *CapabilityRequirement `json:"requires"`
+	ServerId   openapi_types.UUID     `json:"serverId"`
+	ServerName string                 `json:"serverName"`
+	ServerSlug string                 `json:"serverSlug"`
 
 	// Source team: the gateway team's own server; catalog: a published server
 	Source   GatewayOptionSource `json:"source"`
@@ -1322,7 +1880,7 @@ type McpCall struct {
 	// ClientName clientInfo.name from initialize, when sent
 	ClientName *string `json:"clientName,omitempty"`
 
-	// ErrorClass Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason
+	// ErrorClass Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that require an account; needs_authorization with not_connected, missing_scopes or needs_reconsent; denied with service_account or provider_disabled; upstream_error with provider_unavailable.
 	ErrorClass *string `json:"errorClass,omitempty"`
 
 	// ExposedName The tool or prompt name, or the exposed resource URI, the client used (absent for list calls)
@@ -1337,16 +1895,19 @@ type McpCall struct {
 	Method     string    `json:"method"`
 	OccurredAt time.Time `json:"occurredAt"`
 
-	// Outcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
-	Outcome       McpCallOutcome `json:"outcome"`
-	Principal     CallPrincipal  `json:"principal"`
-	RequestBytes  int64          `json:"requestBytes"`
-	RequestId     string         `json:"requestId"`
-	ResponseBytes int64          `json:"responseBytes"`
-	Server        *CallRef       `json:"server,omitempty"`
+	// Outcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
+	Outcome   McpCallOutcome `json:"outcome"`
+	Principal CallPrincipal  `json:"principal"`
+
+	// ProviderSlug The auth provider the capability required at the time of the call (absent when none)
+	ProviderSlug  *string  `json:"providerSlug,omitempty"`
+	RequestBytes  int64    `json:"requestBytes"`
+	RequestId     string   `json:"requestId"`
+	ResponseBytes int64    `json:"responseBytes"`
+	Server        *CallRef `json:"server,omitempty"`
 }
 
-// McpCallOutcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
+// McpCallOutcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
 type McpCallOutcome string
 
 // McpCallPage defines model for McpCallPage.
@@ -1380,9 +1941,13 @@ type McpCapability struct {
 	LastSeenAt time.Time          `json:"lastSeenAt"`
 
 	// Name Tool or prompt name, resource URI, or resource template URI template
-	Name     string             `json:"name"`
-	ServerId openapi_types.UUID `json:"serverId"`
-	Title    string             `json:"title"`
+	Name                string                        `json:"name"`
+	RequirementOverride CapabilityRequirementOverride `json:"requirementOverride"`
+
+	// Requires The effective requirement (the server's, or the override); null when calls get no provider token
+	Requires *CapabilityRequirement `json:"requires"`
+	ServerId openapi_types.UUID     `json:"serverId"`
+	Title    string                 `json:"title"`
 }
 
 // McpErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
@@ -1470,6 +2035,9 @@ type McpServer struct {
 	// RefreshedAt When capabilities were last read (null; never)
 	RefreshedAt *time.Time `json:"refreshedAt,omitempty"`
 
+	// Requirement The auth provider and scopes whose user token the gateway sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride).
+	Requirement *McpServerRequirement `json:"requirement,omitempty"`
+
 	// Revision Increases on every change. Send it back in If-Match.
 	Revision Revision `json:"revision"`
 
@@ -1502,6 +2070,9 @@ type McpServerCreate struct {
 	Enabled     *bool   `json:"enabled,omitempty"`
 	Name        string  `json:"name"`
 
+	// Requirement Absent or null; no user authorization
+	Requirement *McpServerRequirementInput `json:"requirement,omitempty"`
+
 	// Slug Unique across the platform, immutable
 	Slug           string `json:"slug"`
 	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
@@ -1528,18 +2099,41 @@ type McpServerPage struct {
 	NextCursor *string     `json:"nextCursor,omitempty"`
 }
 
+// McpServerRequirement defines model for McpServerRequirement.
+type McpServerRequirement struct {
+	// ProviderEnabled false while a platform admin has turned the provider off (calls that need it are refused)
+	ProviderEnabled bool               `json:"providerEnabled"`
+	ProviderId      openapi_types.UUID `json:"providerId"`
+	ProviderName    string             `json:"providerName"`
+	ProviderSlug    string             `json:"providerSlug"`
+
+	// Scopes Empty means the provider's default scopes
+	Scopes ScopeList `json:"scopes"`
+}
+
+// McpServerRequirementInput defines model for McpServerRequirementInput.
+type McpServerRequirementInput struct {
+	ProviderId openapi_types.UUID `json:"providerId"`
+
+	// Scopes Absent or empty means the provider's default scopes
+	Scopes *ScopeList `json:"scopes,omitempty"`
+}
+
 // McpServerUpdate defines model for McpServerUpdate.
 type McpServerUpdate struct {
 	// AuthHeaderName Omit to keep; an empty string removes the header and its value
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
 	// AuthValue Omit to keep the stored value
-	AuthValue      *string `json:"authValue,omitempty"`
-	Description    *string `json:"description,omitempty"`
-	Enabled        *bool   `json:"enabled,omitempty"`
-	Name           *string `json:"name,omitempty"`
-	TimeoutSeconds *int32  `json:"timeoutSeconds,omitempty"`
-	Url            *string `json:"url,omitempty"`
+	AuthValue   *string `json:"authValue,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Name        *string `json:"name,omitempty"`
+
+	// Requirement Omit to keep; null removes it. A widening change sends a published server back to review under approval_required
+	Requirement    *McpServerRequirementInput `json:"requirement,omitempty"`
+	TimeoutSeconds *int32                     `json:"timeoutSeconds,omitempty"`
+	Url            *string                    `json:"url,omitempty"`
 }
 
 // McpTestResult defines model for McpTestResult.
@@ -1636,7 +2230,7 @@ type MyGatewayAccess string
 
 // MyGatewayDetail defines model for MyGatewayDetail.
 type MyGatewayDetail struct {
-	// Capabilities Available to the caller now (role and availability applied)
+	// Capabilities Available to the caller now (role and availability applied). A capability that requires an account is listed whether or not the caller connected it; requires.connected says which
 	Capabilities []GatewayCapability `json:"capabilities"`
 	Gateway      MyGateway           `json:"gateway"`
 }
@@ -1777,6 +2371,45 @@ type OwnerAssign struct {
 // PlatformRole defines model for PlatformRole.
 type PlatformRole string
 
+// ProviderConnection A person's connected account. Tokens are never returned
+type ProviderConnection struct {
+	// AccountLabel The provider account as its userinfo endpoint named it (such as octocat); informational
+	AccountLabel *string `json:"accountLabel"`
+
+	// ConnectedAt When the person last completed consent
+	ConnectedAt time.Time `json:"connectedAt"`
+
+	// ExpiresAt When the current access token expires (null; the provider gave no expiry). The gateway refreshes it before then when it has a refresh token
+	ExpiresAt *time.Time         `json:"expiresAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// LastUsedAt When a token was last sent to an MCP server
+	LastUsedAt *time.Time  `json:"lastUsedAt"`
+	Provider   ProviderRef `json:"provider"`
+
+	// Refreshable The gateway holds a refresh token
+	Refreshable bool       `json:"refreshable"`
+	RefreshedAt *time.Time `json:"refreshedAt"`
+
+	// Scopes Scopes granted (as the provider reported them, else as asked for)
+	Scopes ScopeList `json:"scopes"`
+
+	// Status needs_reconsent: the tokens were erased (a refresh failed, the access token expired without a refresh token, or the provider's client ID changed); the next call asks the person to connect again
+	Status ProviderConnectionStatus `json:"status"`
+}
+
+// ProviderConnectionStatus needs_reconsent: the tokens were erased (a refresh failed, the access token expired without a refresh token, or the provider's client ID changed); the next call asks the person to connect again
+type ProviderConnectionStatus string
+
+// ProviderRef defines model for ProviderRef.
+type ProviderRef struct {
+	Id      openapi_types.UUID      `json:"id"`
+	LogoUrl *string                 `json:"logoUrl"`
+	Name    string                  `json:"name"`
+	Preset  *AuthProviderPresetName `json:"preset"`
+	Slug    string                  `json:"slug"`
+}
+
 // PublishPolicy approval_required: a platform admin approves each server, and each changed capability, before it reaches the catalog. self_publish: the team's owners and admins do.
 type PublishPolicy string
 
@@ -1801,6 +2434,9 @@ type PublishingSettingsUpdate struct {
 
 // Revision Increases on every change. Send it back in If-Match.
 type Revision = int64
+
+// ScopeList OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+type ScopeList = []string
 
 // ServerHealth The latest health check. unknown before the first one.
 type ServerHealth struct {
@@ -2081,7 +2717,7 @@ type AuditToParam = time.Time
 // CallGatewayParam defines model for CallGatewayParam.
 type CallGatewayParam = openapi_types.UUID
 
-// CallOutcomeParam ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged, the client saw not found). upstream_error: unreachable, refused or malformed. bad_request: the client's request was invalid.
+// CallOutcomeParam ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
 type CallOutcomeParam = McpCallOutcome
 
 // CallServerParam defines model for CallServerParam.
@@ -2098,6 +2734,12 @@ type CapabilityIdParam = openapi_types.UUID
 
 // CapabilityKindParam defines model for CapabilityKindParam.
 type CapabilityKindParam = CapabilityKind
+
+// ConnectRequestIdParam defines model for ConnectRequestIdParam.
+type ConnectRequestIdParam = string
+
+// ConnectionIdParam defines model for ConnectionIdParam.
+type ConnectionIdParam = openapi_types.UUID
 
 // CursorParam defines model for CursorParam.
 type CursorParam = string
@@ -2122,6 +2764,9 @@ type LimitParam = int
 
 // OAuthGrantIdParam defines model for OAuthGrantIdParam.
 type OAuthGrantIdParam = openapi_types.UUID
+
+// ProviderIdParam defines model for ProviderIdParam.
+type ProviderIdParam = openapi_types.UUID
 
 // SearchParam defines model for SearchParam.
 type SearchParam = string
@@ -2200,6 +2845,12 @@ type AdminListAuditParams struct {
 
 // AdminListAuditParamsActorKind defines parameters for AdminListAudit.
 type AdminListAuditParamsActorKind string
+
+// AdminUpdateAuthProviderParams defines parameters for AdminUpdateAuthProvider.
+type AdminUpdateAuthProviderParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
 
 // AdminListCallsParams defines parameters for AdminListCalls.
 type AdminListCallsParams struct {
@@ -2281,6 +2932,9 @@ type AdminListMcpServersParams struct {
 
 	// Team Team slug or ID
 	Team *string `form:"team,omitempty" json:"team,omitempty"`
+
+	// Provider Auth provider ID; only servers that require it (as their requirement or in a capability override)
+	Provider *openapi_types.UUID `form:"provider,omitempty" json:"provider,omitempty"`
 
 	// Cursor nextCursor from the previous page
 	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -2504,6 +3158,12 @@ type ListTeamMcpCapabilitiesParams struct {
 	Kind *CapabilityKindParam `form:"kind,omitempty" json:"kind,omitempty"`
 }
 
+// SetTeamMcpCapabilityRequirementParams defines parameters for SetTeamMcpCapabilityRequirement.
+type SetTeamMcpCapabilityRequirementParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // UpdateMemberParams defines parameters for UpdateMember.
 type UpdateMemberParams struct {
 	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
@@ -2518,6 +3178,12 @@ type UpdateServiceAccountParams struct {
 
 // DevLoginJSONRequestBody defines body for DevLogin for application/json ContentType.
 type DevLoginJSONRequestBody = DevLoginRequest
+
+// AdminCreateAuthProviderJSONRequestBody defines body for AdminCreateAuthProvider for application/json ContentType.
+type AdminCreateAuthProviderJSONRequestBody = AuthProviderCreate
+
+// AdminUpdateAuthProviderJSONRequestBody defines body for AdminUpdateAuthProvider for application/json ContentType.
+type AdminUpdateAuthProviderJSONRequestBody = AuthProviderUpdate
 
 // AdminCreateGatewayJSONRequestBody defines body for AdminCreateGateway for application/json ContentType.
 type AdminCreateGatewayJSONRequestBody = GatewayCreate
@@ -2564,6 +3230,9 @@ type AdminUpdateUserJSONRequestBody = UserUpdate
 // CreateMyApiKeyJSONRequestBody defines body for CreateMyApiKey for application/json ContentType.
 type CreateMyApiKeyJSONRequestBody = ApiKeyCreate
 
+// StartMyConnectionJSONRequestBody defines body for StartMyConnection for application/json ContentType.
+type StartMyConnectionJSONRequestBody = ConnectStart
+
 // DecideOAuthConsentJSONRequestBody defines body for DecideOAuthConsent for application/json ContentType.
 type DecideOAuthConsentJSONRequestBody = OAuthConsentDecision
 
@@ -2581,6 +3250,9 @@ type CreateTeamMcpServerJSONRequestBody = McpServerCreate
 
 // UpdateTeamMcpServerJSONRequestBody defines body for UpdateTeamMcpServer for application/json ContentType.
 type UpdateTeamMcpServerJSONRequestBody = McpServerUpdate
+
+// SetTeamMcpCapabilityRequirementJSONRequestBody defines body for SetTeamMcpCapabilityRequirement for application/json ContentType.
+type SetTeamMcpCapabilityRequirementJSONRequestBody = CapabilityRequirementOverride
 
 // PublishTeamMcpServerJSONRequestBody defines body for PublishTeamMcpServer for application/json ContentType.
 type PublishTeamMcpServerJSONRequestBody = McpPublishRequest

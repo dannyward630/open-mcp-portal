@@ -1,7 +1,8 @@
 /*
  * A gateway the person can use (/gateways/$gatewayId): why they have
  * access, the capabilities it offers them right now (their role and each
- * capability's availability already applied), and how to connect a client.
+ * capability's availability already applied), the accounts some of them
+ * need (connected or not, with Connect), and how to connect a client.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -12,6 +13,7 @@ import { ConnectSection } from "../../components/gateways/connect";
 import { capabilityCount, isResourceKind } from "../../components/gateways/labels";
 import { isNotFound, NotFoundState } from "../../components/not-found";
 import { PageSkeleton } from "../../components/page-skeleton";
+import { NeededAccountsCard } from "../../components/providers/needed-accounts";
 import { untrustedText } from "../../components/servers/labels";
 import { PageActions } from "../../components/templates/page-actions";
 import { useCurrentUser } from "../../session";
@@ -56,6 +58,7 @@ export function MyGatewayPage() {
         }
       />
       <ConnectSection slug={gateway.slug} url={gateway.url} />
+      <NeededAccountsCard caps={capabilities} returnTo={`/gateways/${gateway.id}`} />
       <Card
         title="What it offers you"
         description={
@@ -74,7 +77,7 @@ export function MyGatewayPage() {
         ) : (
           <Stack gap={4}>
             <Alert tone="info">{untrustedText}</Alert>
-            <CapabilityList items={capabilities} availability={false} />
+            <CapabilityList items={capabilities} availability={false} connections />
           </Stack>
         )}
       </Card>

@@ -234,7 +234,7 @@ func TestGatewaySelectionRules(t *testing.T) {
 	}
 	slices.Sort(names)
 	want := []string{"omcp://status/status://services", "omcp://status/status://services/{service}", "status__check_outage",
-		"status__create_ticket", "status__echo", "status__incident_summary", "status__search_tickets", "status__whoami"}
+		"status__create_ticket", "status__echo", "status__incident_summary", "status__provider_token", "status__search_tickets", "status__whoami"}
 	if !slices.Equal(names, want) || optPage.NextCursor != nil {
 		t.Fatalf("options = %v, want %v", names, want)
 	}

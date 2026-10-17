@@ -41,6 +41,7 @@ const actionLabels: Record<string, string> = {
   "mcp_server.reject": "Rejected MCP server",
   "mcp_server.unpublish": "Unpublished MCP server",
   "mcp_capability.approve": "Approved capability",
+  "mcp_capability.requirement_set": "Changed capability's account requirement",
   "settings.publishing_update": "Changed default publishing policy",
   "settings.network_update": "Changed internal networks",
   "gateway.create": "Created gateway",
@@ -61,6 +62,19 @@ const actionLabels: Record<string, string> = {
   "service_account.delete": "Deleted service account",
   "service_account_key.create": "Created service account key",
   "service_account_key.revoke": "Revoked service account key",
+  "auth_provider.create": "Added auth provider",
+  "auth_provider.update": "Changed auth provider",
+  "auth_provider.delete": "Deleted auth provider",
+  "provider_connection.create": "Connected account",
+  "provider_connection.refresh_failed": "Account needs reconnecting",
+  "provider_connection.revoke": "Disconnected account",
+};
+
+/** Why an account was disconnected (provider_connection.revoke, metadata.reason). */
+export const connectionRevokeReasons: Record<string, string> = {
+  user: "by its person",
+  admin: "by a platform admin",
+  provider_deleted: "when its provider was deleted",
 };
 
 /** Why a connected app's sign-in ended (oauth.revoke, metadata.reason). */
@@ -75,8 +89,9 @@ export const oauthRevokeReasons: Record<string, string> = {
 export function actionLabel(action: string, entry?: Partial<Pick<AuditEntry, "after" | "metadata">>) {
   const known = actionLabels[action];
   // A disconnection says why, when the reason is one we know ("Disconnected app after the person was suspended").
-  const reason = action === "oauth.revoke" ? entry?.metadata?.reason : undefined;
-  if (known && typeof reason === "string" && oauthRevokeReasons[reason]) return `${known} ${oauthRevokeReasons[reason]}`;
+  const reason = action === "oauth.revoke" || action === "provider_connection.revoke" ? entry?.metadata?.reason : undefined;
+  const reasons = action === "oauth.revoke" ? oauthRevokeReasons : connectionRevokeReasons;
+  if (known && typeof reason === "string" && reasons[reason]) return `${known} ${reasons[reason]}`;
   if (known) return known;
   const [group = "", rest = ""] = action.split(".");
   const words = rest.replace(/_/g, " ");
@@ -95,6 +110,8 @@ export const actionGroups: { prefix: string; label: string; platform?: boolean }
   { prefix: "service_account_key.", label: "Service account keys" },
   { prefix: "api_key.", label: "API keys", platform: true },
   { prefix: "oauth.", label: "Connected apps", platform: true },
+  { prefix: "auth_provider.", label: "Auth providers", platform: true },
+  { prefix: "provider_connection.", label: "Connected accounts", platform: true },
   { prefix: "settings.", label: "Platform settings", platform: true },
   { prefix: "platform.", label: "Platform and users", platform: true },
   { prefix: "auth.", label: "Sign-in", platform: true },
@@ -171,6 +188,8 @@ export const targetTypeLabels: Record<string, string> = {
   service_account_key: "Service account key",
   oauth_client: "OAuth client",
   oauth_grant: "Connected app",
+  auth_provider: "Auth provider",
+  provider_connection: "Connected account",
 };
 
 /** An entry's action and target in one line for a short list ("Added member: Una User"). */

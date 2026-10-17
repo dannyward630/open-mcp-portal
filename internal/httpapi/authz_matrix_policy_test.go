@@ -345,4 +345,39 @@ var matrixPolicies = map[string]policy{
 		sa, key := c.serviceAccountKey()
 		return del(c.team("/service-accounts/" + sa + "/keys/" + key))
 	}},
+
+	// Delegated credentials: auth providers (platform admins write,
+	// auditors read, anyone signed in picks one), connections (people
+	// their own; platform staff read anyone's, admins revoke), consent
+	// links (only their person) and requirement overrides (team editors).
+	"listAuthProviders":      {own: signedIn, build: func(*mctx) request { return get("/v1/auth-providers") }},
+	"adminListAuthProviders": {own: platform, build: func(*mctx) request { return get("/v1/admin/auth-providers") }},
+	"adminCreateAuthProvider": {own: padmin, build: func(c *mctx) request {
+		return post("/v1/admin/auth-providers", map[string]any{"slug": fmt.Sprintf("new-prov-%d", c.e.next()), "name": "New",
+			"clientId": "client", "clientSecret": "secret-value-1234", "authorizationUrl": "https://auth.example.com/authorize",
+			"tokenUrl": "https://auth.example.com/token", "defaultScopes": []string{"read"}})
+	}},
+	"adminGetAuthProvider": {own: platform, build: func(c *mctx) request { return get("/v1/admin/auth-providers/" + c.e.provider) }},
+	"adminUpdateAuthProvider": {own: padmin, build: func(c *mctx) request {
+		return patch("/v1/admin/auth-providers/"+c.authProvider(), map[string]any{"name": "Renamed"}).h(rev1)
+	}},
+	"adminDeleteAuthProvider":      {own: padmin, build: func(c *mctx) request { return del("/v1/admin/auth-providers/" + c.authProvider()) }},
+	"adminListAuthProviderPresets": {own: platform, build: func(*mctx) request { return get("/v1/admin/auth-provider-presets") }},
+	"adminListUserConnections": {own: platform, build: func(c *mctx) request {
+		return get("/v1/admin/users/" + c.e.spareUser + "/connections")
+	}},
+	"adminRevokeUserConnection": {own: padmin, build: func(c *mctx) request {
+		return del("/v1/admin/users/" + c.e.spareUser + "/connections/" + c.connection(false))
+	}},
+	"listMyConnections": {own: signedIn, build: func(*mctx) request { return get("/v1/me/connections") }},
+	"startMyConnection": {own: signedIn, build: func(c *mctx) request {
+		return post("/v1/me/connections/start", map[string]any{"providerId": c.e.provider, "returnTo": "/settings/connections"})
+	}},
+	"revokeMyConnection": {own: signedIn, build: func(c *mctx) request { return del("/v1/me/connections/" + c.connection(true)) }},
+	"getConnectRequest":  {own: signedIn, build: func(c *mctx) request { return get("/v1/connect/requests/" + c.connectRequest()) }},
+	"setTeamMcpCapabilityRequirement": {scope: scopeTeam, own: editors, build: func(c *mctx) request {
+		srv, capID := c.serverCapability()
+		return request{method: "PUT", path: c.team("/mcp-servers/" + srv + "/capabilities/" + capID + "/requirement"),
+			body: map[string]any{"mode": "none"}, headers: rev1}
+	}},
 }

@@ -32,7 +32,14 @@ func (s *Service) ListCatalog(ctx context.Context, _ authz.Actor, p ListParams) 
 // CatalogServer is a published server with its approved capabilities.
 type CatalogServer struct {
 	View         ServerView
-	Capabilities []dbgen.McpCapability
+	Capabilities []CatalogCapability
+}
+
+// CatalogCapability is an approved capability with its effective
+// user-authorization requirement (nil: none).
+type CatalogCapability struct {
+	Capability dbgen.McpCapability
+	Requires   *Requirement
 }
 
 // GetCatalog returns a published, enabled server of an active team; any
@@ -49,5 +56,13 @@ func (s *Service) GetCatalog(ctx context.Context, _ authz.Actor, id uuid.UUID) (
 	if err != nil {
 		return CatalogServer{}, err
 	}
-	return CatalogServer{View: v, Capabilities: caps}, nil
+	ps, err := LoadProviders(ctx, s.q)
+	if err != nil {
+		return CatalogServer{}, err
+	}
+	out := CatalogServer{View: v, Capabilities: make([]CatalogCapability, len(caps))}
+	for i, c := range caps {
+		out.Capabilities[i] = CatalogCapability{Capability: c, Requires: EffectiveFor(v.Server, c, ps)}
+	}
+	return out, nil
 }

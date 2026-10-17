@@ -84,6 +84,11 @@ type Target struct {
 	// on forwarded calls (empty for discovery and health checks). The
 	// gateway never forwards a client's own credential.
 	IdentityHeader, IdentityValue string
+	// Provider and ProviderToken are a person's delegated credential (the
+	// auth provider's slug and the bare access token), sent in
+	// MCP-Gateway-Provider and MCP-Gateway-Provider-Token only on forwarded
+	// calls whose capability requires that provider (decision 27).
+	Provider, ProviderToken string
 	// Timeout bounds the whole exchange (connect and every list page).
 	Timeout time.Duration
 }
@@ -406,6 +411,9 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 func (t Target) safe(msg string) string {
 	if t.IdentityValue != "" {
 		msg = strings.ReplaceAll(msg, t.IdentityValue, "[redacted]")
+	}
+	if t.ProviderToken != "" {
+		msg = strings.ReplaceAll(msg, t.ProviderToken, "[redacted]")
 	}
 	return SafeMessage(msg, t.HeaderValue)
 }

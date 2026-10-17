@@ -54,6 +54,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
+	"github.com/ncecere/open-mcp-gateway/internal/providers"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
@@ -95,6 +96,15 @@ const (
 	// codeRefused is the implementation-defined code of HTTP-level refusals
 	// (no credential, unknown gateway).
 	codeRefused = -32001
+	// codeDenied is the implementation-defined code of a call refused with a
+	// reason the caller may know (data.reason): a service account calling a
+	// capability that needs a person's account, a turned-off auth provider,
+	// or a provider that can't be reached.
+	codeDenied = -32010
+	// codeURLElicitationRequired is MCP 2025-11-25's
+	// URLElicitationRequiredError: the person must open a URL (connect an
+	// account) and try again.
+	codeURLElicitationRequired = -32042
 )
 
 // Methods.
@@ -126,9 +136,12 @@ type Handler struct {
 	ServiceAccounts *serviceaccounts.Service
 	Identity        *identity.Service
 	Registry        *registry.Service
-	Pool            *pgxpool.Pool
-	AppURL          string
-	Log             *slog.Logger
+	// Providers supplies people's delegated credentials for capabilities
+	// that require an auth provider (nil: such calls are refused).
+	Providers *providers.Service
+	Pool      *pgxpool.Pool
+	AppURL    string
+	Log       *slog.Logger
 }
 
 func (h *Handler) log() *slog.Logger {
@@ -151,6 +164,7 @@ type message struct {
 type rpcError struct {
 	Code    int64  `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 type response struct {
@@ -523,6 +537,10 @@ func (rc *request) reply(result any) int64 {
 
 func (rc *request) fail(code int64, msg string) int64 {
 	return writeRPC(rc.w, http.StatusOK, rc.msg.ID, nil, &rpcError{Code: code, Message: msg})
+}
+
+func (rc *request) failData(code int64, msg string, data any) int64 {
+	return writeRPC(rc.w, http.StatusOK, rc.msg.ID, nil, &rpcError{Code: code, Message: msg, Data: data})
 }
 
 func (rc *request) dispatch() {

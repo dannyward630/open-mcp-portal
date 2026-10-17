@@ -1,7 +1,8 @@
 /*
  * A server in the catalog (/catalog/$serverId): who runs it, its health and
- * its approved capabilities grouped by kind, each with its definition. A
- * changed capability waits for approval and isn't listed here.
+ * its approved capabilities grouped by kind, each with its definition and
+ * the account it needs ("Needs GitHub (repo)"). A changed capability waits
+ * for approval and isn't listed here.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -9,6 +10,8 @@ import { ListTree, Server } from "lucide-react";
 import { catalogServerQuery } from "../../api/queries";
 import { isNotFound, NotFoundState } from "../../components/not-found";
 import { PageSkeleton } from "../../components/page-skeleton";
+import { serviceAccountsCant } from "../../components/providers/labels";
+import { RequiresBadge } from "../../components/providers/requires";
 import { HealthBadge } from "../../components/servers/badges";
 import { CapabilityItem } from "../../components/servers/capability-item";
 import { countsText, kindOrder, kindTitle, untrustedText } from "../../components/servers/labels";
@@ -73,7 +76,7 @@ export function CatalogServerPage() {
                 <Card key={k} title={`${kindTitle(k)} (${items.length})`}>
                   <ul className={m.capList} aria-label={kindTitle(k)}>
                     {items.map((c) => (
-                      <CapabilityItem key={c.id} cap={c} />
+                      <CapabilityItem key={c.id} cap={c} badges={c.requires ? <RequiresBadge req={c.requires} note={serviceAccountsCant} /> : undefined} />
                     ))}
                   </ul>
                 </Card>

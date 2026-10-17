@@ -28,6 +28,8 @@ export const terms = {
   trustedClients: "Trusted clients",
   serviceAccounts: "Service accounts",
   calls: "Calls",
+  authProviders: "Auth providers",
+  myConnections: "My connections",
 } as const;
 
 /** A switchable object's state. */

@@ -1,3 +1,4 @@
-/* The account pages, loaded as one chunk: Profile and API keys, from the account menu. */
+/* The account pages, loaded as one chunk: Profile, API keys and My connections, from the account menu. */
 export { ProfilePage } from "./profile-page";
 export { ApiKeysPage } from "./api-keys";
+export { MyConnectionsPage } from "./connections-page";

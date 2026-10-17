@@ -133,6 +133,36 @@ export const serviceAccountQuery = (team: string, serviceAccountId: string) =>
     queryFn: async () => unwrap(await api.GET("/v1/teams/{team}/service-accounts/{serviceAccountId}", { params: { path: { team, serviceAccountId } } })),
   });
 
+/* ---------------- auth providers and connected accounts (docs/phase5-delegated-credentials.md) ---------------- */
+
+/** The query key prefix of the auth providers in Admin (the list, records and presets). */
+export const adminAuthProvidersKey = ["admin", "auth-providers"];
+
+/** One auth provider with its settings (platform admins and auditors; the record page and its breadcrumb). */
+export const adminAuthProviderQuery = (providerId: string) =>
+  queryOptions({
+    queryKey: [...adminAuthProvidersKey, providerId],
+    queryFn: async () => unwrap(await api.GET("/v1/admin/auth-providers/{providerId}", { params: { path: { providerId } } })),
+  });
+
+/** The enabled providers anyone signed in can pick (a server's requirement, Connect an account). */
+export const authProvidersQuery = () =>
+  queryOptions({
+    queryKey: ["auth-providers"],
+    queryFn: async () => unwrap(await api.GET("/v1/auth-providers")),
+    staleTime: 60_000,
+  });
+
+/** The query key of the person's connected accounts. */
+export const myConnectionsKey = ["my", "connections"];
+
+/** The person's connected accounts (never tokens). */
+export const myConnectionsQuery = () =>
+  queryOptions({
+    queryKey: myConnectionsKey,
+    queryFn: async () => unwrap(await api.GET("/v1/me/connections")),
+  });
+
 /** The person's API keys. */
 export const myApiKeysQuery = () =>
   queryOptions({

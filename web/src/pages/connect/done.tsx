@@ -1,0 +1,117 @@
+/*
+ * Where the browser lands after connecting (/connect/done?provider=…&result=…):
+ * the callback (a server route) sends it here with what happened. connected:
+ * go back to the AI client and run the tool again. missing_scopes: connected,
+ * but the provider didn't grant everything (the scopes it left out, one
+ * ?missing= each, or space- or comma-separated), so the tool may ask again. denied:
+ * the person said no at the provider. expired and wrong_person: the attempt
+ * can't finish (a state older than 10 minutes, or another browser session).
+ * Anything else: a generic failure. The page only reads the address: it
+ * never starts anything, and works whether or not the person is signed in.
+ */
+import { useQuery } from "@tanstack/react-query";
+import { Link, useSearch } from "@tanstack/react-router";
+import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
+import { useEffect, useId } from "react";
+import { authProvidersQuery } from "../../api/queries";
+import { presetLabels } from "../../components/providers/labels";
+import { useInstance, useMe } from "../../session";
+import { Card, CardBody } from "@/components/ui/card/card";
+import { Stack } from "@/components/ui/layout/layout";
+import { TextLink } from "@/components/ui/text-link/text-link";
+import styles from "../oauth/consent.module.css";
+import c from "./connect.module.css";
+
+export type ConnectResult = "connected" | "missing_scopes" | "denied" | "expired" | "wrong_person" | "error";
+
+const results: ConnectResult[] = ["connected", "missing_scopes", "denied", "expired", "wrong_person", "error"];
+
+/** The result's words: a title, what to do next, and its tone. */
+export function resultText(result: ConnectResult, provider: string): { title: string; text: string; tone: "success" | "warning" | "danger" } {
+  switch (result) {
+    case "connected":
+      return { tone: "success", title: `Connected to ${provider}`, text: "Go back to your AI client and run the tool again. You can close this page." };
+    case "missing_scopes":
+      return {
+        tone: "warning",
+        title: `Connected, but ${provider} didn't allow everything`,
+        text: "The tool may ask again. Run it again; if it asks once more, allow everything it asks for at the provider. If the provider doesn't offer one of these, tell the server's team.",
+      };
+    case "denied":
+      return { tone: "danger", title: "Not connected", text: `Access wasn't allowed at ${provider}, so nothing was connected. To try again, run the tool again and open its new link.` };
+    case "expired":
+      return { tone: "danger", title: "This attempt expired", text: "Connecting has to finish within 10 minutes. Run the tool again and open its new link." };
+    case "wrong_person":
+      return {
+        tone: "danger",
+        title: "Sign in as the person who started connecting",
+        text: "This browser is signed in with another account than the one that started connecting, so nothing was connected. Sign in as yourself, then run the tool again.",
+      };
+    default:
+      return { tone: "danger", title: "Couldn't connect", text: "Something went wrong while connecting, and nothing was changed. Run the tool again; if it keeps failing, ask a platform admin to check the provider's settings." };
+  }
+}
+
+const icons = { success: CircleCheck, warning: CircleAlert, danger: CircleX };
+
+/** The scopes the provider left out (?missing=, repeated or split on spaces and commas). */
+export const missingScopes = (v: unknown): string[] =>
+  Array.isArray(v) ? [...new Set(v.flatMap(missingScopes))] : typeof v === "string" ? v.split(/[\s,]+/).filter(Boolean) : [];
+
+export function ConnectDonePage() {
+  const instance = useInstance();
+  const search = useSearch({ from: "/connect/done" });
+  const slug = typeof search.provider === "string" ? search.provider : "";
+  const result: ConnectResult = results.includes(search.result as ConnectResult) ? (search.result as ConnectResult) : "error";
+  const missing = result === "missing_scopes" ? missingScopes(search.missing) : [];
+  const me = useMe();
+  const signedIn = Boolean(me.data);
+  // The provider's name for someone signed in; otherwise the preset's, or the slug as given.
+  const providers = useQuery({ ...authProvidersQuery(), enabled: signedIn && Boolean(slug) });
+  const name = providers.data?.find((p) => p.slug === slug)?.name ?? presetLabels[slug as keyof typeof presetLabels] ?? (slug || "the provider");
+  const { title, text, tone } = resultText(result, name);
+  const Icon = icons[tone];
+  const titleId = useId();
+  useEffect(() => {
+    document.title = `${title} · ${instance.name}`;
+  }, [title, instance.name]);
+  return (
+    <main className={styles.page} aria-labelledby={titleId}>
+      <div className={styles.column}>
+        <p className={styles.instance}>{instance.name}</p>
+        <Card>
+          <CardBody>
+            <Stack gap={4}>
+              <div className={c.result} data-tone={tone}>
+                <Icon aria-hidden />
+                <h1 id={titleId} className={styles.title}>
+                  {title}
+                </h1>
+              </div>
+              <p className={styles.muted}>{text}</p>
+              {missing.length > 0 && (
+                <section aria-labelledby={`${titleId}-missing`}>
+                  <h2 id={`${titleId}-missing`} className={styles.heading}>
+                    Not allowed
+                  </h2>
+                  <ul className={c.scopes}>
+                    {missing.map((s) => (
+                      <li key={s} className={c.scope}>
+                        <span className={c.scopeName}>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {signedIn && (result === "connected" || result === "missing_scopes") && (
+                <p className={styles.muted}>
+                  See or disconnect it in <TextLink render={<Link to="/settings/connections" />}>Account › My connections</TextLink>.
+                </p>
+              )}
+            </Stack>
+          </CardBody>
+        </Card>
+      </div>
+    </main>
+  );
+}

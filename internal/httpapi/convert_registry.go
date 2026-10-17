@@ -61,8 +61,22 @@ func toAPIServer(v registry.ServerView) apitypes.McpServer {
 		PublishReviewedAt: s.PublishReviewedAt, PublishReviewedByName: nonEmpty(v.ReviewedByName), PublishReviewNote: s.PublishReviewNote,
 		Counts: toAPICounts(v.Counts), PendingChanges: v.PendingChanges, Health: toAPIHealth(v.Health, true),
 		RefreshedAt: s.RefreshedAt, LastRefreshError: s.LastRefreshError,
-		Revision: s.Revision, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+		Requirement: toAPIServerRequirement(v.Requirement),
+		Revision:    s.Revision, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
+}
+
+// toAPIOverride is a capability's requirement override.
+func toAPIOverride(c dbgen.McpCapability) apitypes.CapabilityRequirementOverride {
+	out := apitypes.CapabilityRequirementOverride{Mode: apitypes.CapabilityRequirementOverrideMode(c.RequirementMode)}
+	if out.Mode == "" {
+		out.Mode = apitypes.CapabilityRequirementOverrideModeInherit
+	}
+	if out.Mode == apitypes.CapabilityRequirementOverrideModeScopes {
+		scopes := nonNilStrings(c.RequirementScopes)
+		out.Scopes = &scopes
+	}
+	return out
 }
 
 // definitionMap decodes a stored definition, keeping numbers exactly.
@@ -81,6 +95,7 @@ func toAPICapability(c registry.CapabilityView) apitypes.McpCapability {
 		Description: cp.Description, Definition: definitionMap(cp.Definition), Fingerprint: cp.Fingerprint,
 		Approved: c.Approved(), Changed: c.Changed(),
 		FirstSeenAt: cp.FirstSeenAt, LastSeenAt: cp.LastSeenAt, GoneAt: cp.GoneAt,
+		RequirementOverride: toAPIOverride(cp), Requires: toAPIRequirement(c.Requires, nil),
 	}
 	if cp.ApprovedFingerprint != nil {
 		out.ApprovedAt, out.ApprovedByName = cp.ApprovedAt, nonEmpty(c.ApprovedByName)
@@ -139,9 +154,10 @@ func toAPICatalogServer(v registry.ServerView) apitypes.CatalogServer {
 	return out
 }
 
-func toAPICatalogCapability(c dbgen.McpCapability) apitypes.CatalogCapability {
+func toAPICatalogCapability(cc registry.CatalogCapability) apitypes.CatalogCapability {
+	c := cc.Capability
 	return apitypes.CatalogCapability{Id: c.ID, Kind: apitypes.CapabilityKind(c.Kind), Name: c.Name, Title: c.Title,
-		Description: c.Description, Definition: definitionMap(c.Definition)}
+		Description: c.Description, Definition: definitionMap(c.Definition), Requires: toAPIRequirement(cc.Requires, nil)}
 }
 
 func toAPITeamPublishing(p registry.TeamPublishing) apitypes.TeamPublishing {

@@ -16,7 +16,7 @@ K8S_TOOLS   := $(CURDIR)/bin/k8s-tools
 KUSTOMIZE   := $(K8S_TOOLS)/kustomize-$(KUSTOMIZE_VERSION)/kustomize
 KUBECONFORM := $(K8S_TOOLS)/kubeconform-$(KUBECONFORM_VERSION)/kubeconform
 
-.PHONY: dev-seed help deps-up deps-down generate check-generated build run migrate fake-mcp test test-integration lint fmt web web-test web-dev docker demo demo-down k8s-validate
+.PHONY: dev-seed help deps-up deps-down generate check-generated build run migrate fake-mcp fake-oauth test test-integration lint fmt web web-test web-dev docker demo demo-down k8s-validate
 
 help: ## Show targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -54,6 +54,9 @@ dev-seed: ## Seed a local install (make run + make fake-mcp): team demo, a publi
 
 fake-mcp: ## Run a fake MCP server on http://127.0.0.1:8091/mcp (FAKEMCP_DESCRIBE='tool=text' changes a description)
 	$(GO) run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/jwks.json
+
+fake-oauth: ## Run a fake OAuth provider on http://127.0.0.1:8092 for delegated credentials (client fake-client)
+	$(GO) run ./cmd/fakeoauth
 
 test: ## All Go tests; integration tests skip when Postgres is unreachable
 	$(GO) test -count=1 ./...

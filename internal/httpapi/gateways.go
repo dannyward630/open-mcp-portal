@@ -14,6 +14,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-gateway/internal/providers"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 )
 
@@ -455,9 +456,18 @@ func (a *api) getMyGateway(w http.ResponseWriter, r *http.Request) {
 	if failed(w, r, err) {
 		return
 	}
+	granted, err := a.Providers.ActiveScopes(r.Context(), id.User.ID)
+	if failed(w, r, err) {
+		return
+	}
 	out := apitypes.MyGatewayDetail{Gateway: a.toAPIMyGateway(m), Capabilities: make([]apitypes.GatewayCapability, len(offers))}
 	for i, o := range offers {
 		out.Capabilities[i] = toAPIGatewayCapability(o.Selected)
+		if req := o.Requires; req != nil {
+			scopes, ok := granted[req.Provider.ID]
+			connected := ok && req.Provider.Enabled && providers.Covers(scopes, req.Scopes)
+			out.Capabilities[i].Requires = toAPIRequirement(req, &connected)
+		}
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
@@ -521,7 +531,7 @@ func callFilter(w http.ResponseWriter, r *http.Request) (calls.Filter, int32, bo
 	}
 	if v := q.Get("outcome"); v != "" {
 		if !calls.ValidOutcome(v) {
-			httpx.Error(w, http.StatusBadRequest, "invalid_outcome", "outcome must be ok, tool_error, denied, upstream_error, timeout, too_large or bad_request")
+			httpx.Error(w, http.StatusBadRequest, "invalid_outcome", "outcome must be ok, tool_error, denied, upstream_error, timeout, too_large, bad_request or needs_authorization")
 			return f, 0, false
 		}
 		f.Outcome = &v

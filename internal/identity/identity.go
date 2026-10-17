@@ -74,6 +74,11 @@ const rotationLockKey = "omg.signing-key-rotation"
 const (
 	HeaderAuthorization = "Authorization"
 	HeaderIdentity      = "MCP-Gateway-Identity"
+	// HeaderProvider and HeaderProviderToken carry a person's delegated
+	// credential on calls whose capability requires an auth provider
+	// (decision 27): the provider's slug, and the bare access token.
+	HeaderProvider      = "MCP-Gateway-Provider"
+	HeaderProviderToken = "MCP-Gateway-Provider-Token"
 )
 
 // Header is where a server receives the token: Authorization (as a Bearer
@@ -106,6 +111,9 @@ type Claims struct {
 	// a Client ID Metadata Document client (its host vouches for the name),
 	// false for one that registered itself (the name is its own claim).
 	ClientVerified *bool
+	// Provider is the auth provider's slug when the call carries the
+	// person's provider token (MCP-Gateway-Provider-Token); empty otherwise.
+	Provider string
 }
 
 // Principal types (claim principal_type).
@@ -127,6 +135,8 @@ type tokenClaims struct {
 	Client        string   `json:"client,omitempty"`
 	// ClientVerified: only with an OAuth client's name in client.
 	ClientVerified *bool `json:"client_verified,omitempty"`
+	// Provider: only when the call carries a provider token.
+	Provider string `json:"provider,omitempty"`
 }
 
 // Key states.
@@ -197,7 +207,7 @@ func (s *Service) Sign(ctx context.Context, c Claims) (string, error) {
 	if pt == "" {
 		pt = PrincipalUser
 	}
-	priv := tokenClaims{PrincipalType: pt, Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Resource: c.Resource, Client: c.Client, ClientVerified: c.ClientVerified}
+	priv := tokenClaims{PrincipalType: pt, Email: c.Email, Name: c.Name, Teams: teams, Gateway: c.Gateway, Tool: c.Tool, Prompt: c.Prompt, Resource: c.Resource, Client: c.Client, ClientVerified: c.ClientVerified, Provider: c.Provider}
 	return jwt.Signed(k.signer).Claims(reg).Claims(priv).Serialize()
 }
 

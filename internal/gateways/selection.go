@@ -104,6 +104,9 @@ type Selected struct {
 	ExposedName string
 	Available   bool
 	Reason      string // when not Available
+	// Requires is the capability's effective user-authorization
+	// requirement (nil: calls get no provider token).
+	Requires *registry.Requirement
 }
 
 // Selection is a gateway's selection with its revision.
@@ -134,12 +137,17 @@ func selection(ctx context.Context, q *dbgen.Queries, g dbgen.Gateway) ([]Select
 	if err != nil {
 		return nil, err
 	}
+	ps, err := registry.LoadProviders(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Selected, len(rows))
 	for i, r := range rows {
 		ok, reason := Availability(g, r.McpCapability, r.McpServer,
 			Archived{GatewayTeam: ownArchived, ServerTeam: r.TeamStatus != teams.StatusActive})
 		out[i] = Selected{Capability: r.McpCapability, Server: r.McpServer, TeamSlug: r.TeamSlug, TeamName: r.TeamName,
-			MinRole: r.MinTeamRole, ExposedName: Exposed(r.McpCapability.Kind, r.McpServer.Slug, r.McpCapability.Name), Available: ok, Reason: reason}
+			MinRole: r.MinTeamRole, ExposedName: Exposed(r.McpCapability.Kind, r.McpServer.Slug, r.McpCapability.Name), Available: ok, Reason: reason,
+			Requires: registry.EffectiveFor(r.McpServer, r.McpCapability, ps)}
 	}
 	return out, nil
 }
@@ -149,6 +157,8 @@ type Option struct {
 	dbgen.ListGatewayOptionsRow
 	Source      string
 	ExposedName string
+	// Requires is the effective user-authorization requirement (nil: none).
+	Requires *registry.Requirement
 }
 
 func checkKind(kind *string) error {
@@ -205,13 +215,18 @@ func options(ctx context.Context, q *dbgen.Queries, teamID uuid.UUID, p OptionPa
 	if err != nil {
 		return nil, err
 	}
+	ps, err := registry.LoadProviders(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Option, len(rows))
 	for i, r := range rows {
 		src := SourceCatalog
 		if teamID != uuid.Nil && r.ServerTeamID == teamID {
 			src = SourceTeam
 		}
-		out[i] = Option{ListGatewayOptionsRow: r, Source: src, ExposedName: Exposed(r.Kind, r.ServerSlug, r.Name)}
+		out[i] = Option{ListGatewayOptionsRow: r, Source: src, ExposedName: Exposed(r.Kind, r.ServerSlug, r.Name),
+			Requires: registry.Effective(r.ServerAuthProviderID, r.ServerAuthScopes, r.RequirementMode, r.RequirementScopes, ps)}
 	}
 	return out, nil
 }

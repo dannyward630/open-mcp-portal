@@ -174,6 +174,8 @@ export const capability = (extra: Partial<Schemas["McpCapability"]> = {}): Schem
   firstSeenAt: "2026-10-01T10:00:00Z",
   lastSeenAt: "2026-10-16T07:00:00Z",
   goneAt: null,
+  requirementOverride: { mode: "inherit" },
+  requires: null,
   ...extra,
 });
 
@@ -254,6 +256,7 @@ export const gatewayCapability = (extra: Partial<Schemas["GatewayCapability"]> =
   description: "Returns the status of a service.",
   minRole: null,
   available: true,
+  requires: null,
   ...extra,
 });
 
@@ -274,6 +277,7 @@ export const gatewayOption = (extra: Partial<Schemas["GatewayOption"]> = {}): Sc
   exposedName: "service-status__get_status",
   title: "Get status",
   description: "Returns the status of a service.",
+  requires: null,
   ...extra,
 });
 

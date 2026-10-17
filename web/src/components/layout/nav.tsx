@@ -14,7 +14,7 @@
  *   3. add its breadcrumb in breadcrumbs.tsx.
  * Only list pages that exist: no placeholders or "coming soon" links.
  */
-import { Activity, BadgeCheck, Bot, FileClock, Home, LayoutDashboard, Library, Network, Server, Settings, ShieldCheck, Users, UsersRound, Waypoints } from "lucide-react";
+import { Activity, BadgeCheck, Bot, FileClock, Home, KeySquare, LayoutDashboard, Library, Network, Server, Settings, ShieldCheck, Users, UsersRound, Waypoints } from "lucide-react";
 import { type ReactNode } from "react";
 import { terms } from "../../lib/terms";
 import { type Me } from "../../session";
@@ -127,6 +127,7 @@ export type AdminPath =
   | "/admin/networks"
   | "/admin/gateways"
   | "/admin/trusted-clients"
+  | "/admin/auth-providers"
   | "/admin/audit"
   | "/admin/calls";
 
@@ -159,6 +160,7 @@ export const adminSections: { label?: string; defaultOpen?: boolean; items: Admi
     items: [
       { to: "/admin/gateways", label: terms.gateways, icon: icon(Network) },
       { to: "/admin/trusted-clients", label: terms.trustedClients, icon: icon(ShieldCheck) },
+      { to: "/admin/auth-providers", label: terms.authProviders, icon: icon(KeySquare) },
     ],
   },
   {
@@ -188,6 +190,7 @@ export const adminKeywords: Partial<Record<AdminPath, string[]>> = {
   "/admin/networks": ["internal", "network", "cidr", "allowlist", "private address", "host", "http", "ssrf", "egress"],
   "/admin/gateways": ["gateway", "platform gateway", "grant", "grants", "access", "sso group", "team gateway", "disable"],
   "/admin/trusted-clients": ["oauth", "trusted", "client", "clients", "consent", "skip consent", "allowlist", "claude", "vs code", "metadata document", "cimd"],
+  "/admin/auth-providers": ["oauth", "provider", "providers", "github", "google", "microsoft", "atlassian", "slack", "gitlab", "delegated", "token", "client secret", "redirect uri", "connections", "scopes"],
   "/admin/audit": ["audit log", "history", "changes", "who changed", "sign-ins", "export", "csv"],
   "/admin/calls": ["calls", "call log", "tool calls", "usage", "activity", "denied", "errors", "latency"],
 };

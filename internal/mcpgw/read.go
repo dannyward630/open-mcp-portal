@@ -82,6 +82,9 @@ func (rc *request) read() {
 		if target != nil {
 			o := target.offer
 			c.ErrorClass, c.Server, c.CapabilityID = o.Denied, &o.Server, o.Capability.ID
+			if o.Requires != nil {
+				c.ProviderSlug = o.Requires.Provider.Slug
+			}
 		}
 		rc.record(c, n)
 		return
@@ -95,17 +98,22 @@ func (rc *request) forwardRead(exposed string, t readTarget) {
 	ctx := rc.r.Context()
 	o := t.offer
 	rec := calls.Call{ExposedName: exposed, Server: &o.Server, CapabilityID: o.Capability.ID}
+	cred, ok := rc.delegated(o, &rec)
+	if !ok {
+		return
+	}
 	target, err := rc.h.Registry.Target(ctx, o.Server)
 	if err != nil {
 		rc.upstreamFailed(rec, err)
 		return
 	}
-	token, err := rc.identityToken(identityFor{resource: exposed}, o)
+	token, err := rc.identityToken(identityFor{resource: exposed}, o, cred)
 	if err != nil {
 		rc.internal(err)
 		return
 	}
 	target.IdentityHeader, target.IdentityValue = identity.Header(target.HeaderName, token)
+	withCredential(&target, cred)
 	res, _, err := rc.h.Registry.Client().ReadResource(ctx, target, t.original)
 	if err != nil {
 		rc.upstreamFailed(rec, err)

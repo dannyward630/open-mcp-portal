@@ -63,8 +63,11 @@ function platformLink(e: AuditEntry): ReactElement | null {
     case "service_account":
     case "service_account_key":
       return e.teamSlug ? serviceAccountLink(e.teamSlug, e) : null;
+    case "auth_provider":
+      return <Link to="/admin/auth-providers/$providerId" params={{ providerId: id }} />;
+    case "provider_connection":
     case "oauth_grant": {
-      // A connected app is listed on its person's admin page.
+      // A connected app or account is listed on its person's admin page.
       const userId = recorded(e, "userId");
       return userId ? <Link to="/admin/users/$userId" params={{ userId }} /> : null;
     }
