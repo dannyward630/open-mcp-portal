@@ -567,7 +567,13 @@ func isNotFound(err error) bool {
 
 func (rc *request) internal(err error) {
 	rc.outcome = "error"
-	rc.h.log().ErrorContext(rc.r.Context(), "mcp request failed", "err", err, "request_id", httpx.RequestID(rc.r.Context()))
+	if errors.Is(err, context.Canceled) && rc.r.Context().Err() != nil {
+		// The client went away (a probe that gave up, a closed session): not
+		// the gateway's failure.
+		rc.h.log().InfoContext(rc.r.Context(), "mcp request cancelled by the client", "request_id", httpx.RequestID(rc.r.Context()))
+	} else {
+		rc.h.log().ErrorContext(rc.r.Context(), "mcp request failed", "err", err, "request_id", httpx.RequestID(rc.r.Context()))
+	}
 	writeRPC(rc.w, http.StatusInternalServerError, rc.msg.ID, nil, &rpcError{Code: codeInternal, Message: "Something went wrong"})
 }
 
@@ -795,7 +801,27 @@ func listed(o gateways.Offer) (json.RawMessage, error) {
 		def["name"] = exposed
 	}
 	delete(def, "_meta")
+	if raw, ok := def["outputSchema"]; ok && !objectSchema(raw) {
+		// The MCP schema requires an outputSchema of type "object"; strict
+		// clients reject the whole list when one isn't (GitHub's server
+		// lists ["null","array"] and oneOf schemas). Without it, results
+		// still carry structuredContent, just unvalidated by the client.
+		delete(def, "outputSchema")
+	}
 	return json.Marshal(def)
+}
+
+// objectSchema reports whether a tool's outputSchema has "type": "object",
+// as the MCP schema requires.
+func objectSchema(raw json.RawMessage) bool {
+	var s struct {
+		Type json.RawMessage `json:"type"`
+	}
+	if json.Unmarshal(raw, &s) != nil {
+		return false
+	}
+	var t string
+	return json.Unmarshal(s.Type, &t) == nil && t == "object"
 }
 
 // list serves tools/list, prompts/list, resources/list or

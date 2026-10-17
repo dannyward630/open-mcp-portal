@@ -29,3 +29,18 @@ func TestScrubMeta(t *testing.T) {
 		}
 	}
 }
+
+func TestListedDropsNonObjectOutputSchema(t *testing.T) {
+	cases := map[string]bool{
+		`{"type":"object","properties":{}}`:             true,
+		`{"type":["null","array"]}`:                     false,
+		`{"type":["object","null"]}`:                    false,
+		`{"oneOf":[{"type":"null"},{"type":"object"}]}`: false,
+		`"nonsense"`: false,
+	}
+	for schema, keep := range cases {
+		if got := objectSchema(json.RawMessage(schema)); got != keep {
+			t.Errorf("objectSchema(%s) = %v, want %v", schema, got, keep)
+		}
+	}
+}
