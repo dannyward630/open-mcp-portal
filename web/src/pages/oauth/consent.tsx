@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button/button";
 import { Card, CardBody } from "@/components/ui/card/card";
 import { Stack } from "@/components/ui/layout/layout";
 import { Loading } from "@/components/ui/spinner/spinner";
+import { TextLink } from "@/components/ui/text-link/text-link";
 import { VisuallyHidden } from "@/components/ui/visually-hidden/visually-hidden";
 import styles from "./consent.module.css";
 
@@ -185,10 +186,10 @@ function ConsentBody({ consent, titleId, email, decide, leaving }: BodyProps) {
           <dd>{gateway.ownerKind === "team" ? (gateway.teamName ?? gateway.teamSlug ?? "A team") : "Platform gateway"}</dd>
           <dt>Offers you</dt>
           <dd>
-            <a href={`/gateways/${gateway.id}`} target="_blank" rel="noreferrer">
+            <TextLink href={`/gateways/${gateway.id}`} target="_blank" rel="noreferrer">
               {capabilityCount(gateway.capabilityCount)}
               <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
-            </a>
+            </TextLink>
           </dd>
         </dl>
       </section>

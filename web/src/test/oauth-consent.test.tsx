@@ -35,6 +35,8 @@ describe("OAuth consent page", () => {
     expect(gateway).toHaveTextContent("Support tools");
     expect(gateway).toHaveTextContent("Platform Tools");
     expect(within(gateway).getByRole("link", { name: /3 capabilities/ })).toHaveAttribute("href", `/gateways/${gatewayId}`);
+    // The shared text link (themed colours), not a bare anchor in the browser's default blue.
+    expect(within(gateway).getByRole("link", { name: /3 capabilities/ })).toHaveAttribute("data-tone", "default");
     expect(screen.getAllByText("127.0.0.1:53211").length).toBeGreaterThan(0);
     expect(screen.getByText("una@example.com")).toBeInTheDocument();
     // No sidebar, breadcrumbs or command palette to wander off to.

@@ -75,7 +75,10 @@ describe("sign-in page", () => {
     expect(screen.getByText("MCP servers and tools for Acme Corp teams")).toBeInTheDocument();
     expect(screen.getByText("Use your Acme Corp account to continue.")).toBeInTheDocument();
     expect(container.querySelector("img")).toHaveAttribute("src", "/brand/logo.svg");
-    expect(screen.getByRole("link", { name: /Help signing in/ })).toHaveAttribute("href", "https://help.example.com/mcp");
+    const help = screen.getByRole("link", { name: /Help signing in/ });
+    expect(help).toHaveAttribute("href", "https://help.example.com/mcp");
+    // The shared text link (themed colours), not a bare anchor in the browser's default blue.
+    expect(help).toHaveAttribute("data-tone", "default");
     expect(await axe(container)).toHaveNoViolations();
   });
 

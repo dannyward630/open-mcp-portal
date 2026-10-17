@@ -1,4 +1,6 @@
 /* Admin → Internal networks (the allowlist, its save with If-Match and confirmation, the deployment's entries, the URL checker) and the private_address refusal on a server's URL. */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
@@ -163,6 +165,17 @@ describe("Admin → Internal networks", () => {
     expect(within(addresses).getByText("10.20.0.5").closest("tr")).toHaveTextContent("Allowed host");
     expect(calls.find((c) => c.url.endsWith("/check"))?.body).toEqual({ url: "https://rebind.corp.example.com/mcp" });
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe("URL checker layout", () => {
+  // Form stacks its children in a column; the checker's form must override that, or the URL field
+  // grows to its 20rem flex basis in height and the button drops below an empty area (jsdom has no
+  // layout, so the stylesheet itself is checked).
+  it("lays the field and the button out in a row", () => {
+    const css = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "../pages/admin/networks/networks.module.css"), "utf8");
+    const rule = /\.checkForm\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/flex-direction:\s*row/);
   });
 });
 

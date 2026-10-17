@@ -7,6 +7,8 @@
 
 .checkForm {
   display: flex;
+  /* Form lays fields out in a column; the checker is one row (field, then the button). */
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-3);
