@@ -2,6 +2,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
+import g from "../components/gateways/gateways.module.css";
 import type { Schemas } from "../api/client";
 import { catalogServerId, gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOption, gatewayOptions, optionsPage, page, team } from "./fixtures";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
@@ -69,6 +70,14 @@ describe("Gateway › Capabilities", () => {
     await u.click(screen.getByRole("checkbox", { name: "wiki__search" }));
     await u.click(screen.getByRole("checkbox", { name: "service-status__restart" }));
     await u.selectOptions(screen.getByRole("combobox", { name: "Who may use service-status__restart" }), "admin");
+    // The fixed width is on a box around the select and its chevron (NativeSelect's wrapper), not on the
+    // select alone, which left the chevron at the far edge of the row.
+    const roleSelect = screen.getByRole("combobox", { name: "Who may use service-status__restart" });
+    const box = roleSelect.parentElement!.parentElement!;
+    expect(g.roleSelect).toBeTruthy();
+    expect(box).toHaveClass(g.roleSelect!);
+    expect(roleSelect).not.toHaveClass(g.roleSelect!);
+    expect(box.querySelector("svg")).not.toBeNull();
     expect(screen.getByText("3 of at most 200 selected")).toBeInTheDocument();
     await u.click(screen.getByRole("button", { name: "Save selection" }));
     await waitFor(() => expect(calls.find((c) => c.method === "PUT")).toBeDefined());

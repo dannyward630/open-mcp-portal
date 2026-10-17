@@ -112,19 +112,22 @@ function OptionRow({ option: o, role, roles, problem, onToggle, onRole }: RowPro
         {o.requires && <RequiresBadge req={o.requires} note={serviceAccountsCant} />}
         {o.serverCapturesPayloads && <CaptureBadge label="Server records contents" />}
         {roles && selected && (
-          <NativeSelect
-            size="sm"
-            className={g.roleSelect}
-            aria-label={`Who may use ${o.exposedName}`}
-            value={role === "member" ? "" : role}
-            onChange={(e) => onRole(o.capabilityId, e.target.value as TeamRole | "")}
-          >
-            {minRoleChoices.map((r) => (
-              <option key={r} value={r}>
-                {minRoleLabels[r]}
-              </option>
-            ))}
-          </NativeSelect>
+          // The width goes on a box around the select, so its chevron stays inside it (NativeSelect's own
+          // wrapper is as wide as its container).
+          <span className={g.roleSelect}>
+            <NativeSelect
+              size="sm"
+              aria-label={`Who may use ${o.exposedName}`}
+              value={role === "member" ? "" : role}
+              onChange={(e) => onRole(o.capabilityId, e.target.value as TeamRole | "")}
+            >
+              {minRoleChoices.map((r) => (
+                <option key={r} value={r}>
+                  {minRoleLabels[r]}
+                </option>
+              ))}
+            </NativeSelect>
+          </span>
         )}
       </div>
     </li>
