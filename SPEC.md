@@ -129,8 +129,9 @@ when headless), `exp` ≤ 5 minutes, `jti`. Signed ES256; keys rotate; published
 **Call record**: time, caller (user / service account / key), client, gateway, server, capability, outcome,
 error class, latency, request/response bytes; optional captured payload (truncated, redacted) with retention.
 
-**Auth provider / user token (Phase 5)**: admin-configured OAuth apps; tools declare required provider and
-scopes; missing consent returns an authorization URL; tokens encrypted at rest, refreshed by the gateway.
+**Auth provider / user token (Phase 5)**: admin-configured OAuth apps; a server (with per-capability overrides)
+declares the required provider and scopes; missing consent returns an authorization URL (JSON-RPC `-32042`); tokens
+encrypted at rest, refreshed by the gateway. See [docs/phase5-delegated-credentials.md](docs/phase5-delegated-credentials.md).
 
 ## 6. MCP endpoint behaviour
 
@@ -159,7 +160,10 @@ scopes; missing consent returns an authorization URL; tokens encrypted at rest, 
 3. **Gateways** — gateways, selections, grants, `/mcp/{slug}`, identity JWT + JWKS, call metadata.
 4. **Client auth** — OAuth authorization server for MCP clients, trusted-client consent skip, API keys,
    service accounts, "Connect" instructions in UI.
-5. **Delegated credentials** — auth providers, token vault, consent flow, "My connections".
+5. **Delegated credentials** — auth providers, token vault, consent flow, "My connections". *Designed*
+   (decisions 25–30): [docs/phase5-delegated-credentials.md](docs/phase5-delegated-credentials.md); contract in
+   `api/openapi.yaml` (tags `auth-providers`, `connections`). Missing consent returns MCP `-32042` with a
+   single-person consent link; tokens reach servers in `MCP-Gateway-Provider-Token`.
 6. **Operations** — rate limits, payload capture + retention, usage dashboards, Kubernetes manifests.
 
 ## 8. Commands

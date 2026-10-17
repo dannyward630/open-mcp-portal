@@ -1,7 +1,7 @@
 # Status and handoff
 
-Last updated: 2026-10-16 (Phase 4 QA follow-ups: service account gateways, admin service account list, team call
-lists include service accounts' calls, verified/deleted call principals, `client_verified`).
+Last updated: 2026-10-16 (Phase 5 designed: decisions 25–30, [phase5-delegated-credentials.md](phase5-delegated-credentials.md),
+contract added to `api/openapi.yaml`; before that, Phase 4 QA follow-ups).
 
 ## Where things stand
 
@@ -144,7 +144,13 @@ make test && make web-test
 
 1. Browser re-check of the Phase 4 QA follow-ups (390px service account header, Admin › Calls filter, dark error page)
    and QA of the OAuth flow with real clients (Claude Code, VS Code, Cursor) against a reachable deployment.
-2. Phase 5: auth providers, per-user token vault.
+2. Phase 5 (delegated credentials): **designed, not built.** Design in
+   [phase5-delegated-credentials.md](phase5-delegated-credentials.md), decisions 25–30 (accepted defaults; the user may
+   revise them), contract in `api/openapi.yaml` (tags `auth-providers`, `connections`; 14 new operations, plus
+   `requirement`/`requirementOverride`/`requires` fields, `needs_authorization`, `McpCall.providerSlug`). The
+   contract is ahead of the code: `TestRoutesMatchOpenAPI`, the authz-matrix classification test and
+   `make check-generated` fail until the backend serves the new routes. Build order: migration `00010`, providers and
+   requirements, runtime (`-32042`, headers, refresh), `/connect/callback`, then `make generate` and the UI.
 3. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, metrics; see [deploy.md](deploy.md)
    "Not covered yet".
 
