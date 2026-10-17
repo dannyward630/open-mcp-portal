@@ -16,20 +16,27 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/auth"
 	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
 	"github.com/ncecere/open-mcp-gateway/internal/calls"
+	"github.com/ncecere/open-mcp-gateway/internal/capture"
 	"github.com/ncecere/open-mcp-gateway/internal/config"
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
+	"github.com/ncecere/open-mcp-gateway/internal/keyrotation"
+	"github.com/ncecere/open-mcp-gateway/internal/limits"
 	"github.com/ncecere/open-mcp-gateway/internal/mcpgw"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
+	"github.com/ncecere/open-mcp-gateway/internal/observability"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
 	"github.com/ncecere/open-mcp-gateway/internal/providers"
+	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
+	"github.com/ncecere/open-mcp-gateway/internal/retention"
 	"github.com/ncecere/open-mcp-gateway/internal/secrets"
 	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/teams"
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-gateway/internal/usage"
 	"github.com/ncecere/open-mcp-gateway/web"
 )
 
@@ -81,6 +88,9 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	if err != nil {
 		return err
 	}
+	if err := stampPeppers(ctx, cfg, pool, log); err != nil {
+		return err
+	}
 	deps.Health = health
 	deps.Web, deps.WebBuilt = web.Assets()
 	if !deps.WebBuilt {
@@ -100,11 +110,100 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	go cleanupLoop(loopCtx, deps.Auth, deps.Providers, log)
 	go deps.Registry.HealthLoop(loopCtx, cfg.HealthCheckInterval, log)
 	go deps.Identity.RotationLoop(loopCtx, log)
+	go deps.Retention.Loop(loopCtx)
+	go deps.Usage.Loop(loopCtx)
+	go rateCounterLoop(loopCtx, deps.RateStore, log)
+	servers := []*http.Server{srv}
+	if cfg.MetricsAddr != "" {
+		metrics := observability.NewMetrics(pool)
+		observability.SetMaxObjects(cfg.MetricsMaxObjects)
+		go metricsObjectsLoop(loopCtx, pool, log)
+		mux := http.NewServeMux()
+		mux.Handle("GET /metrics", metrics.Handler())
+		msrv := &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second,
+			BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) }}
+		servers = append(servers, msrv)
+		go func() {
+			log.Info("metrics listening", "addr", msrv.Addr)
+			if err := msrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("metrics listener failed", "err", err)
+			}
+		}()
+	}
 	if err := serve(ctx, srv, log); err != nil {
 		return err
 	}
 	stopLoops()
-	return shutdown(cfg, log, health, srv)
+	return shutdown(cfg, log, health, servers...)
+}
+
+// stampPeppers records which pepper made key and token digests from before
+// pepper IDs (docs/phase6-operations.md "Key rotation").
+func stampPeppers(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) error {
+	p, err := peppers(cfg)
+	if err != nil {
+		return err
+	}
+	n, err := keyrotation.StampPeppers(ctx, pool, p)
+	if err != nil {
+		return fmt.Errorf("stamp key digests with their pepper: %w", err)
+	}
+	if n > 0 {
+		log.Info("key digests stamped with their pepper", "rows", n)
+	}
+	return nil
+}
+
+func peppers(cfg config.Config) (keyrotation.Peppers, error) {
+	var p keyrotation.Peppers
+	var err error
+	if p.Current, err = secrets.ParseKey(cfg.APIKeyPepper); err != nil {
+		return p, fmt.Errorf("API_KEY_PEPPER: %w", err)
+	}
+	if cfg.APIKeyPepperPrevious != "" {
+		if p.Previous, err = secrets.ParseKey(cfg.APIKeyPepperPrevious); err != nil {
+			return p, fmt.Errorf("API_KEY_PEPPER_PREVIOUS: %w", err)
+		}
+	}
+	return p, nil
+}
+
+// rateCounterLoop deletes old rate limit windows every minute (any replica;
+// deletes are idempotent).
+func rateCounterLoop(ctx context.Context, st ratelimit.Store, log *slog.Logger) {
+	pg, ok := st.(*ratelimit.PostgresStore)
+	if !ok {
+		return
+	}
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if _, err := pg.Cleanup(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("rate limit counter clean-up failed", "err", err)
+		}
+	}
+}
+
+// metricsObjectsLoop keeps the gateway, server and provider slugs used as
+// metric labels to existing objects.
+func metricsObjectsLoop(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		if err := observability.SyncObjects(ctx, pool); err != nil && ctx.Err() == nil {
+			log.Debug("metrics: reading object slugs failed", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
 
 // NewDeps builds the services the HTTP API needs (Health and Web are left
@@ -119,41 +218,100 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	// the allowlist (the deployment's entries plus the platform admins').
 	nets := registry.NewNetworks(pool, cfg.UpstreamAllowedNetworks, log)
 	client := &upstream.Client{AllowPrivate: cfg.AllowPrivateUpstreams(), Networks: nets, Log: log}
-	pepper, err := secrets.ParseKey(cfg.APIKeyPepper)
+	pep, err := peppers(cfg)
 	if err != nil {
-		return httpapi.Deps{}, fmt.Errorf("API_KEY_PEPPER: %w", err)
+		return httpapi.Deps{}, err
 	}
+	pepper := pep.Current
+	// Rate limits are counted in PostgreSQL, shared by every replica.
+	rates := ratelimit.NewPostgres(pool)
+	lims := limits.New(pool, log)
 	reg := registry.New(pool, box, client, log)
 	gws := gateways.New(pool, cfg.AppURL, log)
+	gws.Limits = lims
 	keys := apikeys.New(pool, pepper, gws)
 	sas := serviceaccounts.New(pool, pepper, gws)
+	if pep.Previous != nil {
+		keys.SetPreviousPepper(pep.Previous)
+		sas.SetPreviousPepper(pep.Previous)
+	}
 	// Client metadata documents are fetched behind the same address guard
 	// as MCP servers.
-	as := oauth.New(pool, gws, oauth.Config{Issuer: cfg.AppURL, Pepper: pepper, Upstream: client})
+	as := oauth.New(pool, gws, oauth.Config{Issuer: cfg.AppURL, Pepper: pepper, PepperPrevious: pep.Previous, Upstream: client})
 	as.Log = log
 	ids := identity.New(pool, box, cfg.AppURL, log)
 	ids.Prepublish = cfg.SigningKeyPrepublish
 	// Provider endpoints are dialled behind the same address guard as MCP
 	// servers.
 	provs := providers.New(pool, box, client, cfg.AppURL, log)
+	callSvc := calls.New(pool)
+	ret := retention.New(pool, retention.Config{Interval: cfg.RetentionInterval, BatchSize: int32(cfg.RetentionBatchSize)}, log)
+	ret.Hooks = []retention.Hook{provs.Cleanup, rates.Cleanup}
+	ret.Observe = observeRetention
+	capt := capture.New(pool, box, callSvc, ret, log)
+	capt.Observe = capture.Observer{
+		Captured: observability.PayloadCaptures.Inc,
+		Redactions: func(rule string, n int) {
+			observability.PayloadRedactions.WithLabelValues(redactionLabel(rule)).Add(float64(n))
+		},
+		Failed: observability.PayloadCaptureErrors.Inc,
+	}
+	use := usage.New(pool, log)
+	use.Observe = func(leader bool, success time.Time) {
+		observability.SetLeader("usage_rollup", leader)
+		if leader {
+			observability.UsageRollupLastSuccess.Set(float64(success.Unix()))
+		}
+	}
+	authSvc := auth.NewService(cfg, pool, log)
+	authSvc.SetRateStore(rates)
 	return httpapi.Deps{
 		Config:          cfg,
 		Pool:            pool,
 		Log:             log,
-		Auth:            auth.NewService(cfg, pool, log),
+		Auth:            authSvc,
 		Teams:           teams.NewService(pool),
 		Platform:        platform.NewService(pool),
 		Registry:        reg,
 		Gateways:        gws,
 		APIKeys:         keys,
 		Identity:        ids,
-		Calls:           calls.New(pool),
+		Calls:           callSvc,
+		Limits:          lims,
+		Capture:         capt,
+		Retention:       ret,
+		Usage:           use,
+		RateStore:       rates,
 		OAuth:           as,
 		ServiceAccounts: sas,
 		Providers:       provs,
 		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, OAuth: as, ServiceAccounts: sas, Identity: ids, Registry: reg, Providers: provs,
-			Pool: pool, AppURL: cfg.AppURL, Log: log},
+			Limits: lims, RateStore: rates, Capture: capt, Pool: pool, AppURL: cfg.AppURL, Log: log},
 	}, nil
+}
+
+// observeRetention records a retention run's metrics.
+func observeRetention(run retention.Run, leader bool) {
+	observability.SetLeader("retention", leader)
+	if !leader {
+		return
+	}
+	for _, k := range retention.Kinds {
+		if n := run.Deleted[k.Kind]; n > 0 {
+			observability.RetentionDeleted.WithLabelValues(k.Kind).Add(float64(n))
+		}
+		if _, failed := run.Errors[k.Kind]; !failed {
+			observability.RetentionLastSuccess.WithLabelValues(k.Kind).Set(float64(run.FinishedAt.Unix()))
+		}
+	}
+}
+
+// redactionLabel bounds the rule label: admin patterns are one label.
+func redactionLabel(rule string) string {
+	if len(rule) > 8 && rule[:8] == "pattern:" {
+		return "pattern"
+	}
+	return rule
 }
 
 // secretBox opens ENCRYPTION_KEY (and ENCRYPTION_KEY_PREVIOUS).

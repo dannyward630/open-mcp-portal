@@ -1,11 +1,12 @@
 /*
- * Admin → Teams › one team: a DetailPage with Overview · Members · Settings.
+ * Admin → Teams › one team: a DetailPage with Overview · Members · Limits &
+ * retention (the team's overrides) · Settings.
  * Archive is a menu action and a Danger zone entry, never a solid red header
  * button.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { Archive, ArchiveRestore, ExternalLink, LayoutDashboard, Settings2, UsersRound } from "lucide-react";
+import { Archive, ArchiveRestore, ExternalLink, Gauge, LayoutDashboard, Settings2, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { api, ifMatch, unwrap, type Schemas } from "@/api/client";
 import { adminTeamQuery } from "@/api/queries";
@@ -16,9 +17,11 @@ import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { AlertDialog } from "@/components/ui/dialog/dialog";
 import { toast } from "@/components/ui/toast/toast";
 import { plural } from "@/lib/format";
+import { terms } from "@/lib/terms";
 import { adminTeamTabs } from "@/lib/tabs";
 import { useIsPlatformAdmin } from "../hooks";
 import { TeamStatusBadge } from "./common";
+import { TeamLimitsTab } from "./team-limits";
 import { TeamMembersTab } from "./team-members";
 import { TeamOverviewTab } from "./team-overview";
 import { TeamSettingsTab } from "./team-settings";
@@ -75,6 +78,7 @@ export function AdminTeamPage() {
         tabs={[
           { value: "overview", label: "Overview", icon: <LayoutDashboard aria-hidden />, content: <TeamOverviewTab summary={sum} /> },
           { value: "members", label: "Members", icon: <UsersRound aria-hidden />, count: sum.memberCount, content: <TeamMembersTab team={team} isAdmin={isAdmin} /> },
+          { value: "limits", label: terms.limitsAndRetention, icon: <Gauge aria-hidden />, content: <TeamLimitsTab team={t.slug} name={t.name} isAdmin={isAdmin} /> },
           {
             value: "settings",
             label: "Settings",

@@ -1751,6 +1751,322 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/settings/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rate limits on /mcp/{slug} (platform admins and auditors)
+         * @description The platform default and, for keys teams can override, the ceiling of each limit (docs/phase6-operations.md "Rate limits"). Counters are shared by every replica (PostgreSQL, fixed one-minute windows).
+         */
+        get: operations["adminGetLimitSettings"];
+        /**
+         * Change rate limit defaults and ceilings (platform admins)
+         * @description Each listed key is replaced; keys not listed keep their values. 422 invalid_limit with details.key and details.reason (default_above_ceiling, not_overridable when a ceiling is set on a key teams can't override, duplicate). Lowering a ceiling keeps team overrides and gateway values above it; they are capped at runtime (cappedTeams, cappedGateways). Replicas apply a change within 30 seconds. Audited as settings.limits_update.
+         */
+        put: operations["adminUpdateLimitSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/teams/{team}/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /** A team's rate limit overrides and effective limits (platform admins and auditors) */
+        get: operations["adminGetTeamLimits"];
+        /**
+         * Set or clear a team's rate limit overrides (platform admins); If-Match is the team's revision
+         * @description Each listed key is replaced (value null inherits the platform default); keys not listed are kept. Only service_account_per_minute and gateway_per_minute can be overridden. 422 invalid_limit with details.key and details.reason (not_overridable, above_ceiling, duplicate). Audited as team.limits_update.
+         */
+        put: operations["adminUpdateTeamLimits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The rate limits that apply to the team's service accounts and gateways (members and above; platform staff read any team)
+         * @description Read-only; platform admins set overrides. A gateway's own limit is on the gateway (Gateway.rateLimitPerMinute) and may not exceed the ceiling.
+         */
+        get: operations["getTeamLimits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Payload capture settings - built-in redaction rules and the admins' extra patterns (platform admins and auditors) */
+        get: operations["adminGetCaptureSettings"];
+        /**
+         * Replace the extra redaction patterns (platform admins)
+         * @description 422 invalid_pattern with details.index and details.reason (syntax, too_long, too_many, matches_empty). Patterns apply to captures from then on (other replicas within 30 seconds); stored payloads are not rewritten. Audited as settings.capture_update.
+         */
+        put: operations["adminUpdateCaptureSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/capture/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show what a sample would look like after redaction (platform admins and auditors)
+         * @description Applies the built-in rules and the given patterns (or, when patterns is absent, the saved ones) the way capture does, including the 16 KiB truncation. The sample is never stored, logged or audited. 422 invalid_pattern as for the update.
+         */
+        post: operations["adminTestRedaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How long call records, captured payloads, the audit log and usage rollups are kept (platform admins and auditors) */
+        get: operations["adminGetRetentionSettings"];
+        /**
+         * Change the platform retention periods (platform admins)
+         * @description Each listed kind is replaced; kinds not listed are kept. 422 invalid_period with details.kind and details.reason (out_of_range, duplicate). A shorter period deletes at the next run (every RETENTION_INTERVAL). Audited as settings.retention_update.
+         */
+        put: operations["adminUpdateRetentionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/teams/{team}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /** A team's retention overrides and effective periods (platform admins and auditors) */
+        get: operations["adminGetTeamRetention"];
+        /**
+         * Set or clear a team's retention overrides (platform admins); If-Match is the team's revision
+         * @description Each listed kind is replaced (days null inherits the platform period); kinds not listed are kept. Only call_metadata and captured_payloads can be overridden. 422 invalid_period with details.kind and details.reason (not_overridable, out_of_range, duplicate). Audited as team.retention_update.
+         */
+        put: operations["adminUpdateTeamRetention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * How long the team's call records and captured payloads are kept (members and above; platform staff read any team)
+         * @description Read-only; platform admins set overrides. A call that involves two teams (a gateway of one, a server of another) is kept for the shorter of their periods.
+         */
+        get: operations["getTeamRetention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/calls/{callId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One call record (team owners and admins; platform staff)
+         * @description Any call listTeamCalls would list for the team; anything else is 404 call_not_found.
+         */
+        get: operations["getTeamCall"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/calls/{callId}/payload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A call's captured arguments and result (owners and admins of the team whose setting captured it)
+         * @description Answers when the team owns the call's gateway and the gateway's capture switch captured it, or owns the call's server and the server's switch captured it, and the caller is one of the team's owners or admins. Platform roles don't count here; platform staff use adminGetCallPayload. 404 call_not_found (not a call of the team), 404 payload_not_found (not captured, captured under another team's or a platform gateway's switch, or already deleted by retention), 403 for team members below admin. Every successful read is audited as mcp_call.payload_view (via: team). Cache-Control: no-store.
+         */
+        get: operations["getTeamCallPayload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/calls/{callId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        /** One call record (platform admins and auditors) */
+        get: operations["adminGetCall"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/calls/{callId}/payload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Any call's captured arguments and result (platform admins and auditors)
+         * @description 404 call_not_found, 404 payload_not_found (not captured, or deleted by retention). Every successful read is audited as mcp_call.payload_view (via admin), with the capturing team set so the team sees the view in its audit log. Cache-Control no-store.
+         */
+        get: operations["adminGetCallPayload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Usage of the team's gateways, servers and service accounts (team owners, admins and editors; platform staff)
+         * @description The calls listTeamCalls covers (through the team's gateways, to its servers, or by its service accounts), from hourly rollups. 400 invalid_range when to is not after from, the span exceeds 90 days (7 days with groupBy hour) or a time isn't on the hour. 403 for members.
+         */
+        get: operations["getTeamUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Usage of every gateway and server (platform admins and auditors)
+         * @description As getTeamUsage, over every call; team narrows to one team's scope (an unknown team reports nothing).
+         */
+        get: operations["adminGetUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2136,6 +2452,8 @@ export interface components {
             lastRefreshError?: string | null;
             /** @description The auth provider and scopes whose user token the gateway sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride). */
             requirement?: components["schemas"]["McpServerRequirement"] | null;
+            /** @description Record the arguments and results of calls to this server's capabilities through any gateway (redacted, truncated to 16 KiB per part; readable by the team's owners and admins and platform staff; kept for the captured_payloads retention period). Absent from servers before Phase 6. */
+            capturePayloads?: boolean;
             revision: components["schemas"]["Revision"];
             /** Format: date-time */
             createdAt: string;
@@ -2166,6 +2484,11 @@ export interface components {
             enabled: boolean;
             /** @description Absent or null; no user authorization */
             requirement?: components["schemas"]["McpServerRequirementInput"] | null;
+            /**
+             * @description Only team owners and admins may set it to true (403 capture_role)
+             * @default false
+             */
+            capturePayloads: boolean;
         };
         McpServerUpdate: {
             name?: string;
@@ -2180,6 +2503,8 @@ export interface components {
             enabled?: boolean;
             /** @description Omit to keep; null removes it. A widening change sends a published server back to review under approval_required */
             requirement?: components["schemas"]["McpServerRequirementInput"] | null;
+            /** @description Omit to keep. Only team owners and admins may change it (403 capture_role; sending the current value is allowed). Not a review trigger. Audited in mcp_server.update. */
+            capturePayloads?: boolean;
         };
         McpServerCreated: {
             server: components["schemas"]["McpServer"];
@@ -2347,6 +2672,8 @@ export interface components {
             health: components["schemas"]["ServerHealth"];
             /** Format: date-time */
             publishedAt: string;
+            /** @description The server's team records call arguments and results (McpServer.capturePayloads). Absent from servers before Phase 6. */
+            capturePayloads?: boolean;
         };
         CatalogServerPage: {
             items: components["schemas"]["CatalogServer"][];
@@ -2417,6 +2744,18 @@ export interface components {
              * @description Platform gateways' grants (0 for team gateways)
              */
             grantCount: number;
+            /** @description Record the arguments and results of calls through this gateway (redacted, truncated to 16 KiB per part; readable by a team gateway's team owners and admins and by platform staff). Calls are also captured when their server records them. Absent from servers before Phase 6. */
+            capturePayloads?: boolean;
+            /**
+             * Format: int64
+             * @description The gateway's own limit on requests per minute from all callers together (null: inherit the team override or platform default). Absent from servers before Phase 6.
+             */
+            rateLimitPerMinute?: number | null;
+            /**
+             * Format: int64
+             * @description The limit that applies now: rateLimitPerMinute, else (team gateways) the team's override, else the platform default, capped at the ceiling (null: unlimited). Absent from servers before Phase 6.
+             */
+            effectiveRateLimitPerMinute?: number | null;
             revision: components["schemas"]["Revision"];
             /** Format: date-time */
             createdAt: string;
@@ -2434,11 +2773,25 @@ export interface components {
             description?: string;
             /** @default true */
             enabled: boolean;
+            /** @default false */
+            capturePayloads: boolean;
+            /**
+             * Format: int64
+             * @description Absent or null: inherit. 422 invalid_limit (details.reason above_ceiling) above the ceiling of gateway_per_minute.
+             */
+            rateLimitPerMinute?: number | null;
         };
         GatewayUpdate: {
             name?: string;
             description?: string;
             enabled?: boolean;
+            /** @description Omit to keep. Platform admins can't change it on team gateways (403 team_gateway). Audited in gateway.update. */
+            capturePayloads?: boolean;
+            /**
+             * Format: int64
+             * @description Omit to keep; null inherits. 422 invalid_limit (details.reason above_ceiling) above the ceiling. Platform admins can't change it on team gateways (403 team_gateway).
+             */
+            rateLimitPerMinute?: number | null;
         };
         /**
          * @description server_disabled: its server is off. not_published: a catalog server left the catalog. not_approved / changed: the current definition isn't approved. gone: the server no longer lists it. team_archived: the team that owns its server, or the team gateway's own team, is archived (unarchiving restores it).
@@ -2470,6 +2823,8 @@ export interface components {
             minRole?: components["schemas"]["TeamRole"] | null;
             available: boolean;
             unavailableReason?: components["schemas"]["GatewayUnavailableReason"];
+            /** @description The capability's server records call arguments and results, whatever the gateway's setting. Absent from servers before Phase 6. */
+            serverCapturesPayloads?: boolean;
         };
         GatewayCapabilities: {
             /** @description The gateway's revision */
@@ -2507,6 +2862,8 @@ export interface components {
             exposedName: string;
             title: string;
             description: string;
+            /** @description The server records call arguments and results. Absent from servers before Phase 6. */
+            serverCapturesPayloads?: boolean;
         };
         GatewayOptionPage: {
             items: components["schemas"]["GatewayOption"][];
@@ -2562,6 +2919,13 @@ export interface components {
              * @description Capabilities it offers the caller right now
              */
             capabilityCount: number;
+            /** @description Calls through this gateway may be recorded with their arguments and results (the gateway, or the server of at least one capability offered to the caller, captures them). Absent from servers before Phase 6. */
+            capturesPayloads?: boolean;
+            /**
+             * Format: int64
+             * @description Service-account views (listServiceAccountGateways) only. Capabilities it would offer that require a person's account (a provider requirement); service accounts are refused them, so capabilityCount leaves them out
+             */
+            needsPersonCount?: number;
         };
         MyGatewayDetail: {
             gateway: components["schemas"]["MyGateway"];
@@ -2613,10 +2977,10 @@ export interface components {
             secret: string;
         };
         /**
-         * @description ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
+         * @description ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042). rate_limited: not forwarded because a rate limit was exceeded (HTTP 429, JSON-RPC -32029; errorClass names the limit: person_per_minute, credential_per_minute, service_account_per_minute or gateway_per_minute).
          * @enum {string}
          */
-        McpCallOutcome: "ok" | "tool_error" | "denied" | "upstream_error" | "timeout" | "too_large" | "bad_request" | "needs_authorization";
+        McpCallOutcome: "ok" | "tool_error" | "denied" | "upstream_error" | "timeout" | "too_large" | "bad_request" | "needs_authorization" | "rate_limited";
         McpCall: {
             /** Format: int64 */
             id: number;
@@ -2646,6 +3010,8 @@ export interface components {
             /** Format: int64 */
             responseBytes: number;
             requestId: string;
+            /** @description A captured payload is stored that the caller may open (team views; captured under this team's gateway or server switch; admin views; any). Absent from servers before Phase 6. */
+            captured?: boolean;
         };
         CallRef: {
             /** Format: uuid */
@@ -3150,6 +3516,365 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
         };
+        /**
+         * @description As CallPrincipal.kind
+         * @enum {string}
+         */
+        UsagePrincipalKind: "api_key" | "oauth" | "service_account";
+        /**
+         * @description person_per_minute: every /mcp request by one person, any credential and gateway. credential_per_minute: per personal API key or OAuth connection. service_account_per_minute: per service account, all its keys (team override). gateway_per_minute: per gateway, all callers together (team override as the default of the team's gateways; each gateway can set its own).
+         * @enum {string}
+         */
+        RateLimitKey: "person_per_minute" | "credential_per_minute" | "service_account_per_minute" | "gateway_per_minute";
+        /**
+         * Format: int64
+         * @description Requests per minute; null means unlimited (or, for a ceiling, no ceiling)
+         */
+        RateLimitValue: number | null;
+        PlatformRateLimit: {
+            key: components["schemas"]["RateLimitKey"];
+            label: string;
+            description: string;
+            /** @description Teams can have their own value (and gateways, for gateway_per_minute), up to the ceiling */
+            teamOverridable: boolean;
+            /** @description Applies where no override is set (null: unlimited) */
+            default: components["schemas"]["RateLimitValue"];
+            /** @description The most a team override or gateway value can be (null: no ceiling). Always null when teamOverridable is false. */
+            ceiling: components["schemas"]["RateLimitValue"];
+            /** @description The default before any platform admin changed it */
+            builtInDefault: components["schemas"]["RateLimitValue"];
+            /**
+             * Format: int64
+             * @description The most the gateway allows for any value (1000000)
+             */
+            max: number;
+            /**
+             * Format: int64
+             * @description Active teams whose override is above the ceiling (the ceiling applies)
+             */
+            cappedTeams: number;
+            /**
+             * Format: int64
+             * @description Gateways whose own value is above the ceiling (the ceiling applies)
+             */
+            cappedGateways: number;
+        };
+        LimitSettings: {
+            /** @description Every key, in a fixed order */
+            items: components["schemas"]["PlatformRateLimit"][];
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PlatformRateLimitSetting: {
+            key: components["schemas"]["RateLimitKey"];
+            /** @description null = unlimited; at most the ceiling */
+            default: components["schemas"]["RateLimitValue"];
+            /** @description null = no ceiling; must be null for keys teams can't override */
+            ceiling: components["schemas"]["RateLimitValue"];
+        };
+        LimitSettingsUpdate: {
+            items: components["schemas"]["PlatformRateLimitSetting"][];
+        };
+        TeamRateLimit: {
+            key: components["schemas"]["RateLimitKey"];
+            label: string;
+            description: string;
+            teamOverridable: boolean;
+            /** @description The team's own value (null: inherits the default; always null when teamOverridable is false) */
+            override: components["schemas"]["RateLimitValue"];
+            default: components["schemas"]["RateLimitValue"];
+            ceiling: components["schemas"]["RateLimitValue"];
+            /** @description What applies: override, else default, capped at the ceiling (null: unlimited). For gateway_per_minute, what the team's gateways without their own value get. */
+            effective: components["schemas"]["RateLimitValue"];
+        };
+        TeamLimits: {
+            /** Format: uuid */
+            teamId: string;
+            teamSlug: string;
+            /** @description The team's revision (If-Match for the admin update) */
+            revision: components["schemas"]["Revision"];
+            items: components["schemas"]["TeamRateLimit"][];
+        };
+        TeamLimitChange: {
+            key: components["schemas"]["RateLimitKey"];
+            /** @description A value up to the ceiling, or null to inherit the platform default */
+            value: components["schemas"]["RateLimitValue"];
+        };
+        TeamLimitsUpdate: {
+            items: components["schemas"]["TeamLimitChange"][];
+        };
+        /** @description A built-in redaction rule (always on) */
+        CaptureRule: {
+            /** @example github */
+            name: string;
+            description: string;
+        };
+        RedactionPattern: {
+            /**
+             * @description An RE2 regular expression (Go regexp syntax; case-sensitive unless it starts with (?i)). Every match in a captured string becomes [REDACTED]. Must not match the empty string.
+             * @example EMP-[0-9]{6}
+             */
+            pattern: string;
+            note?: string;
+        };
+        CaptureSettings: {
+            builtInRules: components["schemas"]["CaptureRule"][];
+            /** @description Normalised JSON member names (lower case, without - and _) whose values are always replaced */
+            sensitiveKeys: string[];
+            /** @description The platform admins' extra patterns */
+            patterns: components["schemas"]["RedactionPattern"][];
+            /**
+             * Format: int32
+             * @description Arguments and result are each truncated to this many bytes after redaction (16384)
+             */
+            maxPartBytes: number;
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CaptureSettingsUpdate: {
+            patterns: components["schemas"]["RedactionPattern"][];
+        };
+        RedactionTestRequest: {
+            /** @description JSON (member-name rules apply too) or plain text (string rules only) */
+            sample: string;
+            /** @description Patterns to try instead of the saved ones (absent: the saved ones) */
+            patterns?: components["schemas"]["RedactionPattern"][];
+        };
+        RedactionRuleCount: {
+            /** @description A built-in rule name, sensitive_keys, or pattern:<index> for an admin pattern */
+            rule: string;
+            /** Format: int32 */
+            count: number;
+        };
+        RedactionTestResult: {
+            redacted: string;
+            /** Format: int32 */
+            redactions: number;
+            /** @description Which rules matched, and how often */
+            rules: components["schemas"]["RedactionRuleCount"][];
+            truncated: boolean;
+        };
+        /**
+         * @description call_metadata: call records (mcp_calls); captured_payloads: captured arguments and results; audit_log: the audit log (platform only); usage_rollups: hourly usage (platform only).
+         * @enum {string}
+         */
+        RetentionKind: "call_metadata" | "captured_payloads" | "audit_log" | "usage_rollups";
+        RetentionPeriod: {
+            kind: components["schemas"]["RetentionKind"];
+            /**
+             * Format: int32
+             * @description The platform period
+             */
+            days: number;
+            /**
+             * Format: int32
+             * @description The default before any platform admin changed it (call_metadata 90, captured_payloads 14, audit_log 400, usage_rollups 400)
+             */
+            builtInDays: number;
+            /** Format: int32 */
+            minDays: number;
+            /** Format: int32 */
+            maxDays: number;
+            teamOverridable: boolean;
+        };
+        RetentionRun: {
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string;
+            /** @description Rows deleted per kind (RetentionKind values as keys) */
+            deleted: {
+                [key: string]: number;
+            };
+            /** @description Kinds that failed, with an error class (retried at the next run) */
+            errors: {
+                [key: string]: string;
+            };
+        };
+        RetentionSettings: {
+            /** @description Every kind, in a fixed order */
+            periods: components["schemas"]["RetentionPeriod"][];
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description The latest run of the retention loop (null before the first) */
+            lastRun: components["schemas"]["RetentionRun"] | null;
+        };
+        RetentionPeriodSetting: {
+            kind: components["schemas"]["RetentionKind"];
+            /**
+             * Format: int32
+             * @description Within the kind's minDays and maxDays
+             */
+            days: number;
+        };
+        RetentionSettingsUpdate: {
+            periods: components["schemas"]["RetentionPeriodSetting"][];
+        };
+        TeamRetentionPeriod: {
+            kind: components["schemas"]["RetentionKind"];
+            /**
+             * Format: int32
+             * @description The team's own period in days (null: the platform period)
+             */
+            override: number | null;
+            /**
+             * Format: int32
+             * @description The platform period
+             */
+            default: number;
+            /**
+             * Format: int32
+             * @description override, else default. Calls that also involve another team use the shorter of the two teams' periods
+             */
+            effective: number;
+            /** Format: int32 */
+            minDays: number;
+            /** Format: int32 */
+            maxDays: number;
+        };
+        TeamRetention: {
+            /** Format: uuid */
+            teamId: string;
+            teamSlug: string;
+            /** @description The team's revision (If-Match for the admin update) */
+            revision: components["schemas"]["Revision"];
+            /** @description The kinds teams can override (call_metadata, captured_payloads) */
+            periods: components["schemas"]["TeamRetentionPeriod"][];
+        };
+        TeamRetentionChange: {
+            kind: components["schemas"]["RetentionKind"];
+            /**
+             * Format: int32
+             * @description Within the kind's minDays and maxDays, or null to use the platform period
+             */
+            days: number | null;
+        };
+        TeamRetentionUpdate: {
+            periods: components["schemas"]["TeamRetentionChange"][];
+        };
+        CallPayloadPart: {
+            /** @description The redacted JSON text; no longer valid JSON when truncated. Binary content items show as [binary N bytes] */
+            content: string;
+            /**
+             * Format: int64
+             * @description Size of the redacted JSON before truncation
+             */
+            bytes: number;
+            /** @description Cut to 16 KiB (at a UTF-8 boundary) */
+            truncated: boolean;
+            /**
+             * Format: int32
+             * @description Values replaced with [REDACTED]
+             */
+            redactions: number;
+        };
+        /** @description What a call sent and received, as captured (redacted, then truncated). Never contains the identity JWT, provider tokens, client credentials or the server's static header. */
+        CallPayload: {
+            /** Format: int64 */
+            callId: number;
+            /** Format: date-time */
+            capturedAt: string;
+            /**
+             * Format: date-time
+             * @description When retention deletes it under the current settings
+             */
+            expiresAt: string;
+            /** @description Whose switch captured it (one or both) */
+            capturedBy: ("gateway" | "server")[];
+            /** @description The call's arguments (tools/call, prompts/get) or {"uri": <exposed URI>} (resources/read) */
+            arguments: components["schemas"]["CallPayloadPart"];
+            /** @description What the client received (the result, or the server's JSON-RPC error); null when there was none (timeout, unreachable, too large) */
+            result: components["schemas"]["CallPayloadPart"] | null;
+            /**
+             * Format: int32
+             * @description Both parts together
+             */
+            redactions: number;
+            /** @description Either part was truncated */
+            truncated: boolean;
+        };
+        /**
+         * @description team: the gateway's team (platform gateways are one row with key platform). day and hour are UTC buckets; hour allows at most 7 days.
+         * @default day
+         * @enum {string}
+         */
+        UsageGroupBy: "gateway" | "server" | "capability" | "team" | "principalKind" | "day" | "hour";
+        UsageMetrics: {
+            /**
+             * Format: int64
+             * @description Recorded requests (lists and calls)
+             */
+            calls: number;
+            /**
+             * Format: int64
+             * @description Recorded requests with any outcome but ok
+             */
+            errors: number;
+            /** @description Count per McpCallOutcome (outcomes with no calls are left out) */
+            outcomes: {
+                [key: string]: number;
+            };
+            /**
+             * Format: int32
+             * @description Median latency, interpolated within fixed buckets (null without calls)
+             */
+            p50LatencyMs: number | null;
+            /** Format: int32 */
+            p95LatencyMs: number | null;
+            /** Format: int64 */
+            requestBytes: number;
+            /** Format: int64 */
+            responseBytes: number;
+        };
+        UsageBucket: {
+            /** Format: date-time */
+            start: string;
+            metrics: components["schemas"]["UsageMetrics"];
+        };
+        UsageRow: {
+            /** @description Stable within the grouping: a gateway, server or team ID, platform, a capability ID (or name:<exposedName> for calls that named no known capability), a principal kind, or the bucket start */
+            key: string;
+            /** @description A name to show (as recorded, for deleted objects) */
+            label: string;
+            /** @description The gateway, server or team (groupBy gateway, server, team) */
+            ref?: components["schemas"]["CallRef"];
+            /** @description groupBy capability */
+            capability?: {
+                /** Format: uuid */
+                id?: string;
+                exposedName: string;
+                server?: components["schemas"]["CallRef"];
+            };
+            principalKind?: components["schemas"]["UsagePrincipalKind"];
+            /**
+             * Format: date-time
+             * @description groupBy day or hour
+             */
+            start?: string;
+            metrics: components["schemas"]["UsageMetrics"];
+            /** @description With series=true and a non-time grouping, one bucket per UTC day in the range (empty days included) */
+            series?: components["schemas"]["UsageBucket"][];
+        };
+        UsageReport: {
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            groupBy: components["schemas"]["UsageGroupBy"];
+            /**
+             * Format: date-time
+             * @description Calls up to this time are included (the rollup runs every 5 minutes); null before the first rollup
+             */
+            rolledUpTo: string | null;
+            totals: components["schemas"]["UsageMetrics"];
+            /** @description Time groupings in time order with empty buckets; others by calls, most first, at most limit */
+            rows: components["schemas"]["UsageRow"][];
+            /** @description More rows than limit (totals still cover everything) */
+            truncated: boolean;
+        };
     };
     responses: {
         /** @description A page of audit entries, newest first */
@@ -3216,6 +3941,101 @@ export interface components {
                 };
             };
         };
+        /** @description Rate limit settings */
+        LimitSettingsReply: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["LimitSettings"];
+                };
+            };
+        };
+        /** @description A team's rate limits (ETag is the team's revision) */
+        TeamLimitsReply: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["TeamLimits"];
+                };
+            };
+        };
+        /** @description Payload capture settings */
+        CaptureSettingsReply: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["CaptureSettings"];
+                };
+            };
+        };
+        /** @description Retention settings */
+        RetentionSettingsReply: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["RetentionSettings"];
+                };
+            };
+        };
+        /** @description A team's retention periods (ETag is the team's revision) */
+        TeamRetentionReply: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["TeamRetention"];
+                };
+            };
+        };
+        /** @description A call record */
+        McpCallReply: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["McpCall"];
+                };
+            };
+        };
+        /** @description A captured payload (redacted and truncated when it was captured) */
+        CallPayloadReply: {
+            headers: {
+                /** @description Always no-store */
+                "Cache-Control"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["CallPayload"];
+                };
+            };
+        };
+        /** @description Usage over a time range */
+        UsageReportReply: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["UsageReport"];
+                };
+            };
+        };
     };
     parameters: {
         /** @description An exact action (team.member_add), or a prefix ending in a dot (team.) for every action in that group. */
@@ -3264,6 +4084,20 @@ export interface components {
         ConnectionIdParam: string;
         /** @description The opaque ID from a consent link (the request query parameter of /connect/{provider}) */
         ConnectRequestIdParam: string;
+        /** @description McpCall.id */
+        CallIdParam: number;
+        /** @description Start (inclusive), on the hour; default 7 days before to */
+        UsageFromParam: string;
+        /** @description End (exclusive), on the hour; default the start of the next hour */
+        UsageToParam: string;
+        UsageGroupByParam: components["schemas"]["UsageGroupBy"];
+        /** @description Only calls of this capability (capability ID) */
+        UsageCapabilityParam: string;
+        UsagePrincipalKindParam: components["schemas"]["UsagePrincipalKind"];
+        /** @description Only this MCP method (default every recorded method, lists included) */
+        UsageMethodParam: "tools/list" | "tools/call" | "prompts/list" | "prompts/get" | "resources/list" | "resources/templates/list" | "resources/read";
+        /** @description With a non-time groupBy, add per-day buckets (UsageRow.series) to each row */
+        UsageSeriesParam: boolean;
     };
     requestBodies: never;
     headers: {
@@ -6437,6 +7271,410 @@ export interface operations {
             401: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
             410: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetLimitSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["LimitSettingsReply"];
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateLimitSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LimitSettingsUpdate"];
+            };
+        };
+        responses: {
+            200: components["responses"]["LimitSettingsReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetTeamLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["TeamLimitsReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateTeamLimits: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLimitsUpdate"];
+            };
+        };
+        responses: {
+            200: components["responses"]["TeamLimitsReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["TeamLimitsReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetCaptureSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CaptureSettingsReply"];
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateCaptureSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureSettingsUpdate"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CaptureSettingsReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminTestRedaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedactionTestRequest"];
+            };
+        };
+        responses: {
+            /** @description The redacted sample */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["RedactionTestResult"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetRetentionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RetentionSettingsReply"];
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateRetentionSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionSettingsUpdate"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RetentionSettingsReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetTeamRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["TeamRetentionReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateTeamRetention: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamRetentionUpdate"];
+            };
+        };
+        responses: {
+            200: components["responses"]["TeamRetentionReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["TeamRetentionReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["McpCallReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamCallPayload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CallPayloadReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["McpCallReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetCallPayload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description McpCall.id */
+                callId: components["parameters"]["CallIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CallPayloadReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamUsage: {
+        parameters: {
+            query?: {
+                /** @description Start (inclusive), on the hour; default 7 days before to */
+                from?: components["parameters"]["UsageFromParam"];
+                /** @description End (exclusive), on the hour; default the start of the next hour */
+                to?: components["parameters"]["UsageToParam"];
+                groupBy?: components["parameters"]["UsageGroupByParam"];
+                /** @description Gateway ID */
+                gateway?: components["parameters"]["CallGatewayParam"];
+                /** @description MCP server ID */
+                server?: components["parameters"]["CallServerParam"];
+                /** @description Only calls of this capability (capability ID) */
+                capability?: components["parameters"]["UsageCapabilityParam"];
+                principalKind?: components["parameters"]["UsagePrincipalKindParam"];
+                /** @description Only this MCP method (default every recorded method, lists included) */
+                method?: components["parameters"]["UsageMethodParam"];
+                /** @description With a non-time groupBy, add per-day buckets (UsageRow.series) to each row */
+                series?: components["parameters"]["UsageSeriesParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["UsageReportReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetUsage: {
+        parameters: {
+            query?: {
+                /** @description Start (inclusive), on the hour; default 7 days before to */
+                from?: components["parameters"]["UsageFromParam"];
+                /** @description End (exclusive), on the hour; default the start of the next hour */
+                to?: components["parameters"]["UsageToParam"];
+                groupBy?: components["parameters"]["UsageGroupByParam"];
+                /** @description Gateway ID */
+                gateway?: components["parameters"]["CallGatewayParam"];
+                /** @description MCP server ID */
+                server?: components["parameters"]["CallServerParam"];
+                /** @description Only calls of this capability (capability ID) */
+                capability?: components["parameters"]["UsageCapabilityParam"];
+                principalKind?: components["parameters"]["UsagePrincipalKindParam"];
+                /** @description Only this MCP method (default every recorded method, lists included) */
+                method?: components["parameters"]["UsageMethodParam"];
+                /** @description With a non-time groupBy, add per-day buckets (UsageRow.series) to each row */
+                series?: components["parameters"]["UsageSeriesParam"];
+                /** @description Team slug or ID (calls through its gateways, to its servers, or by its service accounts) */
+                team?: string;
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["UsageReportReply"];
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
         };
     };
 }

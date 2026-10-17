@@ -17,6 +17,7 @@ import { NeededAccountsCard } from "../../components/providers/needed-accounts";
 import { untrustedText } from "../../components/servers/labels";
 import { PageActions } from "../../components/templates/page-actions";
 import { useCurrentUser } from "../../session";
+import { CaptureBadge, capturedNotice } from "../../components/capture";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { Card } from "@/components/ui/card/card";
 import { FactsLine } from "@/components/ui/description-list/description-list";
@@ -39,7 +40,12 @@ export function MyGatewayPage() {
     <Stack gap={6} className={s.page}>
       <PageHeader
         title={gateway.name}
-        meta={<AccessBadges gateway={gateway} />}
+        meta={
+          <span className={s.badges}>
+            <AccessBadges gateway={gateway} />
+            {gateway.capturesPayloads && <CaptureBadge label="Records what you send" />}
+          </span>
+        }
         description={gateway.description || undefined}
         facts={
           <FactsLine
@@ -57,6 +63,11 @@ export function MyGatewayPage() {
           ) : undefined
         }
       />
+      {gateway.capturesPayloads && (
+        <Alert tone="warning" title="This gateway records what you send">
+          {capturedNotice}
+        </Alert>
+      )}
       <ConnectSection slug={gateway.slug} url={gateway.url} />
       <NeededAccountsCard caps={capabilities} returnTo={`/gateways/${gateway.id}`} />
       <Card

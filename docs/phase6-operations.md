@@ -1,6 +1,6 @@
 # Phase 6: Operations (design)
 
-Status: **designed, not built**. Decisions 31–38 in [decisions.md](decisions.md) are defaults the assistant accepted
+Status: **backend built** (see [As built](#as-built)); the web UI is next. Decisions 31–38 in [decisions.md](decisions.md) are defaults the assistant accepted
 under the instruction "continue until both are done". The contract is in [`../api/openapi.yaml`](../api/openapi.yaml)
 (tags `limits`, `retention`, `usage`, and the call and payload operations under `gateways`/`admin`). Builds on decisions
 11 and 14. Grounded's `internal/limits`, `internal/retention`, `internal/keyrotation` and `internal/observability` are
@@ -254,3 +254,66 @@ a Phase 6 server always sends them.
 Legal holds, retention dry runs and manual runs; per-tool or per-person limit overrides; quotas (per day/month); an
 unauthenticated per-address limit on `/mcp`; tracing; dashboards and alert rules as code; payload search or export;
 image publishing.
+
+## As built
+
+Backend only; the UI described above is not built yet. **No contract changes**: every operation and field in
+`api/openapi.yaml` is served as written (`TestRoutesMatchOpenAPI` and the authz-matrix classification pass).
+
+- **Migration `00011_operations`** as designed, plus: `usage_hourly.id` (an identity key, for batched deletes) and a
+  one-row `usage_rollup_state` (`rolled_up_to`, the rollup watermark). `gateways.rate_limit_per_minute` is `bigint`.
+  ListAudit labels `mcp_call` targets ("Call 42 · tool") and the `platform_settings` targets `limits`, `capture`,
+  `retention` and `keys`.
+- **Packages:** `internal/limits` (settings, team overrides, effective values, the per-request check),
+  `internal/capture` (redaction, settings, sealing, payload reads), `internal/retention` (settings and the loop),
+  `internal/usage` (rollups and reports), `internal/observability` (metrics, after Grounded's), `internal/keyrotation`
+  (`rotate-keys`, pepper report, doctor counts). `internal/ratelimit` gained a `Store` interface, `PostgresStore` and
+  `Bucket` (SHA-256 of personal values); the in-memory `Limiter` implements `Store` for tests.
+- **Rate limits:** `mcpgw` counts every request that passes gateway resolution (notifications included) in one
+  `INSERT … ON CONFLICT` over the sorted buckets. Over a limit: 429, `Retry-After`, JSON-RPC `-32029` with
+  `data.reason/limit/limitPerMinute/retryAfterSeconds`, recorded `rate_limited` for lists and calls, never forwarded or
+  captured. The OAuth endpoints, connect start, sign-in and `/v1` limiters use the same store (`internal/auth`,
+  `httpapi`); the old per-process limiter in `internal/auth` is gone. Old windows are deleted every minute by every
+  replica. Platform settings are cached for 30 s per replica; team overrides and gateway values are read on each
+  request. Values outside 1–1,000,000 and unknown keys are `400 invalid_limit` (`details.reason` `out_of_range`,
+  `unknown_key`); the documented 422 reasons are as designed.
+- **Payload capture:** prepared after the answer is written, sealed and inserted in the call record's transaction under
+  a savepoint, so a capture failure keeps the record. Call secrets also include the client's own bearer credential.
+  Strings that hold a JSON document (a server echoing its arguments as text) are parsed and redacted by member name too.
+  Platform staff calling the team payload route get `403` (members below admin too); other teams `404`. `expiresAt` is
+  the earlier of the payload's and the call's retention. The redaction metric labels admin patterns as `pattern`.
+- **Retention:** as designed; calls are deleted only before the hour preceding the rollup watermark (the rollup recomputes
+  that hour), so nothing is deleted before the first rollup. Each kind is its own batch loop; a failing kind is reported
+  in `last_run.errors` (`database`, `timeout`).
+- **Usage:** the rollup recomputes from the hour before the watermark to the current hour (first run: from the oldest
+  call), at most 168 hours a run, so it catches up after an outage. Reports aggregate in SQL; labels are the current
+  names while objects exist. Rows without a server are `none` ("No server"); calls without a capability are
+  `name:<exposed>` or, for lists, `method:<method>`. Day buckets start at UTC midnight (the first may begin before
+  `from`).
+- **Metrics:** `METRICS_ADDR` and `METRICS_MAX_OBJECTS`; a minute loop syncs the slugs of existing gateways, servers
+  and providers and drops series of deleted ones. `omg_mcp_servers` is read at scrape time (cached 30 s). Method label
+  values include `notification`.
+- **Key rotation:** `API_KEY_PEPPER_PREVIOUS` (refused when equal to the current pepper or, off loopback, the example
+  value). `rotate-keys [--dry-run] [--batch-size]` checks every column in `keyrotation.Columns` (a test fails if the
+  schema gains a `*_cipher` column not listed), re-seals with the same AAD and verifies. Without
+  `ENCRYPTION_KEY_PREVIOUS` it checks and reports. `doctor` adds `keys encryption` (counts by key id per column) and
+  `keys pepper`.
+- **Edits outside the new packages, kept small:** `internal/registry` (the server capture switch, `capture_role`; a
+  health-check counter), `internal/providers/runtime.go` (the refresh counter), `internal/gateways` (gateway capture and
+  limit, `Mine.CapturesPayloads`), `internal/testutil/fakemcp.go` (`EnableEchoSecrets`: `echo_secrets` and `image`
+  tools, tests only).
+- **CI:** `.github/workflows/ci.yml` (lint + actionlint, generated, go with a Postgres 17 service via `make test-ci`,
+  web, k8s, docker), `make actionlint`, `make test-ci`. Checked with actionlint v1.7.12; never run on GitHub.
+- **Kubernetes:** a commented metrics port and `API_KEY_PEPPER_PREVIOUS` in the base; the example overlay enables
+  `METRICS_ADDR`, the port, a NetworkPolicy from `monitoring` and keeps `servicemonitor.yaml` beside it (validated, not
+  in resources).
+- **Tests:** unit (redaction rules, truncation, pattern refusals, effective limits and precedence, percentiles,
+  bounded labels and metric content); integration: two replicas sharing limits (each key, overrides, ceilings, 429
+  shape, OAuth endpoint limit, no address in buckets), capture (switches, roles, gateway/server/both, lists and refusals,
+  every visibility rule, audit, encryption at rest, truncation, binary, JWT/static header/key/pattern redaction, a
+  log and audit sentinel), retention (shortest team, batches, watermark, trigger, minimums, lock, idempotence), usage
+  (rollup equals the direct aggregate, re-run, late commit, percentiles, every grouping, filters, scope, bounds),
+  pepper rotation (keys, service account keys, OAuth tokens; re-digest and audit; removal), rotate-keys (dry run,
+  every column, idempotence, undecryptable stop, doctor), and the authz matrix for all 19 operations.
+- **Not done:** the UI; provider-token redaction is covered by the redactor's exact-value rule and unit tests, not an
+  end-to-end test with a provider; CI has not run on GitHub; no `k8s-smoke`.

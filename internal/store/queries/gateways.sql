@@ -1,8 +1,10 @@
 -- Gateways, their selected capabilities and grants (internal/gateways).
 
 -- name: InsertGateway :one
-INSERT INTO gateways (id, slug, name, description, owner_kind, team_id, enabled, created_by, updated_by)
-VALUES (@id, @slug, @name, @description, @owner_kind, sqlc.narg(team_id), @enabled, @created_by, @created_by)
+INSERT INTO gateways (id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, rate_limit_per_minute,
+                      created_by, updated_by)
+VALUES (@id, @slug, @name, @description, @owner_kind, sqlc.narg(team_id), @enabled, @capture_payloads,
+        sqlc.narg(rate_limit_per_minute), @created_by, @created_by)
 RETURNING *;
 
 -- name: GetGateway :one
@@ -16,7 +18,8 @@ SELECT * FROM gateways WHERE id = $1 FOR UPDATE;
 
 -- name: UpdateGateway :one
 UPDATE gateways
-SET name = @name, description = @description, enabled = @enabled,
+SET name = @name, description = @description, enabled = @enabled, capture_payloads = @capture_payloads,
+    rate_limit_per_minute = sqlc.narg(rate_limit_per_minute),
     revision = revision + 1, updated_by = @updated_by, updated_at = now()
 WHERE id = @id
 RETURNING *;
@@ -107,6 +110,7 @@ ON CONFLICT (gateway_id, capability_id) DO UPDATE SET min_team_role = EXCLUDED.m
 SELECT c.id, c.kind, c.name, c.title, c.description, c.requirement_mode, c.requirement_scopes,
        s.id AS server_id, s.slug AS server_slug, s.name AS server_name, s.team_id AS server_team_id,
        s.auth_provider_id AS server_auth_provider_id, s.auth_scopes AS server_auth_scopes,
+       s.capture_payloads AS server_capture_payloads,
        t.slug AS team_slug, t.name AS team_name
 FROM mcp_capabilities c
 JOIN mcp_servers s ON s.id = c.server_id

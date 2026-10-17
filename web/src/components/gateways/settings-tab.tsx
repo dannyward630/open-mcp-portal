@@ -1,11 +1,16 @@
 /*
- * A gateway's Settings tab: name, description and the switch in one form
- * (If-Match on its revision; edits survive a change made elsewhere, AD-01),
- * the slug (never changes) and Delete in the Danger zone. Saving with the
- * switch turned off asks first, like Admin's "Disable gateway". Whoever can't
- * edit reads it, told who can (in Admin, a team gateway's record says so above).
+ * A gateway's Settings tab: name, description, the switch, its rate limit
+ * and "Record call contents" in one form (If-Match on its revision; edits
+ * survive a change made elsewhere, AD-01), the slug (never changes) and
+ * Delete in the Danger zone. Saving with the switch turned off, or with
+ * recording turned on, asks first. Only changed limit and recording values
+ * are sent. Whoever can't edit reads it, told who can (in Admin, a team
+ * gateway's record says so above).
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "../../api/client";
+import { parseRate, rateProblem, rateText } from "../../lib/limits";
+import { captureWhat, captureWho } from "../capture";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { adminOnly } from "../../lib/terms";
@@ -19,11 +24,28 @@ import { Input, Textarea } from "@/components/ui/input/input";
 import { Switch } from "@/components/ui/switch/switch";
 import { toast } from "@/components/ui/toast/toast";
 import type { Gateway } from "./labels";
+import { CaptureSection, type RateMode, RateLimitSection, useGatewayLimit } from "./operations-fields";
 import { deleteGateway, type GatewayAbilities, type GatewayScope, invalidateGateway, listPath, storeGateway, updateGateway } from "./scope";
 
-type Form = { name: string; description: string; enabled: boolean };
-const formOf = (x: Gateway): Form => ({ name: x.name, description: x.description, enabled: x.enabled });
-const labels = { name: "Name", description: "Description", enabled: "Enabled" };
+type Form = { name: string; description: string; enabled: boolean; capturePayloads: boolean; rateMode: RateMode; rate: string };
+const formOf = (x: Gateway): Form => ({
+  name: x.name,
+  description: x.description,
+  enabled: x.enabled,
+  capturePayloads: x.capturePayloads ?? false,
+  rateMode: x.rateLimitPerMinute === null || x.rateLimitPerMinute === undefined ? "inherit" : "custom",
+  rate: x.rateLimitPerMinute === null || x.rateLimitPerMinute === undefined ? "" : String(x.rateLimitPerMinute),
+});
+const labels = { name: "Name", description: "Description", enabled: "Enabled", capturePayloads: "Record call contents", rateMode: "Rate limit", rate: "Requests per minute" };
+const choices = { rateMode: { inherit: "Inherit", custom: "Its own limit" } };
+
+/** The rate limit as the update sends it: null inherits. */
+const rateOf = (f: Form) => (f.rateMode === "inherit" ? null : parseRate(f.rate));
+
+/** The refused limit (422 invalid_limit above_ceiling), for the field. */
+const limitRefusal = (err: unknown) => (err instanceof ApiError && err.code === "invalid_limit" ? "Above the platform's ceiling for gateways." : undefined);
+
+type Confirm = "off" | "capture";
 
 type Props = { gateway: Gateway; scope: GatewayScope; abilities: GatewayAbilities };
 
@@ -37,21 +59,33 @@ function readOnlyNote(gateway: Gateway, scope: GatewayScope) {
 export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
   const qc = useQueryClient();
   const saved = formOf(gateway);
-  const [form, setForm, revision] = useRevisionForm(saved, gateway.revision, { labels });
+  const [form, setForm, revision] = useRevisionForm(saved, gateway.revision, { labels, choices });
   const [submitted, setSubmitted] = useState(false);
-  // Saving would switch it off: confirmed first (the form as it was when Save was pressed).
-  const [confirmingOff, setConfirmingOff] = useState<Form | null>(null);
+  const { ceiling } = useGatewayLimit(gateway);
+  // Saving would switch it off or start recording: confirmed first.
+  const [confirming, setConfirming] = useState<Confirm | null>(null);
   const save = useMutation({
-    mutationFn: async () => updateGateway(scope, gateway, { name: form.name.trim(), description: form.description, enabled: form.enabled }),
+    mutationFn: async () => {
+      const rate = rateOf(form);
+      return updateGateway(scope, gateway, {
+        name: form.name.trim(),
+        description: form.description,
+        enabled: form.enabled,
+        ...(form.capturePayloads !== saved.capturePayloads ? { capturePayloads: form.capturePayloads } : {}),
+        ...(rate !== (gateway.rateLimitPerMinute ?? null) ? { rateLimitPerMinute: rate } : {}),
+      });
+    },
     onSuccess: (updated) => {
       setSubmitted(false);
-      setConfirmingOff(null);
+      setConfirming(null);
       storeGateway(qc, updated);
-      toast.success("Gateway settings saved", updated.enabled === gateway.enabled ? undefined : updated.enabled ? "The gateway is on." : "The gateway is off: its endpoint answers “not found”.");
+      toast.success("Gateway settings saved", savedNote(gateway, updated));
     },
   });
   const canEdit = abilities.canEdit;
   const nameError = submitted && !form.name.trim() ? "Enter a name." : undefined;
+  const rateError = form.rateMode === "custom" ? (form.rate.trim() ? rateProblem(form.rate, ceiling) : submitted ? "Enter a number of requests per minute, or inherit." : undefined) : undefined;
+  const invalid = !form.name.trim() || Boolean(form.rateMode === "custom" && (rateProblem(form.rate, ceiling) || !form.rate.trim()));
   const dirty = JSON.stringify({ ...form, name: form.name.trim() }) !== JSON.stringify(saved);
   return (
     <SettingsPage
@@ -60,12 +94,13 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
       readOnlyNote={readOnlyNote(gateway, scope)}
       dirty={dirty}
       saving={save.isPending}
-      error={save.error}
-      message={nameError ? "Not saved: fix the highlighted field" : undefined}
+      error={limitRefusal(save.error) ? undefined : save.error}
+      message={(submitted && invalid) || rateError ? "Not saved: fix the highlighted field" : undefined}
       onSave={() => {
         setSubmitted(true);
-        if (!form.name.trim()) return;
-        if (gateway.enabled && !form.enabled) setConfirmingOff(form);
+        if (invalid) return;
+        if (!saved.capturePayloads && form.capturePayloads) setConfirming("capture");
+        else if (gateway.enabled && !form.enabled) setConfirming("off");
         else save.mutate();
       }}
       onDiscard={() => {
@@ -89,10 +124,34 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
           onCheckedChange={(v) => setForm((f) => ({ ...f, enabled: v }))}
         />
       </SettingsSection>
+      <RateLimitSection
+        gateway={gateway}
+        mode={form.rateMode}
+        value={form.rate}
+        error={limitRefusal(save.error) ?? rateError}
+        disabled={!canEdit}
+        onChange={(rateMode, rate) => {
+          if (limitRefusal(save.error)) save.reset();
+          setForm((f) => ({ ...f, rateMode, rate }));
+        }}
+      />
+      <CaptureSection gateway={gateway} checked={form.capturePayloads} disabled={!canEdit} onChange={(v) => setForm((f) => ({ ...f, capturePayloads: v }))} />
       {canEdit && <DeleteGateway gateway={gateway} scope={scope} />}
       <ConfirmMutationDialog
-        target={confirmingOff}
-        onClose={() => setConfirmingOff(null)}
+        target={confirming === "capture" ? form : null}
+        onClose={() => setConfirming(null)}
+        mutation={save}
+        onConfirm={() => save.mutate()}
+        title={`Record what's sent through ${gateway.name}?`}
+        description={`${captureWhat} ${gateway.ownerKind === "team" ? `Readable by ${gateway.teamName ?? "the team"}'s owners and admins and by platform admins and auditors; every view is audited.` : captureWho} Everyone who uses the gateway is told it records.${
+          gateway.enabled && !form.enabled ? " The gateway is also turned off." : ""
+        }`}
+        confirmLabel="Record call contents"
+        tone="primary"
+      />
+      <ConfirmMutationDialog
+        target={confirming === "off" ? form : null}
+        onClose={() => setConfirming(null)}
         mutation={save}
         onConfirm={() => save.mutate()}
         title={`Disable ${gateway.name}?`}
@@ -103,6 +162,14 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
       />
     </SettingsPage>
   );
+}
+
+/** The saved toast's detail: what the switch, the limit or recording now do. */
+function savedNote(before: Gateway, after: Gateway) {
+  if (after.enabled !== before.enabled) return after.enabled ? "The gateway is on." : "The gateway is off: its endpoint answers “not found”.";
+  if (after.capturePayloads !== before.capturePayloads) return after.capturePayloads ? "It records call contents from the next call." : "It no longer records call contents. Recordings already made are kept for their retention period.";
+  if (after.rateLimitPerMinute !== before.rateLimitPerMinute && after.effectiveRateLimitPerMinute !== undefined) return `Rate limit now: ${rateText(after.effectiveRateLimitPerMinute)}.`;
+  return undefined;
 }
 
 function DeleteGateway({ gateway, scope }: { gateway: Gateway; scope: GatewayScope }) {

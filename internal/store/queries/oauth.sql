@@ -78,8 +78,8 @@ DELETE FROM oauth_codes WHERE code_hash = $1 RETURNING *;
 DELETE FROM oauth_tokens WHERE expires_at <= now();
 
 -- name: InsertOAuthToken :exec
-INSERT INTO oauth_tokens (grant_id, kind, token_hash, resource, expires_at)
-VALUES (@grant_id, @kind, @token_hash, @resource, @expires_at);
+INSERT INTO oauth_tokens (grant_id, kind, token_hash, resource, expires_at, pepper_id)
+VALUES (@grant_id, @kind, @token_hash, @resource, @expires_at, sqlc.narg(pepper_id));
 
 -- name: GetOAuthToken :one
 -- A token of a kind by its digest, with its grant, person and gateway.

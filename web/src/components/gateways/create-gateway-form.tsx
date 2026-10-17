@@ -36,7 +36,8 @@ export function CreateGatewayForm({ scope, onClose }: { scope: GatewayScope; onC
   const [created, setCreated] = useState<Gateway | null>(null);
   const create = useMutation({
     mutationFn: async () => {
-      const body = { slug, name: name.trim(), description: description.trim() || undefined, enabled };
+      // Recording call contents starts off: it's turned on in Settings, after a confirmation.
+      const body = { slug, name: name.trim(), description: description.trim() || undefined, enabled, capturePayloads: false };
       return scope.kind === "team"
         ? unwrap(await api.POST("/v1/teams/{team}/gateways", { params: { path: { team: scope.team } }, body }))
         : unwrap(await api.POST("/v1/admin/gateways", { body }));

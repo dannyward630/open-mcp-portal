@@ -7,6 +7,7 @@ package dbgen
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -143,7 +144,7 @@ func (q *Queries) GetOpenInvite(ctx context.Context, arg GetOpenInviteParams) (T
 }
 
 const getTeamByID = `-- name: GetTeamByID :one
-SELECT id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override FROM teams WHERE id = $1
+SELECT id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override, limit_overrides, retention_overrides FROM teams WHERE id = $1
 `
 
 func (q *Queries) GetTeamByID(ctx context.Context, id uuid.UUID) (Team, error) {
@@ -161,12 +162,14 @@ func (q *Queries) GetTeamByID(ctx context.Context, id uuid.UUID) (Team, error) {
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.PublishPolicyOverride,
+		&i.LimitOverrides,
+		&i.RetentionOverrides,
 	)
 	return i, err
 }
 
 const getTeamBySlug = `-- name: GetTeamBySlug :one
-SELECT id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override FROM teams WHERE slug = $1
+SELECT id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override, limit_overrides, retention_overrides FROM teams WHERE slug = $1
 `
 
 func (q *Queries) GetTeamBySlug(ctx context.Context, slug string) (Team, error) {
@@ -184,6 +187,8 @@ func (q *Queries) GetTeamBySlug(ctx context.Context, slug string) (Team, error) 
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.PublishPolicyOverride,
+		&i.LimitOverrides,
+		&i.RetentionOverrides,
 	)
 	return i, err
 }
@@ -250,7 +255,7 @@ func (q *Queries) InsertMemberIfAbsent(ctx context.Context, arg InsertMemberIfAb
 const insertTeam = `-- name: InsertTeam :one
 INSERT INTO teams (slug, name, description, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override
+RETURNING id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override, limit_overrides, retention_overrides
 `
 
 type InsertTeamParams struct {
@@ -280,6 +285,8 @@ func (q *Queries) InsertTeam(ctx context.Context, arg InsertTeamParams) (Team, e
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.PublishPolicyOverride,
+		&i.LimitOverrides,
+		&i.RetentionOverrides,
 	)
 	return i, err
 }
@@ -377,7 +384,7 @@ func (q *Queries) ListOpenInvites(ctx context.Context, teamID uuid.UUID) ([]Team
 }
 
 const listTeamsAdmin = `-- name: ListTeamsAdmin :many
-SELECT t.id, t.slug, t.name, t.description, t.status, t.created_by, t.revision, t.created_at, t.updated_at, t.archived_at, t.publish_policy_override,
+SELECT t.id, t.slug, t.name, t.description, t.status, t.created_by, t.revision, t.created_at, t.updated_at, t.archived_at, t.publish_policy_override, t.limit_overrides, t.retention_overrides,
        (SELECT count(*) FROM team_members m WHERE m.team_id = t.id)::bigint AS member_count,
        (SELECT count(*) FROM team_members m WHERE m.team_id = t.id AND m.role = 'owner')::bigint AS owner_count,
        (SELECT count(*) FROM team_invites i WHERE i.team_id = t.id AND i.role = 'owner' AND i.accepted_at IS NULL AND i.revoked_at IS NULL
@@ -432,6 +439,8 @@ func (q *Queries) ListTeamsAdmin(ctx context.Context, arg ListTeamsAdminParams) 
 			&i.Team.UpdatedAt,
 			&i.Team.ArchivedAt,
 			&i.Team.PublishPolicyOverride,
+			&i.Team.LimitOverrides,
+			&i.Team.RetentionOverrides,
 			&i.MemberCount,
 			&i.OwnerCount,
 			&i.OwnerInvites,
@@ -447,7 +456,7 @@ func (q *Queries) ListTeamsAdmin(ctx context.Context, arg ListTeamsAdminParams) 
 }
 
 const listTeamsForUser = `-- name: ListTeamsForUser :many
-SELECT t.id, t.slug, t.name, t.description, t.status, t.created_by, t.revision, t.created_at, t.updated_at, t.archived_at, t.publish_policy_override, m.role AS member_role
+SELECT t.id, t.slug, t.name, t.description, t.status, t.created_by, t.revision, t.created_at, t.updated_at, t.archived_at, t.publish_policy_override, t.limit_overrides, t.retention_overrides, m.role AS member_role
 FROM team_members m
 JOIN teams t ON t.id = m.team_id
 WHERE m.user_id = $1
@@ -466,6 +475,8 @@ type ListTeamsForUserRow struct {
 	UpdatedAt             time.Time
 	ArchivedAt            *time.Time
 	PublishPolicyOverride *string
+	LimitOverrides        json.RawMessage
+	RetentionOverrides    json.RawMessage
 	MemberRole            string
 }
 
@@ -490,6 +501,8 @@ func (q *Queries) ListTeamsForUser(ctx context.Context, userID uuid.UUID) ([]Lis
 			&i.UpdatedAt,
 			&i.ArchivedAt,
 			&i.PublishPolicyOverride,
+			&i.LimitOverrides,
+			&i.RetentionOverrides,
 			&i.MemberRole,
 		); err != nil {
 			return nil, err
@@ -503,7 +516,7 @@ func (q *Queries) ListTeamsForUser(ctx context.Context, userID uuid.UUID) ([]Lis
 }
 
 const lockTeam = `-- name: LockTeam :one
-SELECT id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override FROM teams WHERE id = $1 FOR UPDATE
+SELECT id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override, limit_overrides, retention_overrides FROM teams WHERE id = $1 FOR UPDATE
 `
 
 // Serialises membership changes for one team (owner counting, invites).
@@ -522,6 +535,8 @@ func (q *Queries) LockTeam(ctx context.Context, id uuid.UUID) (Team, error) {
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.PublishPolicyOverride,
+		&i.LimitOverrides,
+		&i.RetentionOverrides,
 	)
 	return i, err
 }
@@ -592,7 +607,7 @@ SET name        = $1,
     revision    = revision + 1,
     updated_at  = now()
 WHERE id = $4
-RETURNING id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override
+RETURNING id, slug, name, description, status, created_by, revision, created_at, updated_at, archived_at, publish_policy_override, limit_overrides, retention_overrides
 `
 
 type UpdateTeamParams struct {
@@ -622,6 +637,8 @@ func (q *Queries) UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, e
 		&i.UpdatedAt,
 		&i.ArchivedAt,
 		&i.PublishPolicyOverride,
+		&i.LimitOverrides,
+		&i.RetentionOverrides,
 	)
 	return i, err
 }

@@ -48,6 +48,7 @@ done
 
 # Files kept beside an overlay as alternatives (not in its resources).
 validate "overlays/example/httproute.yaml" "${root}/overlays/example/httproute.yaml"
+validate "overlays/example/servicemonitor.yaml" "${root}/overlays/example/servicemonitor.yaml"
 
 # open-mcp-gateway-config must be hashed and referenced by both containers.
 check_config_refs() { # name, rendered file
@@ -66,6 +67,8 @@ check_config_refs "base" "${scratch}/base.yaml"
 check_config_refs "overlays/example" "${scratch}/example.yaml"
 grep -q "^  APP_URL: https://mcp.example.org\$" "${scratch}/example.yaml" ||
   { echo "overlays/example: APP_URL not merged into the config" >&2; exit 1; }
+grep -q "^  METRICS_ADDR: :9090\$" "${scratch}/example.yaml" && grep -q "containerPort: 9090" "${scratch}/example.yaml" ||
+  { echo "overlays/example: the metrics port is not wired" >&2; exit 1; }
 
 # No secret values in the manifests: the runtime secret is referenced only.
 if grep -q "^kind: Secret\$" "${scratch}/base.yaml" "${scratch}"/example.yaml; then

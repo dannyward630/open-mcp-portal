@@ -42,6 +42,38 @@ const revoked: Format = (v) => (v === true ? "Yes" : v === false ? "No (failed)"
 
 const overrideModeLabels: Record<string, string> = { inherit: "Same as the server", none: "No account", scopes: "Other scopes" };
 
+const limitKeyLabels: Record<string, string> = {
+  person_per_minute: "Per person",
+  credential_per_minute: "Per API key or connected app",
+  service_account_per_minute: "Per service account",
+  gateway_per_minute: "Per gateway",
+};
+const perMinute = (v: unknown) => (typeof v === "number" ? `${v.toLocaleString()}/min` : "unlimited");
+
+/** Platform limits as words: "Per person: 600/min (ceiling none)". */
+const limitItems: Format = (v) =>
+  Array.isArray(v)
+    ? v.map((i: { key?: string; default?: unknown; ceiling?: unknown; value?: unknown }) =>
+        "value" in i
+          ? `${limitKeyLabels[i.key ?? ""] ?? i.key}: ${i.value === null ? "inherit" : perMinute(i.value)}`
+          : `${limitKeyLabels[i.key ?? ""] ?? i.key}: ${perMinute(i.default)}${i.ceiling === null || i.ceiling === undefined ? "" : `, ceiling ${perMinute(i.ceiling)}`}`,
+      )
+    : v;
+
+const retentionKindLabels: Record<string, string> = { call_metadata: "Call records", captured_payloads: "Recorded call contents", audit_log: "Audit log", usage_rollups: "Usage totals" };
+
+/** Retention periods as words: "Call records: 90 days". */
+const periodItems: Format = (v) =>
+  Array.isArray(v)
+    ? v.map((p: { kind?: string; days?: unknown }) => `${retentionKindLabels[p.kind ?? ""] ?? p.kind}: ${typeof p.days === "number" ? `${p.days} days` : "inherit"}`)
+    : v;
+
+/** Redaction patterns as words: "EMP-[0-9]{6} · Employee numbers". */
+const patternItems: Format = (v) => (Array.isArray(v) ? v.map((p: { pattern?: string; note?: string }) => `${p.pattern ?? ""}${p.note ? ` · ${p.note}` : ""}`) : v);
+
+const payloadViewWords: Record<string, string> = { team: "On the team's page", admin: "In Admin (platform staff)" };
+const capturedByLabels: Record<string, string> = { gateway: "The gateway", server: "The server" };
+
 const serviceAccountRoleLabels: Record<string, string> = { member: roleLabels.member, editor: roleLabels.editor };
 
 function fieldsFor(action: string): Fields | undefined {
@@ -50,6 +82,22 @@ function fieldsFor(action: string): Fields | undefined {
       return { entries: ["Allowed networks and hosts", networkEntries] };
     case "settings.oauth_clients_update":
       return { clients: ["Trusted clients", trustedClients] };
+    case "settings.limits_update":
+    case "team.limits_update":
+      return { items: ["Rate limits", limitItems] };
+    case "settings.retention_update":
+    case "team.retention_update":
+      return { periods: ["Retention periods", periodItems] };
+    case "settings.capture_update":
+      return { patterns: ["Redaction patterns", patternItems] };
+    case "mcp_call.payload_view":
+      return { via: ["Viewed", label(payloadViewWords)], capturedBy: ["Recorded by", (v) => (Array.isArray(v) ? v.map((b) => capturedByLabels[String(b)] ?? b) : v)] };
+    case "gateway.create":
+    case "gateway.update":
+      return { capturePayloads: ["Record call contents", onOff], rateLimitPerMinute: ["Rate limit per minute"] };
+    case "mcp_server.create":
+    case "mcp_server.update":
+      return { capturePayloads: ["Record call contents", onOff] };
     case "service_account.create":
     case "service_account.update":
     case "service_account.delete":

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-gateway/internal/observability"
 )
 
 // statusRecorder captures the status code while still supporting streaming
@@ -86,6 +87,7 @@ func chain(mux *http.ServeMux, d Deps) http.Handler {
 				// The client went away first: not a server error (httpx.Internal).
 				rec.status = httpx.StatusClientClosedRequest
 			}
+			observability.ObserveHTTP(r.Pattern, r.Method, rec.status, time.Since(start))
 			level := slog.LevelInfo
 			if quietRoutes[r.Pattern] {
 				level = slog.LevelDebug

@@ -1,0 +1,49 @@
+/* Admin › Limits, Retention and Payload capture, and a team's overrides. Semantic tokens only. */
+
+.amountField {
+  min-width: 9rem;
+  max-width: 14rem;
+}
+
+.list {
+  margin: var(--space-2) 0 0;
+  padding-inline-start: var(--space-5);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.rules {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--font-size-sm);
+
+  & dt {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text);
+  }
+
+  & dd {
+    margin: 0;
+    color: var(--color-text-muted);
+  }
+}
+
+.tester {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}

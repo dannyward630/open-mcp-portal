@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const insertMCPCall = `-- name: InsertMCPCall :exec
+const insertMCPCall = `-- name: InsertMCPCall :one
 
 INSERT INTO mcp_calls (
     request_id, method, exposed_name, gateway_id, gateway_slug, gateway_name, gateway_team_id,
@@ -25,6 +25,7 @@ INSERT INTO mcp_calls (
     $16, $17, $18, $19, $20, $21,
     $22, $23, $24, $25, $26, $27, $28, $29
 )
+RETURNING id, occurred_at
 `
 
 type InsertMCPCallParams struct {
@@ -59,9 +60,14 @@ type InsertMCPCallParams struct {
 	ProviderSlug         *string
 }
 
+type InsertMCPCallRow struct {
+	ID         int64
+	OccurredAt time.Time
+}
+
 // Call records of /mcp/{slug} (internal/calls). Metadata only.
-func (q *Queries) InsertMCPCall(ctx context.Context, arg InsertMCPCallParams) error {
-	_, err := q.db.Exec(ctx, insertMCPCall,
+func (q *Queries) InsertMCPCall(ctx context.Context, arg InsertMCPCallParams) (InsertMCPCallRow, error) {
+	row := q.db.QueryRow(ctx, insertMCPCall,
 		arg.RequestID,
 		arg.Method,
 		arg.ExposedName,
@@ -92,7 +98,9 @@ func (q *Queries) InsertMCPCall(ctx context.Context, arg InsertMCPCallParams) er
 		arg.ResponseBytes,
 		arg.ProviderSlug,
 	)
-	return err
+	var i InsertMCPCallRow
+	err := row.Scan(&i.ID, &i.OccurredAt)
+	return i, err
 }
 
 const listMCPCalls = `-- name: ListMCPCalls :many
@@ -108,8 +116,11 @@ SELECT c.id, c.occurred_at, c.request_id, c.method, c.exposed_name, c.gateway_id
        COALESCE(k.name, sk.name, c.key_name, '')::text AS api_key_name,
        COALESCE(st.slug, '')::text AS service_account_team_slug,
        (sa.id IS NOT NULL)::bool AS service_account_exists,
-       (COALESCE(c.oauth_client_kind, og.client_kind, '') = 'metadata')::bool AS oauth_client_verified
+       (COALESCE(c.oauth_client_kind, og.client_kind, '') = 'metadata')::bool AS oauth_client_verified,
+       c.gateway_team_id, c.server_team_id,
+       COALESCE(p.by_gateway, false)::bool AS payload_by_gateway, COALESCE(p.by_server, false)::bool AS payload_by_server
 FROM mcp_calls c
+LEFT JOIN mcp_call_payloads p ON p.call_id = c.id
 LEFT JOIN gateways g ON g.id = c.gateway_id
 LEFT JOIN mcp_servers s ON s.id = c.server_id
 LEFT JOIN users u ON u.id = c.user_id
@@ -129,8 +140,9 @@ WHERE ($1::uuid IS NULL
   AND ($7::timestamptz IS NULL OR c.occurred_at >= $7::timestamptz)
   AND ($8::timestamptz IS NULL OR c.occurred_at < $8::timestamptz)
   AND ($9::bigint IS NULL OR c.id < $9::bigint)
+  AND ($10::bigint IS NULL OR c.id = $10::bigint)
 ORDER BY c.id DESC
-LIMIT $10
+LIMIT $11
 `
 
 type ListMCPCallsParams struct {
@@ -143,6 +155,7 @@ type ListMCPCallsParams struct {
 	OccurredFrom     *time.Time
 	OccurredTo       *time.Time
 	BeforeID         *int64
+	CallID           *int64
 	PageSize         int32
 }
 
@@ -177,6 +190,10 @@ type ListMCPCallsRow struct {
 	ServiceAccountTeamSlug string
 	ServiceAccountExists   bool
 	OauthClientVerified    bool
+	GatewayTeamID          uuid.NullUUID
+	ServerTeamID           uuid.NullUUID
+	PayloadByGateway       bool
+	PayloadByServer        bool
 }
 
 // One page of calls, newest first. team_id: calls through the team's
@@ -196,6 +213,7 @@ func (q *Queries) ListMCPCalls(ctx context.Context, arg ListMCPCallsParams) ([]L
 		arg.OccurredFrom,
 		arg.OccurredTo,
 		arg.BeforeID,
+		arg.CallID,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -236,6 +254,10 @@ func (q *Queries) ListMCPCalls(ctx context.Context, arg ListMCPCallsParams) ([]L
 			&i.ServiceAccountTeamSlug,
 			&i.ServiceAccountExists,
 			&i.OauthClientVerified,
+			&i.GatewayTeamID,
+			&i.ServerTeamID,
+			&i.PayloadByGateway,
+			&i.PayloadByServer,
 		); err != nil {
 			return nil, err
 		}

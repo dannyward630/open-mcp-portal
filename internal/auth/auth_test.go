@@ -122,26 +122,7 @@ func TestDevLoginRefusals(t *testing.T) {
 	}
 }
 
-func TestLimiter(t *testing.T) {
-	l := newLimiter()
-	now := time.Unix(1_000, 0)
-	l.now = func() time.Time { return now }
-	for i := range 3 {
-		if ok, _ := l.allow("k", 3, time.Minute); !ok {
-			t.Fatalf("event %d refused", i)
-		}
-	}
-	ok, wait := l.allow("k", 3, time.Minute)
-	if ok || wait != time.Minute {
-		t.Fatalf("4th event: ok=%v wait=%s", ok, wait)
-	}
-	if ok, _ := l.allow("other", 3, time.Minute); !ok {
-		t.Fatal("keys share a window")
-	}
-	now = now.Add(time.Minute)
-	if ok, _ := l.allow("k", 3, time.Minute); !ok {
-		t.Fatal("window did not reset")
-	}
+func TestRetryAfter(t *testing.T) {
 	if retryAfter(1500*time.Millisecond) != "2" || retryAfter(0) != "1" {
 		t.Error("retryAfter rounding")
 	}

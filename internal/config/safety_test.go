@@ -69,6 +69,13 @@ func TestSafetyChecks(t *testing.T) {
 			[]string{"API_KEY_PEPPER is the public example value"}},
 		{"missing api key pepper", func(c *Config) { c.APIKeyPepper = "" }, "serve", []string{"API_KEY_PEPPER is required"}},
 		{"example key as previous is fine", func(c *Config) { c.EncryptionKeyPrevious = ex["ENCRYPTION_KEY"] }, "serve", nil},
+		{"example pepper as previous", func(c *Config) { c.APIKeyPepperPrevious = ex["API_KEY_PEPPER"] }, "serve",
+			[]string{"API_KEY_PEPPER_PREVIOUS is the public example value"}},
+		{"previous pepper equal to the current one", func(c *Config) { c.APIKeyPepperPrevious = c.APIKeyPepper }, "serve",
+			[]string{"API_KEY_PEPPER_PREVIOUS must differ"}},
+		{"invalid previous pepper", func(c *Config) { c.APIKeyPepperPrevious = "short" }, "serve", []string{"API_KEY_PEPPER_PREVIOUS"}},
+		{"metrics on the app listener", func(c *Config) { c.MetricsAddr = c.ListenAddr }, "serve", []string{"METRICS_ADDR must differ"}},
+		{"metrics listener", func(c *Config) { c.MetricsAddr = ":9090" }, "serve", nil},
 		{"migrate example key", func(c *Config) { c.EncryptionKey = ex["ENCRYPTION_KEY"] }, "migrate", []string{"ENCRYPTION_KEY"}},
 		{"example key on loopback", func(c *Config) {
 			c.AppURL, c.DevAuth, c.EncryptionKey = "http://localhost:8088", true, ex["ENCRYPTION_KEY"]

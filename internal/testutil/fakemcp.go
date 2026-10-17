@@ -41,10 +41,12 @@ type FakeMCP struct {
 	requests     int
 
 	gatewayTools bool
-	jwksURL      string
-	audience     string
-	toolCalls    []ToolCall
-	reads        []ToolCall
+	// echoSecrets adds echo_secrets and image (payload capture tests).
+	echoSecrets bool
+	jwksURL     string
+	audience    string
+	toolCalls   []ToolCall
+	reads       []ToolCall
 	// OnToolCall, when set, sees every tool call and resource read
 	// (cmd/fakemcp logs them).
 	OnToolCall func(ToolCall)
@@ -151,6 +153,17 @@ func (f *FakeMCP) EnableGatewayTools() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.gatewayTools = true
+}
+
+// EnableEchoSecrets adds two tools for payload capture tests: echo_secrets
+// returns, as text, every credential it received (the identity token, the
+// provider token and the Authorization and X-Api-Key header values), as a
+// misbehaving server might; image returns an image content item. Never
+// enabled by cmd/fakemcp.
+func (f *FakeMCP) EnableEchoSecrets() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.echoSecrets = true
 }
 
 // SetJWKS makes whoami verify the token against the key set at url, for
@@ -286,6 +299,24 @@ func (f *FakeMCP) server() *mcp.Server {
 				}
 				_ = json.Unmarshal(req.Params.Arguments, &args)
 				return fakeText(args.Text), nil
+			})
+	}
+	if f.echoSecrets {
+		s.AddTool(&mcp.Tool{Name: "echo_secrets", Title: "Echo secrets", Description: "Returns the credentials it received.",
+			InputSchema: map[string]any{"type": "object"}}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			h := headerOf(req)
+			f.sawCall("echo_secrets", h)
+			_, id := IdentityToken(h)
+			return &mcp.CallToolResult{Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("identity=%s provider=%s authorization=%s apikey=%s ", id,
+					h.Get("MCP-Gateway-Provider-Token"), h.Get("Authorization"), h.Get("X-Api-Key"))},
+				&mcp.TextContent{Text: string(req.Params.Arguments)},
+			}}, nil
+		})
+		s.AddTool(&mcp.Tool{Name: "image", Title: "Image", Description: "Returns an image.", InputSchema: map[string]any{"type": "object"}},
+			func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				f.sawCall("image", headerOf(req))
+				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{Data: []byte("0123456789abcdef0123456789abcdef"), MIMEType: "image/png"}}}, nil
 			})
 	}
 	if !f.hidden["status://services"] {

@@ -8,13 +8,16 @@
  * can't finish (a state older than 10 minutes, or another browser session).
  * Anything else: a generic failure. The page only reads the address: it
  * never starts anything, and works whether or not the person is signed in.
+ * The address is untrusted (anyone can link here): the provider is named
+ * only when ?provider= is a provider the person can see in GET
+ * /v1/auth-providers, and the left-out scopes are listed only when every
+ * one looks like a scope (safeMissingScopes); otherwise the words are generic.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
 import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { useEffect, useId } from "react";
 import { authProvidersQuery } from "../../api/queries";
-import { presetLabels } from "../../components/providers/labels";
 import { useInstance, useMe } from "../../session";
 import { Card, CardBody } from "@/components/ui/card/card";
 import { Stack } from "@/components/ui/layout/layout";
@@ -58,17 +61,31 @@ const icons = { success: CircleCheck, warning: CircleAlert, danger: CircleX };
 export const missingScopes = (v: unknown): string[] =>
   Array.isArray(v) ? [...new Set(v.flatMap(missingScopes))] : typeof v === "string" ? v.split(/[\s,]+/).filter(Boolean) : [];
 
+/** At most this many left-out scopes are listed. */
+export const maxMissingScopes = 20;
+const scopeLike = /^[A-Za-z0-9:._/-]{1,100}$/;
+
+/**
+ * The left-out scopes to show, or null when the address carries anything
+ * that doesn't look like a scope (letters, digits and `:._/-`, at most 100
+ * characters each, at most 20): then the page says so in general words.
+ */
+export function safeMissingScopes(v: unknown): string[] | null {
+  const all = missingScopes(v);
+  return all.length <= maxMissingScopes && all.every((s) => scopeLike.test(s)) ? all : null;
+}
+
 export function ConnectDonePage() {
   const instance = useInstance();
   const search = useSearch({ from: "/connect/done" });
   const slug = typeof search.provider === "string" ? search.provider : "";
   const result: ConnectResult = results.includes(search.result as ConnectResult) ? (search.result as ConnectResult) : "error";
-  const missing = result === "missing_scopes" ? missingScopes(search.missing) : [];
+  const missing = result === "missing_scopes" ? safeMissingScopes(search.missing) : [];
   const me = useMe();
   const signedIn = Boolean(me.data);
-  // The provider's name for someone signed in; otherwise the preset's, or the slug as given.
+  // The provider's name only when it is a provider this person can see; never the address's words.
   const providers = useQuery({ ...authProvidersQuery(), enabled: signedIn && Boolean(slug) });
-  const name = providers.data?.find((p) => p.slug === slug)?.name ?? presetLabels[slug as keyof typeof presetLabels] ?? (slug || "the provider");
+  const name = providers.data?.find((p) => p.slug === slug)?.name ?? "the provider";
   const { title, text, tone } = resultText(result, name);
   const Icon = icons[tone];
   const titleId = useId();
@@ -89,7 +106,8 @@ export function ConnectDonePage() {
                 </h1>
               </div>
               <p className={styles.muted}>{text}</p>
-              {missing.length > 0 && (
+              {missing === null && <p className={styles.muted}>Some of the permissions the tool needs weren't allowed.</p>}
+              {missing !== null && missing.length > 0 && (
                 <section aria-labelledby={`${titleId}-missing`}>
                   <h2 id={`${titleId}-missing`} className={styles.heading}>
                     Not allowed

@@ -78,7 +78,7 @@ describe("Create gateway", () => {
     // The refusal belongs to the slug that was sent: changing it clears it, so the form can be sent again.
     await u.type(screen.getByRole("textbox", { name: "Slug" }), "-2");
     await u.click(screen.getByRole("button", { name: "Create gateway" }));
-    await waitFor(() => expect(calls.filter((c) => c.method === "POST").at(-1)?.body).toEqual({ slug: "support-tools-2", name: "Support Tools!", enabled: true }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST").at(-1)?.body).toEqual({ slug: "support-tools-2", name: "Support Tools!", enabled: true, capturePayloads: false }));
     expect(await screen.findByRole("heading", { level: 1, name: "Support tools" })).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "capabilities" }));
   });
@@ -182,7 +182,7 @@ describe("Gateway › Activity", () => {
     const table = await screen.findByRole("table", { name: "Calls" });
     expect(await within(table).findByText("service-status__get_status")).toBeInTheDocument();
     expect(within(table).getByText("API key: Claude Code on my laptop")).toBeInTheDocument();
-    expect(screen.getByText(/Arguments and results are never stored/)).toBeInTheDocument();
+    expect(screen.getByText(/Arguments and results are kept only for gateways and servers that record call contents/)).toBeInTheDocument();
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/calls") && c.search.get("gateway") === gatewayId && c.search.get("outcome") === "denied")).toBe(true));
     expect(await axe(container)).toHaveNoViolations();
   });

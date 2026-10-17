@@ -86,6 +86,7 @@ export const outcomeLabels: Record<CallOutcome, string> = {
   too_large: "Too large",
   bad_request: "Bad request",
   needs_authorization: "Needed a connection",
+  rate_limited: "Rate limited",
 };
 
 export const outcomeHelp: Record<CallOutcome, string> = {
@@ -97,6 +98,7 @@ export const outcomeHelp: Record<CallOutcome, string> = {
   too_large: "The request or response was over 1 MiB.",
   bad_request: "The client's request was invalid.",
   needs_authorization: "Not sent to the server: the person had to connect or reconnect an account first, and their client got a link to do it.",
+  rate_limited: "Not sent to the server: a rate limit was exceeded, so the client was told to try again later (HTTP 429).",
 };
 
 export const outcomeTone: Record<CallOutcome, "success" | "warning" | "danger" | "neutral"> = {
@@ -108,6 +110,7 @@ export const outcomeTone: Record<CallOutcome, "success" | "warning" | "danger" |
   too_large: "warning",
   bad_request: "warning",
   needs_authorization: "warning",
+  rate_limited: "warning",
 };
 
 export const callOutcomes = Object.keys(outcomeLabels) as CallOutcome[];
@@ -135,6 +138,11 @@ export const callErrorLabels: Record<string, string> = {
   service_account: "Service accounts can't use it",
   provider_disabled: "Auth provider turned off",
   provider_unavailable: "Auth provider unavailable",
+  // The gateway's own rate limits (outcome "rate_limited").
+  person_per_minute: "Over the per-person limit",
+  credential_per_minute: "Over the per-key or per-app limit",
+  service_account_per_minute: "Over the service account's limit",
+  gateway_per_minute: "Over the gateway's limit",
   // The client's request.
   invalid_params: "Invalid parameters",
   invalid_cursor: "Invalid page cursor",

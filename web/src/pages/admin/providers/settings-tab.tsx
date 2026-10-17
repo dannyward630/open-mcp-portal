@@ -8,11 +8,11 @@
  * in_use names them); otherwise it erases every connection. Platform admins
  * change it; auditors read.
  */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { api, ApiError, ifMatch, unwrap } from "@/api/client";
-import { adminAuthProviderQuery, adminAuthProvidersKey } from "@/api/queries";
+import { adminAuthProviderQuery, adminAuthProvidersKey, adminServersKey } from "@/api/queries";
 import type { AuthProvider } from "@/components/providers/labels";
 import { useRevisionForm } from "@/components/templates/revision-form";
 import { DangerAction, DangerZone, SettingsPage, SettingsSection } from "@/components/templates/settings-page";
@@ -125,6 +125,9 @@ export function ProviderSettingsTab({ provider }: { provider: AuthProvider }) {
 
 type InUse = { count: number; servers: { id: string; slug: string; teamSlug: string }[] };
 
+/** Servers listed in the dialog before a delete is tried. */
+const inUsePreview = 10;
+
 /** 409 in_use: the servers that still require the provider. */
 function inUse(err: unknown): InUse | undefined {
   if (!(err instanceof ApiError) || err.code !== "in_use") return undefined;
@@ -146,7 +149,18 @@ function DeleteProvider({ provider }: { provider: AuthProvider }) {
       void navigate({ to: "/admin/auth-providers", replace: true }).then(() => qc.invalidateQueries({ queryKey: adminAuthProvidersKey }));
     },
   });
-  const used = inUse(del.error);
+  // The record knows how many servers require it: name them before Delete is tried.
+  const requiring = useQuery({
+    queryKey: [...adminServersKey, "requiring", provider.id],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/admin/mcp-servers", { params: { query: { provider: provider.id, limit: inUsePreview } } })).items.map((x) => ({
+        id: x.id,
+        slug: x.slug,
+        teamSlug: x.teamSlug,
+      })),
+    enabled: open && provider.serverCount > 0,
+  });
+  const used = inUse(del.error) ?? (provider.serverCount > 0 ? { count: provider.serverCount, servers: requiring.data ?? [] } : undefined);
   return (
     <DangerZone>
       <DangerAction
@@ -174,7 +188,7 @@ function DeleteProvider({ provider }: { provider: AuthProvider }) {
         onConfirm={() => del.mutate()}
       >
         {used && (
-          <div role="alert" className={s.dangerText}>
+          <div role={del.error ? "alert" : undefined} className={s.dangerText}>
             <p>
               {plural(used.count, "server")} still {used.count === 1 ? "requires" : "require"} {provider.name}, so it can&apos;t be deleted. Their teams remove the
               requirement first:

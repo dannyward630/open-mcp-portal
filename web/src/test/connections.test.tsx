@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
 import { redirectTo } from "../components/providers/labels";
+import { NARROW_QUERY } from "@/lib/bitop-utils";
 import { myTeam, page, user } from "./fixtures";
 import { connection, connectionId, googleId, providerId, providerRef, providerSummaries } from "./fixtures-providers";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
@@ -81,8 +82,56 @@ describe("Account › My connections", () => {
     await u.click(await screen.findByRole("menuitem", { name: "Reconnect" }));
     await waitFor(() => expect(go).toHaveBeenCalledWith(authorizeUrl));
     const post = calls.find((c) => c.method === "POST" && c.url === "/v1/me/connections/start")!;
-    expect(post.body).toEqual({ providerId: googleId, scopes: ["openid"], returnTo: "/settings/connections" });
+    expect(post.body).toEqual({ providerId: googleId, scopes: ["openid"], returnTo: "/settings/connections?connected=google" });
     expect(post.headers.get("X-CSRF-Token")).toBe("csrf-123");
+  });
+
+  it("comes back from the provider with a notice naming the connection, only when it's active", async () => {
+    const u = userEvent.setup();
+    mockApi(routes());
+    const { container, router } = renderApp("/settings/connections?connected=github");
+    const notice = await screen.findByText("GitHub is connected");
+    expect(notice.closest('[role="status"]')).toHaveTextContent(/run it again in your AI client/);
+    expect(await axe(container)).toHaveNoViolations();
+    await u.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(screen.queryByText("GitHub is connected")).toBeNull());
+    expect(router.state.location.search).toEqual({});
+  });
+
+  it("says nothing for a connection that isn't active, or an unknown or made-up provider", async () => {
+    for (const at of ["/settings/connections?connected=google", "/settings/connections?connected=%3Cb%3Eevil", "/settings/connections?connected=gitlab"]) {
+      mockApi(routes());
+      const { unmount } = renderApp(at);
+      await screen.findByRole("table", { name: "Your connected accounts" });
+      expect(screen.queryByText(/is connected$/)).toBeNull();
+      expect(screen.queryByText(/evil/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("keeps the provider and status in view on a phone", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q === NARROW_QUERY,
+      media: q,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    }));
+    try {
+      mockApi(routes());
+      renderApp("/settings/connections");
+      const table = await screen.findByRole("table", { name: "Your connected accounts" });
+      const headers = within(table)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent ?? "");
+      expect(headers.some((h) => h.includes("Provider"))).toBe(true);
+      expect(headers.some((h) => h.includes("Status"))).toBe(true);
+      expect(headers.some((h) => /Scopes|Last used|Connected/.test(h))).toBe(false);
+      expect((await within(table).findByText("GitHub")).closest("tr")).toHaveTextContent("Account: octocat");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("connects an account ahead of time with the provider's default scopes", async () => {
@@ -96,7 +145,7 @@ describe("Account › My connections", () => {
     expect(await axe(dialog)).toHaveNoViolations();
     await u.click(within(dialog).getByRole("button", { name: "Continue to GitHub" }));
     await waitFor(() => expect(go).toHaveBeenCalledWith(authorizeUrl));
-    expect(calls.find((c) => c.url === "/v1/me/connections/start")!.body).toEqual({ providerId, returnTo: "/settings/connections" });
+    expect(calls.find((c) => c.url === "/v1/me/connections/start")!.body).toEqual({ providerId, returnTo: "/settings/connections?connected=github" });
   });
 
   it("never leaves for an address that isn't http(s), and shows a refused start", async () => {

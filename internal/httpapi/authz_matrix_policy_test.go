@@ -375,6 +375,57 @@ var matrixPolicies = map[string]policy{
 	}},
 	"revokeMyConnection": {own: signedIn, build: func(c *mctx) request { return del("/v1/me/connections/" + c.connection(true)) }},
 	"getConnectRequest":  {own: signedIn, build: func(c *mctx) request { return get("/v1/connect/requests/" + c.connectRequest()) }},
+	// Operations (Phase 6): rate limits and retention (platform admins
+	// write; members read their team's; platform staff read any), call
+	// detail (as the call list), payloads (owners and admins of the team
+	// whose switch captured it; platform staff only through the admin route)
+	// and usage (owners, admins and editors; platform staff).
+	"getTeamLimits":    {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request { return get(c.team("/limits")) }},
+	"getTeamRetention": {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request { return get(c.team("/retention")) }},
+	"getTeamCall":      {scope: scopeTeam, own: admins, foreign: platform, build: func(c *mctx) request { return get(c.team("/calls/" + c.tf.call)) }},
+	"getTeamCallPayload": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
+		return get(c.team("/calls/" + c.tf.call + "/payload"))
+	}},
+	"getTeamUsage": {scope: scopeTeam, own: editors, foreign: platform, build: func(c *mctx) request {
+		return get(c.team("/usage?groupBy=gateway&series=true"))
+	}},
+	"adminGetLimitSettings": {own: platform, build: func(*mctx) request { return get("/v1/admin/settings/limits") }},
+	"adminUpdateLimitSettings": {own: padmin, build: func(c *mctx) request {
+		rev := c.e.exec(`SELECT revision::text FROM limit_settings`)
+		return request{method: "PUT", path: "/v1/admin/settings/limits",
+			body:    map[string]any{"items": []any{map[string]any{"key": "person_per_minute", "default": 100000, "ceiling": nil}}},
+			headers: map[string]string{"If-Match": `"` + rev + `"`}}
+	}},
+	"adminGetTeamLimits": {own: platform, build: func(c *mctx) request { return get("/v1/admin/teams/" + c.e.b.slug + "/limits") }},
+	"adminUpdateTeamLimits": {own: padmin, build: func(c *mctx) request {
+		return request{method: "PUT", path: "/v1/admin/teams/" + c.spareTeam() + "/limits",
+			body: map[string]any{"items": []any{map[string]any{"key": "gateway_per_minute", "value": 5000}}}, headers: rev1}
+	}},
+	"adminGetCaptureSettings": {own: platform, build: func(*mctx) request { return get("/v1/admin/settings/capture") }},
+	"adminUpdateCaptureSettings": {own: padmin, build: func(c *mctx) request {
+		rev := c.e.exec(`SELECT revision::text FROM capture_settings`)
+		return request{method: "PUT", path: "/v1/admin/settings/capture",
+			body:    map[string]any{"patterns": []any{map[string]any{"pattern": "EMP-[0-9]{6}", "note": "employee IDs"}}},
+			headers: map[string]string{"If-Match": `"` + rev + `"`}}
+	}},
+	"adminTestRedaction": {own: platform, build: func(*mctx) request {
+		return post("/v1/admin/settings/capture/test", map[string]any{"sample": `{"password":"x","note":"EMP-123456"}`})
+	}},
+	"adminGetRetentionSettings": {own: platform, build: func(*mctx) request { return get("/v1/admin/settings/retention") }},
+	"adminUpdateRetentionSettings": {own: padmin, build: func(c *mctx) request {
+		rev := c.e.exec(`SELECT revision::text FROM retention_settings`)
+		return request{method: "PUT", path: "/v1/admin/settings/retention",
+			body: map[string]any{"periods": []any{map[string]any{"kind": "call_metadata", "days": 120}}}, headers: map[string]string{"If-Match": `"` + rev + `"`}}
+	}},
+	"adminGetTeamRetention": {own: platform, build: func(c *mctx) request { return get("/v1/admin/teams/" + c.e.b.slug + "/retention") }},
+	"adminUpdateTeamRetention": {own: padmin, build: func(c *mctx) request {
+		return request{method: "PUT", path: "/v1/admin/teams/" + c.spareTeam() + "/retention",
+			body: map[string]any{"periods": []any{map[string]any{"kind": "captured_payloads", "days": 7}}}, headers: rev1}
+	}},
+	"adminGetCall":        {own: platform, build: func(c *mctx) request { return get("/v1/admin/calls/" + c.e.b.call) }},
+	"adminGetCallPayload": {own: platform, build: func(c *mctx) request { return get("/v1/admin/calls/" + c.e.b.call + "/payload") }},
+	"adminGetUsage":       {own: platform, build: func(*mctx) request { return get("/v1/admin/usage?groupBy=team") }},
+
 	"setTeamMcpCapabilityRequirement": {scope: scopeTeam, own: editors, build: func(c *mctx) request {
 		srv, capID := c.serverCapability()
 		return request{method: "PUT", path: c.team("/mcp-servers/" + srv + "/capabilities/" + capID + "/requirement"),

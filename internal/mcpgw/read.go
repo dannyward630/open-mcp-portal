@@ -114,6 +114,7 @@ func (rc *request) forwardRead(exposed string, t readTarget) {
 	}
 	target.IdentityHeader, target.IdentityValue = identity.Header(target.HeaderName, token)
 	withCredential(&target, cred)
+	rc.captureCall(o, readArguments(exposed), target, token, cred)
 	res, _, err := rc.h.Registry.Client().ReadResource(ctx, target, t.original)
 	if err != nil {
 		rc.upstreamFailed(rec, err)

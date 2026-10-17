@@ -1,9 +1,10 @@
 # open-mcp-gateway serve: the management API, the embedded web UI, the MCP
 # endpoint /mcp/{slug} and the background loops, on :8088 (/healthz,
 # /readyz on the same port). One Deployment is the whole application: it
-# is stateless and every replica shares PostgreSQL. The health-check and
-# signing-key rotation loops take a PostgreSQL advisory lock, so only one
-# replica runs each at a time.
+# is stateless and every replica shares PostgreSQL (rate limit counters
+# included). The health-check, signing-key rotation, retention and usage
+# rollup loops take a PostgreSQL advisory lock, so only one replica runs
+# each at a time.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -135,6 +136,14 @@ spec:
                 secretKeyRef:
                   name: open-mcp-gateway-runtime
                   key: API_KEY_PEPPER
+            # Only while rotating API_KEY_PEPPER: the old pepper, so keys and
+            # connected apps keep working (keys are re-digested on use).
+            - name: API_KEY_PEPPER_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: open-mcp-gateway-runtime
+                  key: API_KEY_PEPPER_PREVIOUS
+                  optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -148,6 +157,10 @@ spec:
             - name: http
               containerPort: 8088
               protocol: TCP
+            # With METRICS_ADDR=:9090 (see config.env and overlays/example):
+            # - name: metrics
+            #   containerPort: 9090
+            #   protocol: TCP
           # The listener opens only after Postgres answers (the process waits
           # up to 3 minutes for it) and the schema is current.
           startupProbe:

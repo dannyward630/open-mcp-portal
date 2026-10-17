@@ -4,15 +4,17 @@
  * providers (GitHub, Google…) so tools can act as them. A tool that needs
  * one asks with a link the first time (/connect/{provider}); Connect here
  * does it ahead of time with the provider's default scopes. Connect again
- * keeps the granted scopes; Disconnect asks first.
+ * keeps the granted scopes; Disconnect asks first. Connecting from here
+ * comes back with ?connected=<provider slug>, said as a notice when that
+ * provider's connection is active (nothing else from the address is shown).
  */
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Link2 } from "lucide-react";
 import { useState } from "react";
 import { authProvidersQuery } from "../../api/queries";
 import { FormDialog } from "../../components/form-dialog";
-import { ProviderConnections } from "../../components/providers/connections";
+import { connectedReturnTo, ProviderConnections, useConnections } from "../../components/providers/connections";
 import { scopesText } from "../../components/providers/labels";
 import { useStartConnection } from "../../components/providers/requires";
 import { terms } from "../../lib/terms";
@@ -22,6 +24,21 @@ import { Field } from "@/components/ui/field/field";
 import { NativeSelect } from "@/components/ui/input/input";
 import { Loading } from "@/components/ui/spinner/spinner";
 import { TextLink } from "@/components/ui/text-link/text-link";
+
+/** The notice after coming back from the provider: the connection named by ?connected=, when it's active. */
+function ConnectedNotice() {
+  const search: Record<string, unknown> = useSearch({ strict: false });
+  const navigate = useNavigate();
+  const slug = typeof search.connected === "string" ? search.connected : "";
+  const connections = useConnections({ self: true });
+  const c = slug ? connections.data?.find((x) => x.provider.slug === slug && x.status === "active") : undefined;
+  if (!c) return null;
+  return (
+    <Alert tone="success" title={`${c.provider.name} is connected`} onDismiss={() => void navigate({ to: "/settings/connections", replace: true })}>
+      Tools that need your {c.provider.name} account can use it now. If a tool asked you to connect, run it again in your AI client.
+    </Alert>
+  );
+}
 
 export function MyConnectionsPage() {
   const [connecting, setConnecting] = useState(false);
@@ -40,10 +57,13 @@ export function MyConnectionsPage() {
         primaryAction={connect}
         emptyAction={connect}
         notices={
-          <Alert tone="info">
-            A tool that needs an account you haven&apos;t connected answers with a link: open it, check what it asks for, and connect. Then run the tool again. These are
-            different from <TextLink render={<Link to="/settings/connected-apps" />}>{terms.connectedApps}</TextLink>, the AI clients you let use gateways as you.
-          </Alert>
+          <>
+            <ConnectedNotice />
+            <Alert tone="info">
+              A tool that needs an account you haven&apos;t connected answers with a link: open it, check what it asks for, and connect. Then run the tool again. These
+              are different from <TextLink render={<Link to="/settings/connected-apps" />}>{terms.connectedApps}</TextLink>, the AI clients you let use gateways as you.
+            </Alert>
+          </>
         }
       />
       {connecting && <ConnectDialog onClose={() => setConnecting(false)} />}
@@ -63,7 +83,7 @@ function ConnectDialog({ onClose }: { onClose: () => void }) {
       title="Connect an account"
       description="You'll go to the provider to sign in and approve. Then you come back here."
       onClose={onClose}
-      onSubmit={() => chosen && start.mutate({ providerId: chosen.id, returnTo: "/settings/connections" })}
+      onSubmit={() => chosen && start.mutate({ providerId: chosen.id, returnTo: connectedReturnTo(chosen.slug) })}
       submitLabel={chosen ? `Continue to ${chosen.name}` : "Continue"}
       submitDisabled={!chosen || start.isSuccess}
       busy={start.isPending}

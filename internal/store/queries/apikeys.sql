@@ -5,8 +5,8 @@
 SELECT count(*)::bigint FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now();
 
 -- name: InsertAPIKey :one
-INSERT INTO api_keys (user_id, name, prefix, digest, expires_at)
-VALUES (@user_id, @name, @prefix, @digest, @expires_at)
+INSERT INTO api_keys (user_id, name, prefix, digest, expires_at, pepper_id)
+VALUES (@user_id, @name, @prefix, @digest, @expires_at, sqlc.narg(pepper_id))
 RETURNING *;
 
 -- name: ListAPIKeys :many

@@ -61,8 +61,8 @@ func toAPIServer(v registry.ServerView) apitypes.McpServer {
 		PublishReviewedAt: s.PublishReviewedAt, PublishReviewedByName: nonEmpty(v.ReviewedByName), PublishReviewNote: s.PublishReviewNote,
 		Counts: toAPICounts(v.Counts), PendingChanges: v.PendingChanges, Health: toAPIHealth(v.Health, true),
 		RefreshedAt: s.RefreshedAt, LastRefreshError: s.LastRefreshError,
-		Requirement: toAPIServerRequirement(v.Requirement),
-		Revision:    s.Revision, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+		Requirement: toAPIServerRequirement(v.Requirement), CapturePayloads: &s.CapturePayloads,
+		Revision: s.Revision, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
 }
 
@@ -147,7 +147,8 @@ func toAPIHealthCheck(h dbgen.McpHealthCheck) apitypes.McpHealthCheck {
 func toAPICatalogServer(v registry.ServerView) apitypes.CatalogServer {
 	s := v.Server
 	out := apitypes.CatalogServer{Id: s.ID, Slug: s.Slug, Name: s.Name, Description: s.Description,
-		TeamSlug: v.TeamSlug, TeamName: v.TeamName, Counts: toAPICounts(v.Approved), Health: toAPIHealth(v.Health, false)}
+		TeamSlug: v.TeamSlug, TeamName: v.TeamName, Counts: toAPICounts(v.Approved), Health: toAPIHealth(v.Health, false),
+		CapturePayloads: &s.CapturePayloads}
 	if s.PublishedAt != nil {
 		out.PublishedAt = *s.PublishedAt
 	}

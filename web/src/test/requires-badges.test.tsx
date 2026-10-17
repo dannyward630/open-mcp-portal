@@ -12,7 +12,7 @@ import { callErrorLabel, outcomeLabels } from "../components/gateways/labels";
 import { redirectTo } from "../components/providers/labels";
 import { neededAccounts } from "../components/providers/needed-accounts";
 import { catalogServer, gateway, gatewayCapabilities, gatewayCapability, gatewayId, gatewayOption, mcpCall, myGateway, optionsPage, page, serverId, team } from "./fixtures";
-import { googleId, providerId, requires } from "./fixtures-providers";
+import { googleId, providerId, providerSummaries, requires } from "./fixtures-providers";
 import { type Handler, mockApi, renderApp, shellRoutes } from "./harness";
 
 afterEach(() => vi.restoreAllMocks());
@@ -132,6 +132,15 @@ describe("Calls that needed a connection", () => {
     expect(row).toHaveTextContent("Account lacks the scopes needed");
     expect(row).toHaveTextContent("Account: github");
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("name the provider when it's one people can connect, else its recorded slug", async () => {
+    mockApi({ ...routes, "GET /v1/auth-providers": () => providerSummaries });
+    renderApp("/admin/calls");
+    const table = await screen.findByRole("table", { name: /Calls/ });
+    const row = (await within(table).findByText("github-tools__create_issue")).closest("tr")!;
+    await waitFor(() => expect(row).toHaveTextContent("Account: GitHub"));
+    expect(row).not.toHaveTextContent("Account: github");
   });
 
   it("have words for every Phase 5 outcome and class", () => {

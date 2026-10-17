@@ -32,6 +32,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/apperr"
 	"github.com/ncecere/open-mcp-gateway/internal/audit"
 	"github.com/ncecere/open-mcp-gateway/internal/authz"
+	"github.com/ncecere/open-mcp-gateway/internal/limits"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-gateway/internal/teams"
@@ -61,6 +62,9 @@ type Service struct {
 	q      *dbgen.Queries
 	appURL string
 	log    *slog.Logger
+	// Limits checks a gateway's own rate limit against the ceiling (nil: no
+	// check).
+	Limits *limits.Service
 }
 
 // New returns a Service; appURL (APP_URL) makes the gateways' endpoint URLs.
@@ -212,12 +216,21 @@ func teamGateway(ctx context.Context, q *dbgen.Queries, teamID, id uuid.UUID, lo
 type CreateInput struct {
 	Slug, Name, Description string
 	Enabled                 bool
+	// CapturePayloads records calls' contents; RateLimit is the gateway's
+	// own limit per minute (nil: inherit).
+	CapturePayloads bool
+	RateLimit       *int64
 }
 
 // UpdateInput holds optional changes; the slug never changes.
 type UpdateInput struct {
 	Name, Description *string
 	Enabled           *bool
+	CapturePayloads   *bool
+	// SetRateLimit changes the gateway's own limit to RateLimit (nil:
+	// inherit); false keeps it.
+	SetRateLimit bool
+	RateLimit    *int64
 }
 
 func checkFields(name, description string) error {
@@ -232,7 +245,16 @@ func checkFields(name, description string) error {
 
 // snapshot is a gateway's audited configuration.
 func snapshot(g dbgen.Gateway) map[string]any {
-	return map[string]any{"slug": g.Slug, "name": g.Name, "description": g.Description, "ownerKind": g.OwnerKind, "enabled": g.Enabled}
+	return map[string]any{"slug": g.Slug, "name": g.Name, "description": g.Description, "ownerKind": g.OwnerKind, "enabled": g.Enabled,
+		"capturePayloads": g.CapturePayloads, "rateLimitPerMinute": g.RateLimitPerMinute}
+}
+
+// checkLimit refuses a gateway limit above the ceiling (422 invalid_limit).
+func (s *Service) checkLimit(ctx context.Context, q *dbgen.Queries, v *int64) error {
+	if s.Limits == nil {
+		return nil
+	}
+	return s.Limits.CheckGatewayValue(ctx, q, v)
 }
 
 func teamOf(g dbgen.Gateway) uuid.UUID {
@@ -243,7 +265,7 @@ func teamOf(g dbgen.Gateway) uuid.UUID {
 }
 
 // create inserts a gateway and audits gateway.create.
-func create(ctx context.Context, q *dbgen.Queries, a authz.Actor, kind string, teamID uuid.NullUUID, in CreateInput) (uuid.UUID, error) {
+func (s *Service) create(ctx context.Context, q *dbgen.Queries, a authz.Actor, kind string, teamID uuid.NullUUID, in CreateInput) (uuid.UUID, error) {
 	in.Slug, in.Name = strings.TrimSpace(in.Slug), strings.TrimSpace(in.Name)
 	if !slugRE.MatchString(in.Slug) {
 		return uuid.Nil, apperr.Invalid("invalid_slug",
@@ -252,9 +274,12 @@ func create(ctx context.Context, q *dbgen.Queries, a authz.Actor, kind string, t
 	if err := checkFields(in.Name, in.Description); err != nil {
 		return uuid.Nil, err
 	}
+	if err := s.checkLimit(ctx, q, in.RateLimit); err != nil {
+		return uuid.Nil, err
+	}
 	g, err := q.InsertGateway(ctx, dbgen.InsertGatewayParams{
 		ID: uuid.New(), Slug: in.Slug, Name: in.Name, Description: in.Description, OwnerKind: kind, TeamID: teamID,
-		Enabled: in.Enabled, CreatedBy: by(a),
+		Enabled: in.Enabled, CapturePayloads: in.CapturePayloads, RateLimitPerMinute: in.RateLimit, CreatedBy: by(a),
 	})
 	if apperr.IsUniqueViolation(err, "gateways_slug_key") {
 		return uuid.Nil, errSlugTaken
@@ -267,11 +292,21 @@ func create(ctx context.Context, q *dbgen.Queries, a authz.Actor, kind string, t
 }
 
 // update applies in to cur (locked) and audits gateway.update.
-func update(ctx context.Context, q *dbgen.Queries, a authz.Actor, cur dbgen.Gateway, in UpdateInput, expectedRevision int64) error {
+func (s *Service) update(ctx context.Context, q *dbgen.Queries, a authz.Actor, cur dbgen.Gateway, in UpdateInput, expectedRevision int64) error {
 	if cur.Revision != expectedRevision {
 		return apperr.Stale()
 	}
-	p := dbgen.UpdateGatewayParams{ID: cur.ID, Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, UpdatedBy: by(a)}
+	p := dbgen.UpdateGatewayParams{ID: cur.ID, Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled,
+		CapturePayloads: cur.CapturePayloads, RateLimitPerMinute: cur.RateLimitPerMinute, UpdatedBy: by(a)}
+	if in.CapturePayloads != nil {
+		p.CapturePayloads = *in.CapturePayloads
+	}
+	if in.SetRateLimit && !sameLimit(in.RateLimit, cur.RateLimitPerMinute) {
+		if err := s.checkLimit(ctx, q, in.RateLimit); err != nil {
+			return err
+		}
+		p.RateLimitPerMinute = in.RateLimit
+	}
 	if in.Name != nil {
 		p.Name = strings.TrimSpace(*in.Name)
 	}
@@ -292,6 +327,8 @@ func update(ctx context.Context, q *dbgen.Queries, a authz.Actor, cur dbgen.Gate
 	e.TeamID, e.Before, e.After = teamOf(cur), snapshot(cur), snapshot(row)
 	return audit.Record(ctx, q, e)
 }
+
+func sameLimit(a, b *int64) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
 
 // remove deletes a gateway (its selection and grants go with it; its call
 // records stay) and audits gateway.delete.
@@ -342,7 +379,7 @@ func (s *Service) CreateTeam(ctx context.Context, a authz.Actor, ref string, in 
 		if err := ta.writable(); err != nil {
 			return err
 		}
-		id, err = create(ctx, q, a, OwnerTeam, uuid.NullUUID{UUID: ta.team.ID, Valid: true}, in)
+		id, err = s.create(ctx, q, a, OwnerTeam, uuid.NullUUID{UUID: ta.team.ID, Valid: true}, in)
 		return err
 	})
 	if err != nil {
@@ -366,7 +403,7 @@ func (s *Service) UpdateTeam(ctx context.Context, a authz.Actor, ref string, id 
 		if err != nil {
 			return err
 		}
-		return update(ctx, q, a, cur, in, expectedRevision)
+		return s.update(ctx, q, a, cur, in, expectedRevision)
 	})
 	if err != nil {
 		return View{}, err
@@ -431,7 +468,7 @@ func (s *Service) AdminCreate(ctx context.Context, a authz.Actor, in CreateInput
 	var id uuid.UUID
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		var err error
-		id, err = create(ctx, q, a, OwnerPlatform, uuid.NullUUID{}, in)
+		id, err = s.create(ctx, q, a, OwnerPlatform, uuid.NullUUID{}, in)
 		return err
 	})
 	if err != nil {
@@ -452,10 +489,12 @@ func (s *Service) AdminUpdate(ctx context.Context, a authz.Actor, id uuid.UUID, 
 			return err
 		}
 		if cur.OwnerKind == OwnerTeam &&
-			((in.Name != nil && strings.TrimSpace(*in.Name) != cur.Name) || (in.Description != nil && *in.Description != cur.Description)) {
+			((in.Name != nil && strings.TrimSpace(*in.Name) != cur.Name) || (in.Description != nil && *in.Description != cur.Description) ||
+				(in.CapturePayloads != nil && *in.CapturePayloads != cur.CapturePayloads) ||
+				(in.SetRateLimit && !sameLimit(in.RateLimit, cur.RateLimitPerMinute))) {
 			return errTeamGateway
 		}
-		return update(ctx, q, a, cur, in, expectedRevision)
+		return s.update(ctx, q, a, cur, in, expectedRevision)
 	})
 	if err != nil {
 		return View{}, err

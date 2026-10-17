@@ -1,6 +1,8 @@
 // Package doctor implements `open-mcp-gateway doctor`: the configuration and
 // production safety checks, then PostgreSQL connectivity and the migration
-// state, with timings. It changes nothing.
+// state, with timings, then key rotation: sealed values still on
+// ENCRYPTION_KEY_PREVIOUS or on neither key, and keys still on another API
+// key pepper. It changes nothing.
 package doctor
 
 import (
@@ -15,7 +17,10 @@ import (
 
 	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
 	"github.com/ncecere/open-mcp-gateway/internal/config"
+	"github.com/ncecere/open-mcp-gateway/internal/keyrotation"
+	"github.com/ncecere/open-mcp-gateway/internal/secrets"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
+	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 )
 
 // Status of one check.
@@ -29,7 +34,7 @@ const (
 
 // Check is one line of the report.
 type Check struct {
-	Group      string  `json:"group"` // configuration, safety, postgres
+	Group      string  `json:"group"` // configuration, safety, postgres, keys
 	Name       string  `json:"name"`
 	Status     Status  `json:"status"`
 	Detail     string  `json:"detail"`
@@ -151,11 +156,95 @@ func (r *runner) postgres(ctx context.Context) *pgxpool.Pool {
 		c.Status, c.Detail = Fail, "server version: "+err.Error()
 	}
 	r.add(c)
-	r.migrations(cctx, pool)
+	if r.migrations(cctx, pool) {
+		r.keys(cctx, pool)
+	}
 	return pool
 }
 
-func (r *runner) migrations(ctx context.Context, pool *pgxpool.Pool) {
+// keys reports sealed values by key and keys by pepper.
+func (r *runner) keys(ctx context.Context, pool *pgxpool.Pool) {
+	cur, err := secrets.ParseKey(r.cfg.EncryptionKey)
+	if err != nil {
+		return // reported by the configuration checks
+	}
+	var prev []byte
+	if r.cfg.EncryptionKeyPrevious != "" {
+		if p, err := secrets.ParseKey(r.cfg.EncryptionKeyPrevious); err == nil {
+			prev = secrets.KeyID(p)
+		}
+	}
+	start := time.Now()
+	counts, err := keyrotation.Count(ctx, pool, secrets.KeyID(cur), prev)
+	c := Check{Group: "keys", Name: "encryption", Status: OK}
+	var onPrev, others int64
+	var where []string
+	for _, k := range counts {
+		onPrev += k.Previous
+		others += k.Others
+		if k.Previous > 0 || k.Others > 0 {
+			where = append(where, fmt.Sprintf("%s: %d previous, %d undecryptable", k.Column, k.Previous, k.Others))
+		}
+	}
+	switch {
+	case err != nil:
+		c.Status, c.Detail = Fail, err.Error()
+	case others > 0:
+		c.Status = Fail
+		c.Detail = fmt.Sprintf("%d sealed value(s) carry neither ENCRYPTION_KEY nor ENCRYPTION_KEY_PREVIOUS (%s)", others, strings.Join(where, "; "))
+		c.Fix = "Set the key they were sealed with as ENCRYPTION_KEY_PREVIOUS, then run open-mcp-gateway rotate-keys"
+	case onPrev > 0:
+		c.Status = Info
+		c.Detail = fmt.Sprintf("%d sealed value(s) still on ENCRYPTION_KEY_PREVIOUS (%s)", onPrev, strings.Join(where, "; "))
+		c.Fix = "Run open-mcp-gateway rotate-keys, then remove ENCRYPTION_KEY_PREVIOUS"
+	case prev != nil:
+		c.Status = Info
+		c.Detail = "every sealed value is on ENCRYPTION_KEY: ENCRYPTION_KEY_PREVIOUS can be removed"
+	default:
+		c.Detail = "every sealed value is on ENCRYPTION_KEY"
+	}
+	c.DurationMs = millis(time.Since(start))
+	r.add(c)
+
+	pepper, err := secrets.ParseKey(r.cfg.APIKeyPepper)
+	if err != nil {
+		return
+	}
+	p := keyrotation.Peppers{Current: pepper}
+	if r.cfg.APIKeyPepperPrevious != "" {
+		if pp, err := secrets.ParseKey(r.cfg.APIKeyPepperPrevious); err == nil {
+			p.Previous = pp
+		}
+	}
+	keys, tokens, err := keyrotation.PepperReport(ctx, dbgen.New(pool), p)
+	pc := Check{Group: "keys", Name: "pepper", Status: OK}
+	var previous, retired int
+	for _, k := range keys {
+		if k.State == keyrotation.PepperPrevious {
+			previous++
+		} else {
+			retired++
+		}
+	}
+	switch {
+	case err != nil:
+		pc.Status, pc.Detail = Fail, err.Error()
+	case previous+retired > 0 || tokens > 0:
+		pc.Status = Info
+		pc.Detail = fmt.Sprintf("%d usable key(s) on API_KEY_PEPPER_PREVIOUS, %d on a pepper no longer configured, %d connected-app token(s) on another pepper",
+			previous, retired, tokens)
+		pc.Fix = "Keys move to API_KEY_PEPPER when used; open-mcp-gateway rotate-keys --dry-run lists them. Revoke keys on a retired pepper"
+	case p.Previous != nil:
+		pc.Status = Info
+		pc.Detail = "every usable key is on API_KEY_PEPPER: API_KEY_PEPPER_PREVIOUS can be removed"
+	default:
+		pc.Detail = "every usable key is on API_KEY_PEPPER"
+	}
+	r.add(pc)
+}
+
+// migrations reports the migration state; ok when the schema is current.
+func (r *runner) migrations(ctx context.Context, pool *pgxpool.Pool) bool {
 	st, err := store.Migrations(ctx, pool)
 	c := Check{Group: "postgres", Name: "migrations", Status: OK}
 	switch {
@@ -172,6 +261,7 @@ func (r *runner) migrations(ctx context.Context, pool *pgxpool.Pool) {
 		c.Detail = fmt.Sprintf("current (version %d)", st.Current)
 	}
 	r.add(c)
+	return err == nil && !st.Pending && st.Current == st.Latest
 }
 
 // splitErrors lists the errors joined in err (errors.Join), one per check.

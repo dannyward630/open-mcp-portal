@@ -14,7 +14,7 @@ import (
 const bumpGatewayRevision = `-- name: BumpGatewayRevision :one
 UPDATE gateways SET revision = revision + 1, updated_by = $1, updated_at = now()
 WHERE id = $2
-RETURNING id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at
+RETURNING id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at, rate_limit_per_minute
 `
 
 type BumpGatewayRevisionParams struct {
@@ -39,6 +39,7 @@ func (q *Queries) BumpGatewayRevision(ctx context.Context, arg BumpGatewayRevisi
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.RateLimitPerMinute,
 	)
 	return i, err
 }
@@ -234,7 +235,7 @@ func (q *Queries) GetCapability(ctx context.Context, id uuid.UUID) (McpCapabilit
 }
 
 const getGateway = `-- name: GetGateway :one
-SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at FROM gateways WHERE id = $1
+SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at, rate_limit_per_minute FROM gateways WHERE id = $1
 `
 
 func (q *Queries) GetGateway(ctx context.Context, id uuid.UUID) (Gateway, error) {
@@ -254,12 +255,13 @@ func (q *Queries) GetGateway(ctx context.Context, id uuid.UUID) (Gateway, error)
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.RateLimitPerMinute,
 	)
 	return i, err
 }
 
 const getGatewayBySlug = `-- name: GetGatewayBySlug :one
-SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at FROM gateways WHERE slug = $1
+SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at, rate_limit_per_minute FROM gateways WHERE slug = $1
 `
 
 func (q *Queries) GetGatewayBySlug(ctx context.Context, slug string) (Gateway, error) {
@@ -279,12 +281,13 @@ func (q *Queries) GetGatewayBySlug(ctx context.Context, slug string) (Gateway, e
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.RateLimitPerMinute,
 	)
 	return i, err
 }
 
 const getGatewayView = `-- name: GetGatewayView :one
-SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
+SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, g.rate_limit_per_minute, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
 FROM gateways g
 LEFT JOIN teams t ON t.id = g.team_id
 WHERE g.id = $1
@@ -313,6 +316,7 @@ func (q *Queries) GetGatewayView(ctx context.Context, id uuid.UUID) (GetGatewayV
 		&i.Gateway.CreatedAt,
 		&i.Gateway.UpdatedBy,
 		&i.Gateway.UpdatedAt,
+		&i.Gateway.RateLimitPerMinute,
 		&i.TeamSlug,
 		&i.TeamName,
 	)
@@ -321,20 +325,24 @@ func (q *Queries) GetGatewayView(ctx context.Context, id uuid.UUID) (GetGatewayV
 
 const insertGateway = `-- name: InsertGateway :one
 
-INSERT INTO gateways (id, slug, name, description, owner_kind, team_id, enabled, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-RETURNING id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at
+INSERT INTO gateways (id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, rate_limit_per_minute,
+                      created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $10)
+RETURNING id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at, rate_limit_per_minute
 `
 
 type InsertGatewayParams struct {
-	ID          uuid.UUID
-	Slug        string
-	Name        string
-	Description string
-	OwnerKind   string
-	TeamID      uuid.NullUUID
-	Enabled     bool
-	CreatedBy   uuid.NullUUID
+	ID                 uuid.UUID
+	Slug               string
+	Name               string
+	Description        string
+	OwnerKind          string
+	TeamID             uuid.NullUUID
+	Enabled            bool
+	CapturePayloads    bool
+	RateLimitPerMinute *int64
+	CreatedBy          uuid.NullUUID
 }
 
 // Gateways, their selected capabilities and grants (internal/gateways).
@@ -347,6 +355,8 @@ func (q *Queries) InsertGateway(ctx context.Context, arg InsertGatewayParams) (G
 		arg.OwnerKind,
 		arg.TeamID,
 		arg.Enabled,
+		arg.CapturePayloads,
+		arg.RateLimitPerMinute,
 		arg.CreatedBy,
 	)
 	var i Gateway
@@ -364,6 +374,7 @@ func (q *Queries) InsertGateway(ctx context.Context, arg InsertGatewayParams) (G
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.RateLimitPerMinute,
 	)
 	return i, err
 }
@@ -469,6 +480,7 @@ const listGatewayOptions = `-- name: ListGatewayOptions :many
 SELECT c.id, c.kind, c.name, c.title, c.description, c.requirement_mode, c.requirement_scopes,
        s.id AS server_id, s.slug AS server_slug, s.name AS server_name, s.team_id AS server_team_id,
        s.auth_provider_id AS server_auth_provider_id, s.auth_scopes AS server_auth_scopes,
+       s.capture_payloads AS server_capture_payloads,
        t.slug AS team_slug, t.name AS team_name
 FROM mcp_capabilities c
 JOIN mcp_servers s ON s.id = c.server_id
@@ -507,21 +519,22 @@ type ListGatewayOptionsParams struct {
 }
 
 type ListGatewayOptionsRow struct {
-	ID                   uuid.UUID
-	Kind                 string
-	Name                 string
-	Title                string
-	Description          string
-	RequirementMode      string
-	RequirementScopes    []string
-	ServerID             uuid.UUID
-	ServerSlug           string
-	ServerName           string
-	ServerTeamID         uuid.UUID
-	ServerAuthProviderID uuid.NullUUID
-	ServerAuthScopes     []string
-	TeamSlug             string
-	TeamName             string
+	ID                    uuid.UUID
+	Kind                  string
+	Name                  string
+	Title                 string
+	Description           string
+	RequirementMode       string
+	RequirementScopes     []string
+	ServerID              uuid.UUID
+	ServerSlug            string
+	ServerName            string
+	ServerTeamID          uuid.UUID
+	ServerAuthProviderID  uuid.NullUUID
+	ServerAuthScopes      []string
+	ServerCapturePayloads bool
+	TeamSlug              string
+	TeamName              string
 }
 
 // One page of the tools, prompts, resources and resource templates a
@@ -567,6 +580,7 @@ func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptions
 			&i.ServerTeamID,
 			&i.ServerAuthProviderID,
 			&i.ServerAuthScopes,
+			&i.ServerCapturePayloads,
 			&i.TeamSlug,
 			&i.TeamName,
 		); err != nil {
@@ -581,7 +595,7 @@ func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptions
 }
 
 const listGatewaySelection = `-- name: ListGatewaySelection :many
-SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, c.requirement_mode, c.requirement_scopes, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes, gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
+SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, c.requirement_mode, c.requirement_scopes, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes, s.capture_payloads, gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
 FROM gateway_capabilities gc
 JOIN mcp_capabilities c ON c.id = gc.capability_id
 JOIN mcp_servers s ON s.id = c.server_id
@@ -657,6 +671,7 @@ func (q *Queries) ListGatewaySelection(ctx context.Context, gatewayID uuid.UUID)
 			&i.McpServer.UpdatedAt,
 			&i.McpServer.AuthProviderID,
 			&i.McpServer.AuthScopes,
+			&i.McpServer.CapturePayloads,
 			&i.MinTeamRole,
 			&i.TeamSlug,
 			&i.TeamName,
@@ -673,7 +688,7 @@ func (q *Queries) ListGatewaySelection(ctx context.Context, gatewayID uuid.UUID)
 }
 
 const listGateways = `-- name: ListGateways :many
-SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
+SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, g.rate_limit_per_minute, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
 FROM gateways g
 LEFT JOIN teams t ON t.id = g.team_id
 WHERE ($1::uuid IS NULL OR g.team_id = $1::uuid)
@@ -733,6 +748,7 @@ func (q *Queries) ListGateways(ctx context.Context, arg ListGatewaysParams) ([]L
 			&i.Gateway.CreatedAt,
 			&i.Gateway.UpdatedBy,
 			&i.Gateway.UpdatedAt,
+			&i.Gateway.RateLimitPerMinute,
 			&i.TeamSlug,
 			&i.TeamName,
 		); err != nil {
@@ -747,7 +763,7 @@ func (q *Queries) ListGateways(ctx context.Context, arg ListGatewaysParams) ([]L
 }
 
 const listGatewaysForServiceAccount = `-- name: ListGatewaysForServiceAccount :many
-SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
+SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, g.rate_limit_per_minute, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name
 FROM gateways g
 LEFT JOIN teams t ON t.id = g.team_id
 WHERE g.enabled
@@ -789,6 +805,7 @@ func (q *Queries) ListGatewaysForServiceAccount(ctx context.Context, teamID uuid
 			&i.Gateway.CreatedAt,
 			&i.Gateway.UpdatedBy,
 			&i.Gateway.UpdatedAt,
+			&i.Gateway.RateLimitPerMinute,
 			&i.TeamSlug,
 			&i.TeamName,
 		); err != nil {
@@ -803,7 +820,7 @@ func (q *Queries) ListGatewaysForServiceAccount(ctx context.Context, teamID uuid
 }
 
 const listGatewaysForUser = `-- name: ListGatewaysForUser :many
-SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name,
+SELECT g.id, g.slug, g.name, g.description, g.owner_kind, g.team_id, g.enabled, g.capture_payloads, g.revision, g.created_by, g.created_at, g.updated_by, g.updated_at, g.rate_limit_per_minute, COALESCE(t.slug, '')::text AS team_slug, COALESCE(t.name, '')::text AS team_name,
        COALESCE(m.role, '')::text AS member_role,
        ARRAY(SELECT DISTINCT gg.subject_kind FROM gateway_grants gg
              WHERE gg.gateway_id = g.id
@@ -867,6 +884,7 @@ func (q *Queries) ListGatewaysForUser(ctx context.Context, arg ListGatewaysForUs
 			&i.Gateway.CreatedAt,
 			&i.Gateway.UpdatedBy,
 			&i.Gateway.UpdatedAt,
+			&i.Gateway.RateLimitPerMinute,
 			&i.TeamSlug,
 			&i.TeamName,
 			&i.MemberRole,
@@ -884,7 +902,7 @@ func (q *Queries) ListGatewaysForUser(ctx context.Context, arg ListGatewaysForUs
 }
 
 const listUsableGatewayCandidates = `-- name: ListUsableGatewayCandidates :many
-SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at FROM gateways WHERE id = ANY($1::uuid[])
+SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at, rate_limit_per_minute FROM gateways WHERE id = ANY($1::uuid[])
 `
 
 // Gateways by ID, for checking which a person may use (API key scopes).
@@ -911,6 +929,7 @@ func (q *Queries) ListUsableGatewayCandidates(ctx context.Context, ids []uuid.UU
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.RateLimitPerMinute,
 		); err != nil {
 			return nil, err
 		}
@@ -923,7 +942,7 @@ func (q *Queries) ListUsableGatewayCandidates(ctx context.Context, ids []uuid.UU
 }
 
 const lockGateway = `-- name: LockGateway :one
-SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at FROM gateways WHERE id = $1 FOR UPDATE
+SELECT id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at, rate_limit_per_minute FROM gateways WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockGateway(ctx context.Context, id uuid.UUID) (Gateway, error) {
@@ -943,6 +962,7 @@ func (q *Queries) LockGateway(ctx context.Context, id uuid.UUID) (Gateway, error
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.RateLimitPerMinute,
 	)
 	return i, err
 }
@@ -964,18 +984,21 @@ func (q *Queries) RemoveGatewayCapabilitiesExcept(ctx context.Context, arg Remov
 
 const updateGateway = `-- name: UpdateGateway :one
 UPDATE gateways
-SET name = $1, description = $2, enabled = $3,
-    revision = revision + 1, updated_by = $4, updated_at = now()
-WHERE id = $5
-RETURNING id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at
+SET name = $1, description = $2, enabled = $3, capture_payloads = $4,
+    rate_limit_per_minute = $5,
+    revision = revision + 1, updated_by = $6, updated_at = now()
+WHERE id = $7
+RETURNING id, slug, name, description, owner_kind, team_id, enabled, capture_payloads, revision, created_by, created_at, updated_by, updated_at, rate_limit_per_minute
 `
 
 type UpdateGatewayParams struct {
-	Name        string
-	Description string
-	Enabled     bool
-	UpdatedBy   uuid.NullUUID
-	ID          uuid.UUID
+	Name               string
+	Description        string
+	Enabled            bool
+	CapturePayloads    bool
+	RateLimitPerMinute *int64
+	UpdatedBy          uuid.NullUUID
+	ID                 uuid.UUID
 }
 
 func (q *Queries) UpdateGateway(ctx context.Context, arg UpdateGatewayParams) (Gateway, error) {
@@ -983,6 +1006,8 @@ func (q *Queries) UpdateGateway(ctx context.Context, arg UpdateGatewayParams) (G
 		arg.Name,
 		arg.Description,
 		arg.Enabled,
+		arg.CapturePayloads,
+		arg.RateLimitPerMinute,
 		arg.UpdatedBy,
 		arg.ID,
 	)
@@ -1001,6 +1026,7 @@ func (q *Queries) UpdateGateway(ctx context.Context, arg UpdateGatewayParams) (G
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.RateLimitPerMinute,
 	)
 	return i, err
 }

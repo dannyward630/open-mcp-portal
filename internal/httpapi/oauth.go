@@ -13,11 +13,11 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/ncecere/open-mcp-gateway/internal/auth"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
+	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 )
 
 const (
@@ -59,8 +59,13 @@ func oauthPostOnly(w http.ResponseWriter, _ *http.Request) {
 func (a *api) oauthGate(name string, perMinute int, h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := httpx.ClientIP(r, a.Config.TrustedProxies)
-		if ok, wait := a.limiter.Allow("oauth:"+name+":"+ip, perMinute, time.Minute); !ok {
-			w.Header().Set("Retry-After", strconv.Itoa(max(int((wait+time.Second-1)/time.Second), 1)))
+		ok, wait, err := ratelimit.Allow(r.Context(), a.limiter, ratelimit.Bucket("oauth:"+name, ip), perMinute)
+		if err != nil {
+			a.oauthFail(w, r, err)
+			return
+		}
+		if !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(ratelimit.RetryAfter(wait)))
 			oauthJSONError(w, http.StatusTooManyRequests, "slow_down", "Too many requests. Try again shortly.")
 			return
 		}

@@ -28,7 +28,10 @@ export type ConnectionsOwner = { self: true } | { self: false; userId: string; n
 
 export const connectionsKey = (owner: ConnectionsOwner) => (owner.self ? myConnectionsKey : ["admin", "user", owner.userId, "connections"]);
 
-function useConnections(owner: ConnectionsOwner) {
+/** Where connecting from Account › My connections comes back to: the page, saying which provider was connected. */
+export const connectedReturnTo = (providerSlug: string) => `/settings/connections?connected=${encodeURIComponent(providerSlug)}`;
+
+export function useConnections(owner: ConnectionsOwner) {
   return useQuery({
     queryKey: connectionsKey(owner),
     queryFn: async () =>
@@ -81,7 +84,8 @@ function columns(): DataTableColumn<ProviderConnection>[] {
       sortable: true,
       cell: (c) => <CellText wrap="anywhere" primary={c.provider.name} secondary={c.accountLabel ? `Account: ${c.accountLabel}` : undefined} />,
     },
-    { id: "scopes", header: "Scopes", accessor: (c) => scopesText(c.scopes), cell: (c) => <span className={s.mono}>{scopesText(c.scopes, "—")}</span> },
+    // On a phone the provider (with its account) and status stay in view; the Columns menu still offers the rest.
+    { id: "scopes", header: "Scopes", accessor: (c) => scopesText(c.scopes), defaultHiddenNarrow: true, cell: (c) => <span className={s.mono}>{scopesText(c.scopes, "—")}</span> },
     {
       id: "status",
       header: "Status",
@@ -92,6 +96,7 @@ function columns(): DataTableColumn<ProviderConnection>[] {
     { ...timeColumn<ProviderConnection>("connectedAt", "Connected", (c) => c.connectedAt), defaultHiddenNarrow: true },
     {
       ...timeColumn<ProviderConnection>("lastUsedAt", "Last used", (c) => c.lastUsedAt),
+      defaultHiddenNarrow: true,
       cell: (c) => (c.lastUsedAt ? <span className={s.nowrap}><RelativeTime value={c.lastUsedAt} /></span> : <span className={s.muted}>Not used yet</span>),
     },
     { id: "expiresAt", header: "Token expires", accessor: (c) => (c.expiresAt ? new Date(c.expiresAt) : null), defaultHidden: true, cell: (c) => <TokenExpiry c={c} /> },
@@ -117,7 +122,7 @@ export function ProviderConnections({ owner, canDisconnect, title, description, 
   const start = useStartConnection();
   const reconnect = (c: ProviderConnection) =>
     start.mutate(
-      { providerId: c.provider.id, ...(c.scopes.length ? { scopes: c.scopes } : {}), returnTo: "/settings/connections" },
+      { providerId: c.provider.id, ...(c.scopes.length ? { scopes: c.scopes } : {}), returnTo: connectedReturnTo(c.provider.slug) },
       { onError: (err) => toast.error(`Couldn't start connecting ${c.provider.name}`, errorMessage(err)) },
     );
   const who = owner.self ? "you" : owner.name;

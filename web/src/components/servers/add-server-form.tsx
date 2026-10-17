@@ -50,6 +50,8 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
             ...(form.authHeaderName.trim() ? { authHeaderName: form.authHeaderName.trim(), authValue: auth.value } : {}),
             timeoutSeconds: form.timeoutSeconds,
             enabled: form.enabled,
+            // Recording call contents starts off: owners and admins turn it on in Settings, after a confirmation.
+            capturePayloads: false,
           },
         }),
       ),

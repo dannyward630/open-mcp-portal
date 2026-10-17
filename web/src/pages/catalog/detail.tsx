@@ -18,6 +18,7 @@ import { countsText, kindOrder, kindTitle, untrustedText } from "../../component
 import m from "../../components/servers/servers.module.css";
 import { PageActions } from "../../components/templates/page-actions";
 import { useCurrentUser } from "../../session";
+import { CaptureBadge, captureWho } from "../../components/capture";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { Card } from "@/components/ui/card/card";
 import { FactsLine } from "@/components/ui/description-list/description-list";
@@ -41,7 +42,12 @@ export function CatalogServerPage() {
     <Stack gap={6} className={s.page}>
       <PageHeader
         title={server.name}
-        meta={<HealthBadge health={server.health} />}
+        meta={
+          <span className={s.badges}>
+            <HealthBadge health={server.health} />
+            {server.capturePayloads && <CaptureBadge />}
+          </span>
+        }
         description={server.description || undefined}
         facts={
           <FactsLine
@@ -61,6 +67,11 @@ export function CatalogServerPage() {
         }
       />
       <Alert tone="info">{gatewaysNote}</Alert>
+      {server.capturePayloads && (
+        <Alert tone="warning" title="This server's team records call contents">
+          {`Calls to its capabilities, through any gateway, are recorded with their arguments and results (secrets removed first). ${captureWho.replace("the team's", `${server.teamName}'s`)}`}
+        </Alert>
+      )}
       {capabilities.length === 0 ? (
         <Card>
           <EmptyState icon={<ListTree />} title="No approved capabilities." description="The server is published, but nothing it lists is approved right now." />

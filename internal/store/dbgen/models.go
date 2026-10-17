@@ -21,6 +21,7 @@ type ApiKey struct {
 	ExpiresAt  time.Time
 	RevokedAt  *time.Time
 	LastUsedAt *time.Time
+	PepperID   []byte
 }
 
 type ApiKeyGateway struct {
@@ -76,20 +77,29 @@ type AuthProvider struct {
 	UpdatedAt            time.Time
 }
 
+type CaptureSetting struct {
+	ID        int16
+	Patterns  json.RawMessage
+	Revision  int64
+	UpdatedBy uuid.NullUUID
+	UpdatedAt time.Time
+}
+
 type Gateway struct {
-	ID              uuid.UUID
-	Slug            string
-	Name            string
-	Description     string
-	OwnerKind       string
-	TeamID          uuid.NullUUID
-	Enabled         bool
-	CapturePayloads bool
-	Revision        int64
-	CreatedBy       uuid.NullUUID
-	CreatedAt       time.Time
-	UpdatedBy       uuid.NullUUID
-	UpdatedAt       time.Time
+	ID                 uuid.UUID
+	Slug               string
+	Name               string
+	Description        string
+	OwnerKind          string
+	TeamID             uuid.NullUUID
+	Enabled            bool
+	CapturePayloads    bool
+	Revision           int64
+	CreatedBy          uuid.NullUUID
+	CreatedAt          time.Time
+	UpdatedBy          uuid.NullUUID
+	UpdatedAt          time.Time
+	RateLimitPerMinute *int64
 }
 
 type GatewayCapability struct {
@@ -109,6 +119,14 @@ type GatewayGrant struct {
 	GroupName   *string
 	AddedBy     uuid.NullUUID
 	AddedAt     time.Time
+}
+
+type LimitSetting struct {
+	ID        int16
+	Items     json.RawMessage
+	Revision  int64
+	UpdatedBy uuid.NullUUID
+	UpdatedAt time.Time
 }
 
 type LoginState struct {
@@ -152,6 +170,24 @@ type McpCall struct {
 	KeyName              *string
 	OauthClientKind      *string
 	ProviderSlug         *string
+}
+
+type McpCallPayload struct {
+	CallID              int64
+	OccurredAt          time.Time
+	GatewayTeamID       uuid.NullUUID
+	ServerTeamID        uuid.NullUUID
+	ByGateway           bool
+	ByServer            bool
+	ArgumentsCipher     []byte
+	ResultCipher        []byte
+	ArgumentsBytes      int64
+	ResultBytes         int64
+	ArgumentsTruncated  bool
+	ResultTruncated     bool
+	ArgumentsRedactions int32
+	ResultRedactions    int32
+	CapturedAt          time.Time
 }
 
 type McpCapability struct {
@@ -217,6 +253,7 @@ type McpServer struct {
 	UpdatedAt          time.Time
 	AuthProviderID     uuid.NullUUID
 	AuthScopes         []string
+	CapturePayloads    bool
 }
 
 type NetworkSetting struct {
@@ -282,6 +319,7 @@ type OauthToken struct {
 	ExpiresAt time.Time
 	RotatedAt *time.Time
 	CreatedAt time.Time
+	PepperID  []byte
 }
 
 type PlatformBootstrap struct {
@@ -347,6 +385,21 @@ type ProviderConnection struct {
 	LastErrorClass     *string
 }
 
+type RateLimitCounter struct {
+	Bucket      string
+	WindowStart time.Time
+	Count       int32
+}
+
+type RetentionSetting struct {
+	ID        int16
+	Periods   json.RawMessage
+	Revision  int64
+	UpdatedBy uuid.NullUUID
+	UpdatedAt time.Time
+	LastRun   json.RawMessage
+}
+
 type ServiceAccount struct {
 	ID          uuid.UUID
 	TeamID      uuid.UUID
@@ -373,6 +426,7 @@ type ServiceAccountKey struct {
 	ExpiresAt        time.Time
 	RevokedAt        *time.Time
 	LastUsedAt       *time.Time
+	PepperID         []byte
 }
 
 type ServiceAccountKeyGateway struct {
@@ -419,6 +473,8 @@ type Team struct {
 	UpdatedAt             time.Time
 	ArchivedAt            *time.Time
 	PublishPolicyOverride *string
+	LimitOverrides        json.RawMessage
+	RetentionOverrides    json.RawMessage
 }
 
 type TeamInvite struct {
@@ -442,6 +498,36 @@ type TeamMember struct {
 	Revision  int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type UsageHourly struct {
+	ID                   int64
+	Hour                 time.Time
+	GatewayID            uuid.UUID
+	GatewaySlug          string
+	GatewayName          string
+	GatewayTeamID        uuid.NullUUID
+	ServerID             uuid.NullUUID
+	ServerSlug           *string
+	ServerName           *string
+	ServerTeamID         uuid.NullUUID
+	CapabilityID         uuid.NullUUID
+	ExposedName          *string
+	Method               string
+	PrincipalKind        string
+	ServiceAccountTeamID uuid.NullUUID
+	Outcome              string
+	Calls                int64
+	LatencySumMs         int64
+	LatencyBuckets       []int64
+	RequestBytes         int64
+	ResponseBytes        int64
+}
+
+type UsageRollupState struct {
+	ID         int16
+	RolledUpTo *time.Time
+	UpdatedAt  time.Time
 }
 
 type User struct {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ncecere/open-mcp-gateway/internal/observability"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 )
@@ -61,6 +62,11 @@ func (s *Service) RunHealthChecks(ctx context.Context, interval time.Duration) (
 				// The server may have been deleted meanwhile.
 				s.log.DebugContext(ctx, "could not store a scheduled MCP health check", "server", sv.ID, "err", err)
 			}
+			result := "failing"
+			if res.OK {
+				result = "healthy"
+			}
+			observability.ServerHealthChecks.WithLabelValues(result).Inc()
 			mu.Lock()
 			defer mu.Unlock()
 			if res.OK {

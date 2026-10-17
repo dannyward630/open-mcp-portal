@@ -49,7 +49,23 @@ type Config struct {
 
 	// APIKeyPepper (32 bytes, base64) keys the HMAC under which personal
 	// API keys are stored; the keys themselves never are.
-	APIKeyPepper string
+	// APIKeyPepperPrevious is the pepper being rotated away from: keys and
+	// tokens digested with it are still accepted (keys are re-digested on
+	// use).
+	APIKeyPepper         string
+	APIKeyPepperPrevious string
+
+	// MetricsAddr serves Prometheus metrics at /metrics on its own listener
+	// ("" = off). MetricsMaxObjects bounds the gateway, server and provider
+	// slugs used as label values.
+	MetricsAddr       string
+	MetricsMaxObjects int
+
+	// RetentionInterval is how often the retention loop runs (one replica
+	// at a time); RetentionBatchSize is how many rows one transaction
+	// deletes.
+	RetentionInterval  time.Duration
+	RetentionBatchSize int
 
 	// HealthCheckInterval is how often enabled MCP servers are re-tested
 	// (0: never; one replica at a time).
@@ -68,9 +84,9 @@ type Config struct {
 	// admins' entries.
 	UpstreamAllowedNetworks []netpolicy.Entry
 
-	// RequestsPerMinute limits each signed-in person; LoginAttemptsPerMinute
-	// limits sign-in attempts per client address. Both are counted per
-	// process (in memory) in this release.
+	// RequestsPerMinute limits each signed-in person's /v1 requests;
+	// LoginAttemptsPerMinute limits sign-in attempts per client address.
+	// Both are counted in PostgreSQL, shared by every replica.
 	RequestsPerMinute      int
 	LoginAttemptsPerMinute int
 	ShutdownDelay          time.Duration
@@ -130,6 +146,9 @@ func Defaults() Config {
 		SessionTTL:             12 * time.Hour,
 		HealthCheckInterval:    5 * time.Minute,
 		SigningKeyPrepublish:   24 * time.Hour,
+		MetricsMaxObjects:      200,
+		RetentionInterval:      15 * time.Minute,
+		RetentionBatchSize:     1000,
 		RequestsPerMinute:      600,
 		LoginAttemptsPerMinute: 20,
 		ShutdownDelay:          5 * time.Second,

@@ -1,0 +1,120 @@
+# Continuous integration (docs/phase6-operations.md "CI", decision 37).
+# Every action is pinned by commit SHA; the comment gives the version.
+# There is no remote yet: this file is checked locally with `make actionlint`.
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  # A new push to a branch (or pull request) cancels its running checks.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go vet and gofmt
+        run: make lint
+      - name: Workflows
+        run: make actionlint
+
+  generated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: sqlc-dev/setup-sqlc@bac53b7fb28c039a6c7f5736fd1e89744021bdd6 # v5.0.0
+        with:
+          sqlc-version: "1.31.1"
+      - name: Install web dependencies
+        run: npm ci --ignore-scripts
+        working-directory: web
+      - name: sqlc, OpenAPI Go and TypeScript types are up to date
+        run: make check-generated SQLC=sqlc
+
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: omg
+          POSTGRES_PASSWORD: omg-ci-only
+          POSTGRES_DB: omg
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U omg -d omg"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CI: "true"
+      # Integration tests create one database per test as this role.
+      OMG_TEST_DATABASE_URL: postgres://omg:omg-ci-only@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Unit and integration tests (race detector, Postgres required)
+        run: make test-ci
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Type-check
+        run: npm run typecheck
+      - name: Unit and accessibility tests (Vitest)
+        run: npm test
+      - name: Styling and size policies
+        run: npm run check:styling && npm run check:size
+      - name: Build
+        run: npm run build
+
+  k8s:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Render and validate the Kustomize base and overlays
+        run: make k8s-validate
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Both targets build; nothing is pushed (image publishing comes later).
+      - name: Gateway image
+        run: docker build --build-arg VERSION="${GITHUB_SHA::12}" --build-arg COMMIT="${GITHUB_SHA::12}" -t open-mcp-gateway:ci .
+      - name: Fake MCP server image (demo)
+        run: docker build --target fakemcp -t open-mcp-gateway-fakemcp:ci .

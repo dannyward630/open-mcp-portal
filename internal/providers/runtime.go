@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ncecere/open-mcp-gateway/internal/audit"
+	"github.com/ncecere/open-mcp-gateway/internal/observability"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
@@ -101,6 +102,7 @@ func (s *Service) Credential(ctx context.Context, req *registry.Requirement, cc 
 	}
 	if c.ExpiresAt != nil && c.ExpiresAt.Before(s.now().Add(RefreshAhead)) {
 		c, err = s.refreshConnection(ctx, p, c)
+		observeRefresh(p.Slug, err)
 		if errors.Is(err, errReconsent) {
 			return Credential{}, s.needConsent(ctx, prov, req.Scopes, cc, ReasonNeedsReconsent)
 		} else if err != nil {
@@ -120,6 +122,19 @@ func (s *Service) Credential(ctx context.Context, req *registry.Requirement, cc 
 		s.Log.WarnContext(ctx, "could not record a connection's use", "err", err)
 	}
 	return Credential{Provider: prov, AccessToken: token}, nil
+}
+
+// observeRefresh counts a refresh (omg_provider_token_refresh_total).
+func observeRefresh(provider string, err error) {
+	var down *UnavailableError
+	switch {
+	case err == nil:
+		observability.ObserveProviderRefresh(provider, "ok")
+	case errors.Is(err, errReconsent):
+		observability.ObserveProviderRefresh(provider, "refused")
+	case errors.As(err, &down):
+		observability.ObserveProviderRefresh(provider, "unavailable")
+	}
 }
 
 // refreshConnection refreshes a connection's access token while holding its

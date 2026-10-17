@@ -16,7 +16,9 @@ import { StatCard } from "@/components/ui/stat-card/stat-card";
 import { TextLink } from "@/components/ui/text-link/text-link";
 import { Time } from "@/components/ui/time/time";
 import { myGatewaysQuery } from "../../api/queries";
+import { rateText } from "../../lib/limits";
 import { switchLabel } from "../../lib/terms";
+import { CaptureBadge } from "../capture";
 import { useCurrentUser } from "../../session";
 import s from "../../pages/shared.module.css";
 import { EnabledBadge } from "./badges";
@@ -58,6 +60,12 @@ export function GatewayOverviewTab({ gateway, scope }: Props) {
               { label: "Kind", value: ownerKindLabels[gateway.ownerKind] },
               ...(gateway.teamName ? [{ label: "Team", value: gateway.teamName }] : []),
               { label: "Slug", value: <code className={s.mono}>{gateway.slug}</code> },
+              ...(gateway.effectiveRateLimitPerMinute !== undefined
+                ? [{ label: "Rate limit", value: `${rateText(gateway.effectiveRateLimitPerMinute)}${gateway.rateLimitPerMinute === null ? " (inherited)" : ""}` }]
+                : []),
+              ...(gateway.capturePayloads !== undefined
+                ? [{ label: "Call contents", value: gateway.capturePayloads ? <CaptureBadge label="Recorded" /> : "Not recorded (metadata only)" }]
+                : []),
               { label: "Created", value: <Time value={gateway.createdAt} /> },
               { label: "Last changed", value: <Time value={gateway.updatedAt} /> },
             ]}

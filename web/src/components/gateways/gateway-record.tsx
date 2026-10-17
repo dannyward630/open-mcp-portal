@@ -21,6 +21,7 @@ import { toast } from "@/components/ui/toast/toast";
 import s from "../../pages/shared.module.css";
 import { GatewayAccessTab } from "./access-tab";
 import { GatewayActivityTab } from "./activity-tab";
+import { CaptureBadge } from "../capture";
 import { EnabledBadge, UnavailableCountBadge } from "./badges";
 import { GatewayCapabilitiesTab } from "./capabilities-tab";
 import { capabilityCount, type Gateway, grantCountLabel, ownerKindLabels } from "./labels";
@@ -49,6 +50,7 @@ export function GatewayRecord({ gateway, scope, abilities, notices, links = [] }
           {scope.kind === "admin" && <Badge variant="outline">{ownerKindLabels[gateway.ownerKind]}</Badge>}
           {!gateway.enabled && <EnabledBadge enabled={false} />}
           <UnavailableCountBadge count={gateway.unavailableCount} />
+          {gateway.capturePayloads && <CaptureBadge />}
         </span>
       }
       description={gateway.description || undefined}

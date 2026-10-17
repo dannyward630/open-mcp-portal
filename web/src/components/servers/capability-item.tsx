@@ -63,7 +63,7 @@ export function CapabilityItem({ cap, badges, action, meta, muted }: Props) {
       {/* Plain text in a pre-wrap paragraph: the server's words, line breaks kept, nothing interpreted. */}
       <p className={m.capDescription}>{cap.description || <span className={s.muted}>No description.</span>}</p>
       {hints.length > 0 && (
-        <div className={s.badges} aria-label="Hints the server declares (not checked)">
+        <div className={s.badges} role="group" aria-label="Hints the server declares (not checked)">
           {hints.map((h) => (
             <Badge key={h} size="sm" variant="outline">
               {h}

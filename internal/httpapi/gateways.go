@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -130,8 +131,12 @@ func (a *api) writeGatewayPage(w http.ResponseWriter, r *http.Request, rows []ga
 		last := rows[len(rows)-1].Gateway
 		page.NextCursor = encodeCursor(last.Name, last.ID.String())
 	}
-	for _, v := range rows {
-		page.Items = append(page.Items, a.toAPIGateway(v))
+	limits, err := a.gatewayLimits(r.Context(), rows)
+	if failed(w, r, err) {
+		return
+	}
+	for i, v := range rows {
+		page.Items = append(page.Items, a.toAPIGateway(v, limits[i]))
 	}
 	httpx.JSON(w, http.StatusOK, page)
 }
@@ -140,18 +145,66 @@ func (a *api) writeGateway(w http.ResponseWriter, r *http.Request, status int, v
 	if failed(w, r, err) {
 		return
 	}
-	writeRevised(w, status, v.Gateway.Revision, a.toAPIGateway(v))
+	limits, err := a.gatewayLimits(r.Context(), []gateways.View{v})
+	if failed(w, r, err) {
+		return
+	}
+	writeRevised(w, status, v.Gateway.Revision, a.toAPIGateway(v, limits[0]))
 }
 
 func createInput(in apitypes.GatewayCreate) gateways.CreateInput {
-	ci := gateways.CreateInput{Slug: in.Slug, Name: in.Name, Enabled: true}
+	ci := gateways.CreateInput{Slug: in.Slug, Name: in.Name, Enabled: true, RateLimit: in.RateLimitPerMinute}
 	setIf(&ci.Description, in.Description)
 	setIf(&ci.Enabled, in.Enabled)
+	setIf(&ci.CapturePayloads, in.CapturePayloads)
 	return ci
 }
 
-func updateInput(in apitypes.GatewayUpdate) gateways.UpdateInput {
-	return gateways.UpdateInput{Name: in.Name, Description: in.Description, Enabled: in.Enabled}
+// decodeGatewayUpdate reads a gateway update; rateLimitPerMinute
+// distinguishes absent (keep) from null (inherit).
+func decodeGatewayUpdate(w http.ResponseWriter, r *http.Request) (gateways.UpdateInput, int64, bool) {
+	rev, ok := ifMatch(w, r)
+	if !ok {
+		return gateways.UpdateInput{}, 0, false
+	}
+	in, keys, ok := decodeKeys[apitypes.GatewayUpdate](w, r)
+	if !ok {
+		return gateways.UpdateInput{}, 0, false
+	}
+	_, setLimit := keys["rateLimitPerMinute"]
+	return gateways.UpdateInput{Name: in.Name, Description: in.Description, Enabled: in.Enabled, CapturePayloads: in.CapturePayloads,
+		SetRateLimit: setLimit, RateLimit: in.RateLimitPerMinute}, rev, true
+}
+
+// gatewayLimits are the gateways' effective rate limits now (nil:
+// unlimited).
+func (a *api) gatewayLimits(ctx context.Context, vs []gateways.View) ([]*int64, error) {
+	out := make([]*int64, len(vs))
+	if a.Limits == nil {
+		return out, nil
+	}
+	teams := map[uuid.UUID]*dbgen.Team{}
+	for i, v := range vs {
+		g := v.Gateway
+		var team *dbgen.Team
+		if g.TeamID.Valid {
+			t, ok := teams[g.TeamID.UUID]
+			if !ok {
+				row, err := a.q.GetTeamByID(ctx, g.TeamID.UUID)
+				if err != nil {
+					return nil, err
+				}
+				t, teams[g.TeamID.UUID] = &row, &row
+			}
+			team = t
+		}
+		lim, err := a.Limits.GatewayLimit(ctx, g.RateLimitPerMinute, team)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = lim
+	}
+	return out, nil
 }
 
 func selectionInput(in apitypes.GatewayCapabilitiesUpdate) []gateways.SelectionInput {
@@ -201,11 +254,11 @@ func (a *api) updateTeamGateway(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	in, rev, ok := decodeRevised[apitypes.GatewayUpdate](w, r)
+	in, rev, ok := decodeGatewayUpdate(w, r)
 	if !ok {
 		return
 	}
-	v, err := a.Gateways.UpdateTeam(r.Context(), a.actor(r), r.PathValue("team"), id, updateInput(in), rev)
+	v, err := a.Gateways.UpdateTeam(r.Context(), a.actor(r), r.PathValue("team"), id, in, rev)
 	a.writeGateway(w, r, http.StatusOK, v, err)
 }
 
@@ -354,11 +407,11 @@ func (a *api) adminUpdateGateway(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	in, rev, ok := decodeRevised[apitypes.GatewayUpdate](w, r)
+	in, rev, ok := decodeGatewayUpdate(w, r)
 	if !ok {
 		return
 	}
-	v, err := a.Gateways.AdminUpdate(r.Context(), a.actor(r), id, updateInput(in), rev)
+	v, err := a.Gateways.AdminUpdate(r.Context(), a.actor(r), id, in, rev)
 	a.writeGateway(w, r, http.StatusOK, v, err)
 }
 
@@ -531,7 +584,8 @@ func callFilter(w http.ResponseWriter, r *http.Request) (calls.Filter, int32, bo
 	}
 	if v := q.Get("outcome"); v != "" {
 		if !calls.ValidOutcome(v) {
-			httpx.Error(w, http.StatusBadRequest, "invalid_outcome", "outcome must be ok, tool_error, denied, upstream_error, timeout, too_large, bad_request or needs_authorization")
+			httpx.Error(w, http.StatusBadRequest, "invalid_outcome",
+				"outcome must be ok, tool_error, denied, upstream_error, timeout, too_large, bad_request, needs_authorization or rate_limited")
 			return f, 0, false
 		}
 		f.Outcome = &v
@@ -568,7 +622,7 @@ func callFilter(w http.ResponseWriter, r *http.Request) (calls.Filter, int32, bo
 	return f, limit, true
 }
 
-func writeCallPage(w http.ResponseWriter, r *http.Request, rows []dbgen.ListMCPCallsRow, err error, limit int32) {
+func writeCallPage(w http.ResponseWriter, r *http.Request, rows []calls.Row, err error, limit int32) {
 	if failed(w, r, err) {
 		return
 	}

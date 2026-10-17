@@ -60,13 +60,19 @@ export function PublishDialog({ server, onClose }: { server: McpServer; onClose:
       description={
         self
           ? `Your team publishes without a review: ${server.name} appears in the company catalog now, and its ${count} are approved as they are. Everyone signed in can see them.`
-          : `A platform admin reviews ${server.name} and its ${count} before it appears in the company catalog. You can withdraw the request until then.`
+          : `A platform admin reviews ${server.name}, its ${count} and what it receives on behalf of callers before it appears in the company catalog. You can withdraw the request until then.`
       }
       onClose={onClose}
       onSubmit={() => publish.mutate()}
       submitLabel={self ? "Publish" : "Request review"}
       busy={publish.isPending}
     >
+      <section aria-label="What the server receives">
+        <p>
+          <strong>What the server receives on behalf of callers</strong>
+        </p>
+        <RequirementSummary server={server} scope={{ kind: "team", team: server.teamSlug }} />
+      </section>
       <Field label={self ? "Note" : "Note for the reviewer"} labelHint="Optional" description={self ? "Kept with the server's publishing record." : "What the server is for, who should use it, anything they should check."}>
         <Textarea rows={3} maxLength={maxNote} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>

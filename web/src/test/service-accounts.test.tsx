@@ -125,6 +125,29 @@ describe("Service account › Overview", () => {
     expect(within(access).getByRole("link", { name: "Company search" })).toHaveAttribute("href", `/admin/gateways/${platformGatewayId}`);
   });
 
+  it("says how many capabilities need a person's account, which service accounts can't use", async () => {
+    mockApi(
+      routes("member", serviceAccount(), [], {
+        [`GET ${base}/${serviceAccountId}/gateways`]: () => [myGateway({ capabilityCount: 1, needsPersonCount: 2 }), { ...accountGateways[1]!, needsPersonCount: 0 }],
+      }),
+    );
+    const { container } = renderApp(record);
+    const access = await screen.findByRole("table", { name: "Gateways ci-release-bot can use" });
+    const own = within(access).getByRole("link", { name: "Support tools" }).closest("tr")!;
+    expect(own).toHaveTextContent("1 capability");
+    expect(own).toHaveTextContent("2 more need a person's account");
+    expect(within(access).getByText("Company search").closest("tr")).not.toHaveTextContent(/person's account/);
+    expect(screen.getByText(/2 capabilities on these gateways need a person's account/)).toHaveTextContent("Service accounts can't use capabilities that need a person's account.");
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no such note when nothing needs a person's account", async () => {
+    mockApi(routes("member"));
+    renderApp(record);
+    await screen.findByRole("table", { name: "Gateways ci-release-bot can use" });
+    expect(screen.queryByText(/need a person's account/)).toBeNull();
+  });
+
   it("says when it can't use any gateway yet", async () => {
     mockApi(routes("owner", serviceAccount(), [], { [`GET ${base}/${serviceAccountId}/gateways`]: () => [] }));
     renderApp(record);

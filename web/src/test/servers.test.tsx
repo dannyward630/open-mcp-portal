@@ -96,6 +96,7 @@ describe("Add MCP server", () => {
         authValue: "Bearer s3cret",
         timeoutSeconds: 30,
         enabled: true,
+        capturePayloads: false,
       }),
     );
     // The record page, with the first read's failure on top.
@@ -180,7 +181,9 @@ describe("MCP server record", () => {
     expect(await screen.findByText(/A platform admin reviews each server/)).toBeInTheDocument();
     await u.click(screen.getByRole("button", { name: "Request review…" }));
     const dialog = await screen.findByRole("dialog", { name: "Request publishing Service status" });
-    expect(dialog).toHaveTextContent("A platform admin reviews Service status and its 4 capabilities");
+    expect(dialog).toHaveTextContent("A platform admin reviews Service status, its 4 capabilities and what it receives on behalf of callers");
+    // What the server receives (user authorization), as in the reviewer's approve dialog.
+    expect(within(dialog).getByRole("region", { name: "What the server receives" })).toBeInTheDocument();
     await u.type(within(dialog).getByRole("textbox", { name: /Note for the reviewer/ }), "For on-call");
     await u.click(within(dialog).getByRole("button", { name: "Request review" }));
     await waitFor(() => expect(calls.find((c) => c.url.endsWith("/publish"))?.body).toEqual({ note: "For on-call" }));

@@ -124,6 +124,10 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
       if (!isNotFound(teamGateway.error)) crumbs.push({ label: teamGateway.data?.name ?? <VisuallyHidden>Gateway</VisuallyHidden> });
       return crumbs;
     }
+    if (sub === "/calls/$callId") {
+      crumbs.push({ label: `Call ${params.callId ?? ""}`.trim() });
+      return crumbs;
+    }
     if (sub === "/service-accounts/$serviceAccountId") {
       crumbs.push({ label: terms.serviceAccounts, render: <Link to="/teams/$team/service-accounts" params={{ team: slug }} /> });
       if (!isNotFound(serviceAccount.error)) crumbs.push({ label: serviceAccount.data?.name ?? <VisuallyHidden>Service account</VisuallyHidden> });
@@ -151,6 +155,8 @@ function useTrail({ routeId, params }: Location, canAdmin: boolean): BreadcrumbI
         { label: terms.gateways, render: <Link to="/admin/gateways" /> },
         ...(isNotFound(adminGateway.error) ? [] : [{ label: adminGateway.data?.name ?? <VisuallyHidden>Gateway</VisuallyHidden> }]),
       );
+    } else if (routeId === "/app/admin/calls/$callId") {
+      crumbs.push({ label: terms.calls, render: <Link to="/admin/calls" /> }, { label: `Call ${params.callId ?? ""}`.trim() });
     } else if (providerId) {
       crumbs.push(
         { label: terms.authProviders, render: <Link to="/admin/auth-providers" /> },

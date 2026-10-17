@@ -16,7 +16,7 @@ K8S_TOOLS   := $(CURDIR)/bin/k8s-tools
 KUSTOMIZE   := $(K8S_TOOLS)/kustomize-$(KUSTOMIZE_VERSION)/kustomize
 KUBECONFORM := $(K8S_TOOLS)/kubeconform-$(KUBECONFORM_VERSION)/kubeconform
 
-.PHONY: dev-seed help deps-up deps-down generate check-generated build run migrate fake-mcp fake-oauth test test-integration lint fmt web web-test web-dev docker demo demo-down k8s-validate
+.PHONY: dev-seed help deps-up deps-down generate check-generated build run migrate fake-mcp fake-oauth test test-integration test-ci lint actionlint fmt web web-test web-dev docker demo demo-down k8s-validate
 
 help: ## Show targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -61,12 +61,19 @@ fake-oauth: ## Run a fake OAuth provider on http://127.0.0.1:8092 for delegated 
 test: ## All Go tests; integration tests skip when Postgres is unreachable
 	$(GO) test -count=1 ./...
 
-test-integration: deps-up ## All Go tests with Postgres required (fails instead of skipping)
+test-integration: deps-up test-ci ## All Go tests with Postgres required (fails instead of skipping)
+
+test-ci: ## test-integration without deps-up (CI's Postgres service; OMG_TEST_DATABASE_URL)
 	OMG_TEST_REQUIRE_DB=1 $(GO) test -race -count=1 ./...
 
 lint: ## go vet and gofmt check
 	$(GO) vet ./...
 	@test -z "$$(gofmt -l cmd internal migrations web/embed.go)" || (gofmt -l cmd internal migrations web/embed.go && echo "run 'make fmt'" && exit 1)
+
+ACTIONLINT_VERSION ?= v1.7.12
+
+actionlint: ## Check the GitHub Actions workflows
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
 fmt: ## Format Go code
 	gofmt -w cmd internal migrations web/embed.go

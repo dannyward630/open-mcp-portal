@@ -1,7 +1,7 @@
 # Status and handoff
 
-Last updated: 2026-10-16 (Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md)
-"As built"; Phase 6 designed, decisions 31–38: [phase6-operations.md](phase6-operations.md)).
+Last updated: 2026-10-16 (Phase 6 backend built: [phase6-operations.md](phase6-operations.md) "As built"; Phase 5
+backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built").
 
 ## Where things stand
 
@@ -99,7 +99,7 @@ Last updated: 2026-10-16 (Phase 5 backend built: [phase5-delegated-credentials.m
     test (fake MCP server, CIMD on a loopback http server under the development allowance, hand-made PKCE pair,
     consent, token, `tools/call whoami` showing `principal_type: user` and `client`, refresh rotation, then a service
     account key showing `principal_type: service_account`). Not browser-checked.
-  - Gaps: no rate limit on `/mcp` itself; rate counters per process; no previous-pepper support (rotating
+  - Gaps (rate limits and pepper rotation: done in Phase 6): no rate limit on `/mcp` itself; rate counters per process; no previous-pepper support (rotating
     `API_KEY_PEPPER` signs clients out and invalidates keys); no CORS on OAuth endpoints; no private-use redirect
     schemes; DCR clean-up runs on registration; the previous release can't list call records of service accounts.
   - QA follow-ups done (not yet browser-checked): see [phase4-client-auth.md](phase4-client-auth.md) "As built: QA
@@ -125,12 +125,22 @@ Last updated: 2026-10-16 (Phase 5 backend built: [phase5-delegated-credentials.m
     in `in_use` details' servers, provider slugs `done` and `callback` reserved (`422 invalid_slug`).
   - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), `make k8s-validate`.
     Not browser-checked; not tried against a real provider.
-  - Gaps: the start rate limit is per process; no background refresh; see the design's "Not in this phase".
+  - Gaps: no background refresh (the start rate limit is shared since Phase 6); see the design's "Not in this phase".
 
-- **Phase 6 (operations): designed, not built.** Rate limits, payload capture, retention, usage, metrics, key
-  rotation and CI in [phase6-operations.md](phase6-operations.md) (decisions 31 to 38); contract in
-  `api/openapi.yaml` (19 new operations, additive fields). Until the backend serves them, the route contract test and
-  the authz-matrix classification test fail and generated types are stale.
+- **Phase 6 (operations): backend done; UI next.** Rate limits shared by replicas in PostgreSQL (per person, credential,
+  service account and gateway; 429 + JSON-RPC `-32029`, recorded `rate_limited`), payload capture (opt-in per gateway or
+  server, redacted, 16 KiB, sealed, audited views), retention loop, hourly usage rollups and reports, Prometheus metrics
+  on `METRICS_ADDR`, `API_KEY_PEPPER_PREVIOUS`, `open-mcp-gateway rotate-keys`, doctor key reports, and
+  `.github/workflows/ci.yml`. See [phase6-operations.md](phase6-operations.md) "As built" and [deploy.md](deploy.md)
+  (Metrics, Key rotation, Scaling).
+  - Migration `00011_operations`. New packages `internal/limits`, `internal/capture`, `internal/retention`,
+    `internal/usage`, `internal/observability`, `internal/keyrotation`; `internal/ratelimit` has a PostgreSQL store, and
+    the OAuth, connect-start, sign-in and `/v1` limiters use it. Dependency `prometheus/client_golang` v1.25.0.
+  - New config: `API_KEY_PEPPER_PREVIOUS`, `METRICS_ADDR`, `METRICS_MAX_OBJECTS`, `RETENTION_INTERVAL`,
+    `RETENTION_BATCH_SIZE`. New targets `make test-ci`, `make actionlint`.
+  - Contract: all 19 operations and the new fields served; **no contract changes**.
+  - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), `make k8s-validate`,
+    actionlint. Not browser-checked (no UI yet); CI not run on GitHub.
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
   example overlay in `deploy/kubernetes` (one Deployment with a migrate init container, Service, PDB, NetworkPolicies,
@@ -141,11 +151,11 @@ Last updated: 2026-10-16 (Phase 5 backend built: [phase5-delegated-credentials.m
 ## Differences from Grounded (deliberate)
 
 - OIDC login state lives in PostgreSQL (`login_states`), not Valkey.
-- Rate limits are in-memory per process for now (shared PostgreSQL counters planned in Phase 6).
+- Rate limits are counted in PostgreSQL (UNLOGGED table), not Valkey.
 - Listen address env var is `LISTEN_ADDR` (default `:8088`); config file env var is `OMG_CONFIG_FILE`.
 - Malformed emails return `400 invalid_json` (generated Email type), same as Grounded.
 - OAuth for MCP clients is always on (Grounded has a setting) and binds each connection to one gateway.
-- Dropped for now: notifications/email, metrics/tracing, retention job. SSO groups are back
+- Dropped for now: notifications/email, tracing. SSO groups are back
   (`users.groups`, for grants); API keys are our own implementation (`internal/apikeys`), personal only.
 
 ## Resume checklist
@@ -169,14 +179,12 @@ make test && make web-test
 2. Phase 5 (delegated credentials): **backend built**; the web UI is built in parallel from the same contract. Then a
    browser QA pass of the connect flow (`/connect/{provider}`, `/connect/done`) with `make fake-oauth`, and a check
    against one real provider (GitHub is the simplest).
-3. Phase 6 (operations, decisions 31–38): build the backend from [phase6-operations.md](phase6-operations.md) in this
-   order: migration `00011_operations`; shared rate limits on `/mcp` (and moving the OAuth, connect, sign-in and `/v1`
-   limiters to PostgreSQL); payload capture with redaction and the payload/call-detail routes; retention loop; usage
-   rollups and routes; `METRICS_ADDR`; `API_KEY_PEPPER_PREVIOUS`, `rotate-keys` and `doctor` reports; then
-   `make generate` and the web UI (Limits, Retention, Payload capture, Usage, call detail, gateway/server switches).
-4. CI (decision 37): write `.github/workflows/ci.yml` and a `make test-ci` target; check with `actionlint`.
-5. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, a metrics port and example
-   `ServiceMonitor` once metrics exist; see [deploy.md](deploy.md) "Not covered yet".
+3. Phase 6 web UI from the same contract: Admin › Limits, Retention, Payload capture (tester), Usage; team Usage and
+   Settings › Limits & retention; gateway and server switches (rate limit, record call contents); call detail with
+   "Show contents"; capture badges. Then a browser QA pass.
+4. Push to a remote and let `.github/workflows/ci.yml` run once; fix what only GitHub's runners show.
+5. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow; see [deploy.md](deploy.md) "Not
+   covered yet".
 
 ## Phase 1 UI
 

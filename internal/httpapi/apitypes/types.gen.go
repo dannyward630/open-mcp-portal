@@ -249,6 +249,24 @@ func (e AuthProviderUpdateScopeSeparator) Valid() bool {
 	}
 }
 
+// Defines values for CallPayloadCapturedBy.
+const (
+	CallPayloadCapturedByGateway CallPayloadCapturedBy = "gateway"
+	CallPayloadCapturedByServer  CallPayloadCapturedBy = "server"
+)
+
+// Valid indicates whether the value is a known member of the CallPayloadCapturedBy enum.
+func (e CallPayloadCapturedBy) Valid() bool {
+	switch e {
+	case CallPayloadCapturedByGateway:
+		return true
+	case CallPayloadCapturedByServer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CallPrincipalKind.
 const (
 	CallPrincipalKindApiKey         CallPrincipalKind = "api_key"
@@ -489,6 +507,7 @@ const (
 	McpCallOutcomeDenied             McpCallOutcome = "denied"
 	McpCallOutcomeNeedsAuthorization McpCallOutcome = "needs_authorization"
 	McpCallOutcomeOk                 McpCallOutcome = "ok"
+	McpCallOutcomeRateLimited        McpCallOutcome = "rate_limited"
 	McpCallOutcomeTimeout            McpCallOutcome = "timeout"
 	McpCallOutcomeTooLarge           McpCallOutcome = "too_large"
 	McpCallOutcomeToolError          McpCallOutcome = "tool_error"
@@ -505,6 +524,8 @@ func (e McpCallOutcome) Valid() bool {
 	case McpCallOutcomeNeedsAuthorization:
 		return true
 	case McpCallOutcomeOk:
+		return true
+	case McpCallOutcomeRateLimited:
 		return true
 	case McpCallOutcomeTimeout:
 		return true
@@ -870,6 +891,54 @@ func (e PublishState) Valid() bool {
 	}
 }
 
+// Defines values for RateLimitKey.
+const (
+	CredentialPerMinute     RateLimitKey = "credential_per_minute"
+	GatewayPerMinute        RateLimitKey = "gateway_per_minute"
+	PersonPerMinute         RateLimitKey = "person_per_minute"
+	ServiceAccountPerMinute RateLimitKey = "service_account_per_minute"
+)
+
+// Valid indicates whether the value is a known member of the RateLimitKey enum.
+func (e RateLimitKey) Valid() bool {
+	switch e {
+	case CredentialPerMinute:
+		return true
+	case GatewayPerMinute:
+		return true
+	case PersonPerMinute:
+		return true
+	case ServiceAccountPerMinute:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RetentionKind.
+const (
+	AuditLog         RetentionKind = "audit_log"
+	CallMetadata     RetentionKind = "call_metadata"
+	CapturedPayloads RetentionKind = "captured_payloads"
+	UsageRollups     RetentionKind = "usage_rollups"
+)
+
+// Valid indicates whether the value is a known member of the RetentionKind enum.
+func (e RetentionKind) Valid() bool {
+	switch e {
+	case AuditLog:
+		return true
+	case CallMetadata:
+		return true
+	case CapturedPayloads:
+		return true
+	case UsageRollups:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ServerHealthStatus.
 const (
 	Failing ServerHealthStatus = "failing"
@@ -972,6 +1041,60 @@ func (e TeamStatus) Valid() bool {
 	}
 }
 
+// Defines values for UsageGroupBy.
+const (
+	UsageGroupByCapability    UsageGroupBy = "capability"
+	UsageGroupByDay           UsageGroupBy = "day"
+	UsageGroupByGateway       UsageGroupBy = "gateway"
+	UsageGroupByHour          UsageGroupBy = "hour"
+	UsageGroupByPrincipalKind UsageGroupBy = "principalKind"
+	UsageGroupByServer        UsageGroupBy = "server"
+	UsageGroupByTeam          UsageGroupBy = "team"
+)
+
+// Valid indicates whether the value is a known member of the UsageGroupBy enum.
+func (e UsageGroupBy) Valid() bool {
+	switch e {
+	case UsageGroupByCapability:
+		return true
+	case UsageGroupByDay:
+		return true
+	case UsageGroupByGateway:
+		return true
+	case UsageGroupByHour:
+		return true
+	case UsageGroupByPrincipalKind:
+		return true
+	case UsageGroupByServer:
+		return true
+	case UsageGroupByTeam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UsagePrincipalKind.
+const (
+	UsagePrincipalKindApiKey         UsagePrincipalKind = "api_key"
+	UsagePrincipalKindOauth          UsagePrincipalKind = "oauth"
+	UsagePrincipalKindServiceAccount UsagePrincipalKind = "service_account"
+)
+
+// Valid indicates whether the value is a known member of the UsagePrincipalKind enum.
+func (e UsagePrincipalKind) Valid() bool {
+	switch e {
+	case UsagePrincipalKindApiKey:
+		return true
+	case UsagePrincipalKindOauth:
+		return true
+	case UsagePrincipalKindServiceAccount:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserStatus.
 const (
 	UserStatusActive    UserStatus = "active"
@@ -1005,6 +1128,39 @@ func (e AuditActorKindParam) Valid() bool {
 	}
 }
 
+// Defines values for UsageMethodParam.
+const (
+	UsageMethodParamPromptsget             UsageMethodParam = "prompts/get"
+	UsageMethodParamPromptslist            UsageMethodParam = "prompts/list"
+	UsageMethodParamResourceslist          UsageMethodParam = "resources/list"
+	UsageMethodParamResourcesread          UsageMethodParam = "resources/read"
+	UsageMethodParamResourcestemplateslist UsageMethodParam = "resources/templates/list"
+	UsageMethodParamToolscall              UsageMethodParam = "tools/call"
+	UsageMethodParamToolslist              UsageMethodParam = "tools/list"
+)
+
+// Valid indicates whether the value is a known member of the UsageMethodParam enum.
+func (e UsageMethodParam) Valid() bool {
+	switch e {
+	case UsageMethodParamPromptsget:
+		return true
+	case UsageMethodParamPromptslist:
+		return true
+	case UsageMethodParamResourceslist:
+		return true
+	case UsageMethodParamResourcesread:
+		return true
+	case UsageMethodParamResourcestemplateslist:
+		return true
+	case UsageMethodParamToolscall:
+		return true
+	case UsageMethodParamToolslist:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdminListAuditParamsActorKind.
 const (
 	AdminListAuditParamsActorKindSystem AdminListAuditParamsActorKind = "system"
@@ -1020,6 +1176,39 @@ func (e AdminListAuditParamsActorKind) Valid() bool {
 	}
 }
 
+// Defines values for AdminGetUsageParamsMethod.
+const (
+	AdminGetUsageParamsMethodPromptsget             AdminGetUsageParamsMethod = "prompts/get"
+	AdminGetUsageParamsMethodPromptslist            AdminGetUsageParamsMethod = "prompts/list"
+	AdminGetUsageParamsMethodResourceslist          AdminGetUsageParamsMethod = "resources/list"
+	AdminGetUsageParamsMethodResourcesread          AdminGetUsageParamsMethod = "resources/read"
+	AdminGetUsageParamsMethodResourcestemplateslist AdminGetUsageParamsMethod = "resources/templates/list"
+	AdminGetUsageParamsMethodToolscall              AdminGetUsageParamsMethod = "tools/call"
+	AdminGetUsageParamsMethodToolslist              AdminGetUsageParamsMethod = "tools/list"
+)
+
+// Valid indicates whether the value is a known member of the AdminGetUsageParamsMethod enum.
+func (e AdminGetUsageParamsMethod) Valid() bool {
+	switch e {
+	case AdminGetUsageParamsMethodPromptsget:
+		return true
+	case AdminGetUsageParamsMethodPromptslist:
+		return true
+	case AdminGetUsageParamsMethodResourceslist:
+		return true
+	case AdminGetUsageParamsMethodResourcesread:
+		return true
+	case AdminGetUsageParamsMethodResourcestemplateslist:
+		return true
+	case AdminGetUsageParamsMethodToolscall:
+		return true
+	case AdminGetUsageParamsMethodToolslist:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListTeamAuditParamsActorKind.
 const (
 	ListTeamAuditParamsActorKindSystem ListTeamAuditParamsActorKind = "system"
@@ -1029,6 +1218,39 @@ const (
 func (e ListTeamAuditParamsActorKind) Valid() bool {
 	switch e {
 	case ListTeamAuditParamsActorKindSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetTeamUsageParamsMethod.
+const (
+	GetTeamUsageParamsMethodPromptsget             GetTeamUsageParamsMethod = "prompts/get"
+	GetTeamUsageParamsMethodPromptslist            GetTeamUsageParamsMethod = "prompts/list"
+	GetTeamUsageParamsMethodResourceslist          GetTeamUsageParamsMethod = "resources/list"
+	GetTeamUsageParamsMethodResourcesread          GetTeamUsageParamsMethod = "resources/read"
+	GetTeamUsageParamsMethodResourcestemplateslist GetTeamUsageParamsMethod = "resources/templates/list"
+	GetTeamUsageParamsMethodToolscall              GetTeamUsageParamsMethod = "tools/call"
+	GetTeamUsageParamsMethodToolslist              GetTeamUsageParamsMethod = "tools/list"
+)
+
+// Valid indicates whether the value is a known member of the GetTeamUsageParamsMethod enum.
+func (e GetTeamUsageParamsMethod) Valid() bool {
+	switch e {
+	case GetTeamUsageParamsMethodPromptsget:
+		return true
+	case GetTeamUsageParamsMethodPromptslist:
+		return true
+	case GetTeamUsageParamsMethodResourceslist:
+		return true
+	case GetTeamUsageParamsMethodResourcesread:
+		return true
+	case GetTeamUsageParamsMethodResourcestemplateslist:
+		return true
+	case GetTeamUsageParamsMethodToolscall:
+		return true
+	case GetTeamUsageParamsMethodToolslist:
 		return true
 	default:
 		return false
@@ -1416,6 +1638,47 @@ type AuthProviderUrlParameter struct {
 	Name string `json:"name"`
 }
 
+// CallPayload What a call sent and received, as captured (redacted, then truncated). Never contains the identity JWT, provider tokens, client credentials or the server's static header.
+type CallPayload struct {
+	// Arguments The call's arguments (tools/call, prompts/get) or {"uri": <exposed URI>} (resources/read)
+	Arguments  CallPayloadPart `json:"arguments"`
+	CallId     int64           `json:"callId"`
+	CapturedAt time.Time       `json:"capturedAt"`
+
+	// CapturedBy Whose switch captured it (one or both)
+	CapturedBy []CallPayloadCapturedBy `json:"capturedBy"`
+
+	// ExpiresAt When retention deletes it under the current settings
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Redactions Both parts together
+	Redactions int32 `json:"redactions"`
+
+	// Result What the client received (the result, or the server's JSON-RPC error); null when there was none (timeout, unreachable, too large)
+	Result *CallPayloadPart `json:"result"`
+
+	// Truncated Either part was truncated
+	Truncated bool `json:"truncated"`
+}
+
+// CallPayloadCapturedBy defines model for CallPayload.CapturedBy.
+type CallPayloadCapturedBy string
+
+// CallPayloadPart defines model for CallPayloadPart.
+type CallPayloadPart struct {
+	// Bytes Size of the redacted JSON before truncation
+	Bytes int64 `json:"bytes"`
+
+	// Content The redacted JSON text; no longer valid JSON when truncated. Binary content items show as [binary N bytes]
+	Content string `json:"content"`
+
+	// Redactions Values replaced with [REDACTED]
+	Redactions int32 `json:"redactions"`
+
+	// Truncated Cut to 16 KiB (at a UTF-8 boundary)
+	Truncated bool `json:"truncated"`
+}
+
 // CallPrincipal defines model for CallPrincipal.
 type CallPrincipal struct {
 	// ApiKeyName The key used (api_key and service_account)
@@ -1501,6 +1764,37 @@ type CapabilityRequirementOverride struct {
 // CapabilityRequirementOverrideMode inherit: the server's requirement. none: no provider token and no consent. scopes: the server's provider with these scopes
 type CapabilityRequirementOverrideMode string
 
+// CaptureRule A built-in redaction rule (always on)
+type CaptureRule struct {
+	Description string `json:"description"`
+
+	// Name Example: github
+	Name string `json:"name"`
+}
+
+// CaptureSettings defines model for CaptureSettings.
+type CaptureSettings struct {
+	BuiltInRules []CaptureRule `json:"builtInRules"`
+
+	// MaxPartBytes Arguments and result are each truncated to this many bytes after redaction (16384)
+	MaxPartBytes int32 `json:"maxPartBytes"`
+
+	// Patterns The platform admins' extra patterns
+	Patterns []RedactionPattern `json:"patterns"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision Revision `json:"revision"`
+
+	// SensitiveKeys Normalised JSON member names (lower case, without - and _) whose values are always replaced
+	SensitiveKeys []string  `json:"sensitiveKeys"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+// CaptureSettingsUpdate defines model for CaptureSettingsUpdate.
+type CaptureSettingsUpdate struct {
+	Patterns []RedactionPattern `json:"patterns"`
+}
+
 // CatalogCapability defines model for CatalogCapability.
 type CatalogCapability struct {
 	Definition  map[string]interface{} `json:"definition"`
@@ -1516,6 +1810,9 @@ type CatalogCapability struct {
 
 // CatalogServer defines model for CatalogServer.
 type CatalogServer struct {
+	// CapturePayloads The server's team records call arguments and results (McpServer.capturePayloads). Absent from servers before Phase 6.
+	CapturePayloads *bool `json:"capturePayloads,omitempty"`
+
 	// Counts Approved, listed capabilities only
 	Counts      CapabilityCounts `json:"counts"`
 	Description string           `json:"description"`
@@ -1633,9 +1930,15 @@ type ErrorResponse struct {
 // Gateway defines model for Gateway.
 type Gateway struct {
 	// CapabilityCount Selected capabilities
-	CapabilityCount int64     `json:"capabilityCount"`
+	CapabilityCount int64 `json:"capabilityCount"`
+
+	// CapturePayloads Record the arguments and results of calls through this gateway (redacted, truncated to 16 KiB per part; readable by a team gateway's team owners and admins and by platform staff). Calls are also captured when their server records them. Absent from servers before Phase 6.
+	CapturePayloads *bool     `json:"capturePayloads,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
 	Description     string    `json:"description"`
+
+	// EffectiveRateLimitPerMinute The limit that applies now: rateLimitPerMinute, else (team gateways) the team's override, else the platform default, capped at the ceiling (null: unlimited). Absent from servers before Phase 6.
+	EffectiveRateLimitPerMinute *int64 `json:"effectiveRateLimitPerMinute,omitempty"`
 
 	// Enabled Turned off, the endpoint answers 404 to everyone. A team gateway of an archived team also answers 404, and its capabilities are unavailable (team_archived), until the team is unarchived
 	Enabled bool `json:"enabled"`
@@ -1647,6 +1950,9 @@ type Gateway struct {
 	// Name Example: Support tools
 	Name      string           `json:"name"`
 	OwnerKind GatewayOwnerKind `json:"ownerKind"`
+
+	// RateLimitPerMinute The gateway's own limit on requests per minute from all callers together (null: inherit the team override or platform default). Absent from servers before Phase 6.
+	RateLimitPerMinute *int64 `json:"rateLimitPerMinute,omitempty"`
 
 	// Revision Increases on every change. Send it back in If-Match.
 	Revision Revision `json:"revision"`
@@ -1705,10 +2011,13 @@ type GatewayCapability struct {
 	Name string `json:"name"`
 
 	// Requires The account a person must connect to use it (null; none). Service accounts can't call capabilities that require one. In MyGatewayDetail, connected says whether the caller's connection covers it now
-	Requires   *CapabilityRequirement `json:"requires"`
-	ServerId   openapi_types.UUID     `json:"serverId"`
-	ServerName string                 `json:"serverName"`
-	ServerSlug string                 `json:"serverSlug"`
+	Requires *CapabilityRequirement `json:"requires"`
+
+	// ServerCapturesPayloads The capability's server records call arguments and results, whatever the gateway's setting. Absent from servers before Phase 6.
+	ServerCapturesPayloads *bool              `json:"serverCapturesPayloads,omitempty"`
+	ServerId               openapi_types.UUID `json:"serverId"`
+	ServerName             string             `json:"serverName"`
+	ServerSlug             string             `json:"serverSlug"`
 
 	// TeamSlug The server's team
 	TeamSlug string `json:"teamSlug"`
@@ -1729,9 +2038,13 @@ type GatewayCapabilitySelection struct {
 
 // GatewayCreate defines model for GatewayCreate.
 type GatewayCreate struct {
-	Description *string `json:"description,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
-	Name        string  `json:"name"`
+	CapturePayloads *bool   `json:"capturePayloads,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	Name            string  `json:"name"`
+
+	// RateLimitPerMinute Absent or null: inherit. 422 invalid_limit (details.reason above_ceiling) above the ceiling of gateway_per_minute.
+	RateLimitPerMinute *int64 `json:"rateLimitPerMinute,omitempty"`
 
 	// Slug Unique across the platform, immutable
 	Slug string `json:"slug"`
@@ -1780,10 +2093,13 @@ type GatewayOption struct {
 	Name string `json:"name"`
 
 	// Requires The account a person must connect to use it (null; none)
-	Requires   *CapabilityRequirement `json:"requires"`
-	ServerId   openapi_types.UUID     `json:"serverId"`
-	ServerName string                 `json:"serverName"`
-	ServerSlug string                 `json:"serverSlug"`
+	Requires *CapabilityRequirement `json:"requires"`
+
+	// ServerCapturesPayloads The server records call arguments and results. Absent from servers before Phase 6.
+	ServerCapturesPayloads *bool              `json:"serverCapturesPayloads,omitempty"`
+	ServerId               openapi_types.UUID `json:"serverId"`
+	ServerName             string             `json:"serverName"`
+	ServerSlug             string             `json:"serverSlug"`
 
 	// Source team: the gateway team's own server; catalog: a published server
 	Source   GatewayOptionSource `json:"source"`
@@ -1815,9 +2131,14 @@ type GatewayUnavailableReason string
 
 // GatewayUpdate defines model for GatewayUpdate.
 type GatewayUpdate struct {
-	Description *string `json:"description,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
-	Name        *string `json:"name,omitempty"`
+	// CapturePayloads Omit to keep. Platform admins can't change it on team gateways (403 team_gateway). Audited in gateway.update.
+	CapturePayloads *bool   `json:"capturePayloads,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	Name            *string `json:"name,omitempty"`
+
+	// RateLimitPerMinute Omit to keep; null inherits. 422 invalid_limit (details.reason above_ceiling) above the ceiling. Platform admins can't change it on team gateways (403 team_gateway).
+	RateLimitPerMinute *int64 `json:"rateLimitPerMinute,omitempty"`
 }
 
 // GrantTeam defines model for GrantTeam.
@@ -1875,8 +2196,26 @@ type Invite struct {
 	Role      TeamRole            `json:"role"`
 }
 
+// LimitSettings defines model for LimitSettings.
+type LimitSettings struct {
+	// Items Every key, in a fixed order
+	Items []PlatformRateLimit `json:"items"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision  Revision  `json:"revision"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// LimitSettingsUpdate defines model for LimitSettingsUpdate.
+type LimitSettingsUpdate struct {
+	Items []PlatformRateLimitSetting `json:"items"`
+}
+
 // McpCall defines model for McpCall.
 type McpCall struct {
+	// Captured A captured payload is stored that the caller may open (team views; captured under this team's gateway or server switch; admin views; any). Absent from servers before Phase 6.
+	Captured *bool `json:"captured,omitempty"`
+
 	// ClientName clientInfo.name from initialize, when sent
 	ClientName *string `json:"clientName,omitempty"`
 
@@ -1895,7 +2234,7 @@ type McpCall struct {
 	Method     string    `json:"method"`
 	OccurredAt time.Time `json:"occurredAt"`
 
-	// Outcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
+	// Outcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042). rate_limited: not forwarded because a rate limit was exceeded (HTTP 429, JSON-RPC -32029; errorClass names the limit: person_per_minute, credential_per_minute, service_account_per_minute or gateway_per_minute).
 	Outcome   McpCallOutcome `json:"outcome"`
 	Principal CallPrincipal  `json:"principal"`
 
@@ -1907,7 +2246,7 @@ type McpCall struct {
 	Server        *CallRef `json:"server,omitempty"`
 }
 
-// McpCallOutcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
+// McpCallOutcome ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042). rate_limited: not forwarded because a rate limit was exceeded (HTTP 429, JSON-RPC -32029; errorClass names the limit: person_per_minute, credential_per_minute, service_account_per_minute or gateway_per_minute).
 type McpCallOutcome string
 
 // McpCallPage defines model for McpCallPage.
@@ -2005,10 +2344,13 @@ type McpServer struct {
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
 	// AuthValueHint Last 4 characters of the header value, or empty
-	AuthValueHint string           `json:"authValueHint"`
-	Counts        CapabilityCounts `json:"counts"`
-	CreatedAt     time.Time        `json:"createdAt"`
-	Description   string           `json:"description"`
+	AuthValueHint string `json:"authValueHint"`
+
+	// CapturePayloads Record the arguments and results of calls to this server's capabilities through any gateway (redacted, truncated to 16 KiB per part; readable by the team's owners and admins and platform staff; kept for the captured_payloads retention period). Absent from servers before Phase 6.
+	CapturePayloads *bool            `json:"capturePayloads,omitempty"`
+	Counts          CapabilityCounts `json:"counts"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	Description     string           `json:"description"`
 
 	// EffectivePublishPolicy approval_required: a platform admin approves each server, and each changed capability, before it reaches the catalog. self_publish: the team's owners and admins do.
 	EffectivePublishPolicy PublishPolicy `json:"effectivePublishPolicy"`
@@ -2065,10 +2407,13 @@ type McpServerCreate struct {
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
 	// AuthValue Stored encrypted, never returned
-	AuthValue   *string `json:"authValue,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
-	Name        string  `json:"name"`
+	AuthValue *string `json:"authValue,omitempty"`
+
+	// CapturePayloads Only team owners and admins may set it to true (403 capture_role)
+	CapturePayloads *bool   `json:"capturePayloads,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	Name            string  `json:"name"`
 
 	// Requirement Absent or null; no user authorization
 	Requirement *McpServerRequirementInput `json:"requirement,omitempty"`
@@ -2125,10 +2470,13 @@ type McpServerUpdate struct {
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
 	// AuthValue Omit to keep the stored value
-	AuthValue   *string `json:"authValue,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
-	Name        *string `json:"name,omitempty"`
+	AuthValue *string `json:"authValue,omitempty"`
+
+	// CapturePayloads Omit to keep. Only team owners and admins may change it (403 capture_role; sending the current value is allowed). Not a review trigger. Audited in mcp_server.update.
+	CapturePayloads *bool   `json:"capturePayloads,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	Name            *string `json:"name,omitempty"`
 
 	// Requirement Omit to keep; null removes it. A widening change sends a published server back to review under approval_required
 	Requirement    *McpServerRequirementInput `json:"requirement,omitempty"`
@@ -2211,18 +2559,24 @@ type MyGateway struct {
 	Access []MyGatewayAccess `json:"access"`
 
 	// CapabilityCount Capabilities it offers the caller right now
-	CapabilityCount int64  `json:"capabilityCount"`
-	Description     string `json:"description"`
+	CapabilityCount int64 `json:"capabilityCount"`
+
+	// CapturesPayloads Calls through this gateway may be recorded with their arguments and results (the gateway, or the server of at least one capability offered to the caller, captures them). Absent from servers before Phase 6.
+	CapturesPayloads *bool  `json:"capturesPayloads,omitempty"`
+	Description      string `json:"description"`
 
 	// Groups When access includes group_grant, the caller's IdP groups the gateway is granted to (sorted)
-	Groups    *[]string          `json:"groups,omitempty"`
-	Id        openapi_types.UUID `json:"id"`
-	Name      string             `json:"name"`
-	OwnerKind GatewayOwnerKind   `json:"ownerKind"`
-	Slug      string             `json:"slug"`
-	TeamName  *string            `json:"teamName,omitempty"`
-	TeamSlug  *string            `json:"teamSlug,omitempty"`
-	Url       string             `json:"url"`
+	Groups *[]string          `json:"groups,omitempty"`
+	Id     openapi_types.UUID `json:"id"`
+	Name   string             `json:"name"`
+
+	// NeedsPersonCount Service-account views (listServiceAccountGateways) only. Capabilities it would offer that require a person's account (a provider requirement); service accounts are refused them, so capabilityCount leaves them out
+	NeedsPersonCount *int64           `json:"needsPersonCount,omitempty"`
+	OwnerKind        GatewayOwnerKind `json:"ownerKind"`
+	Slug             string           `json:"slug"`
+	TeamName         *string          `json:"teamName,omitempty"`
+	TeamSlug         *string          `json:"teamSlug,omitempty"`
+	Url              string           `json:"url"`
 }
 
 // MyGatewayAccess defines model for MyGatewayAccess.
@@ -2368,6 +2722,47 @@ type OwnerAssign struct {
 	Email openapi_types.Email `json:"email"`
 }
 
+// PlatformRateLimit defines model for PlatformRateLimit.
+type PlatformRateLimit struct {
+	// BuiltInDefault The default before any platform admin changed it
+	BuiltInDefault *RateLimitValue `json:"builtInDefault"`
+
+	// CappedGateways Gateways whose own value is above the ceiling (the ceiling applies)
+	CappedGateways int64 `json:"cappedGateways"`
+
+	// CappedTeams Active teams whose override is above the ceiling (the ceiling applies)
+	CappedTeams int64 `json:"cappedTeams"`
+
+	// Ceiling The most a team override or gateway value can be (null: no ceiling). Always null when teamOverridable is false.
+	Ceiling *RateLimitValue `json:"ceiling"`
+
+	// Default Applies where no override is set (null: unlimited)
+	Default     *RateLimitValue `json:"default"`
+	Description string          `json:"description"`
+
+	// Key person_per_minute: every /mcp request by one person, any credential and gateway. credential_per_minute: per personal API key or OAuth connection. service_account_per_minute: per service account, all its keys (team override). gateway_per_minute: per gateway, all callers together (team override as the default of the team's gateways; each gateway can set its own).
+	Key   RateLimitKey `json:"key"`
+	Label string       `json:"label"`
+
+	// Max The most the gateway allows for any value (1000000)
+	Max int64 `json:"max"`
+
+	// TeamOverridable Teams can have their own value (and gateways, for gateway_per_minute), up to the ceiling
+	TeamOverridable bool `json:"teamOverridable"`
+}
+
+// PlatformRateLimitSetting defines model for PlatformRateLimitSetting.
+type PlatformRateLimitSetting struct {
+	// Ceiling null = no ceiling; must be null for keys teams can't override
+	Ceiling *RateLimitValue `json:"ceiling"`
+
+	// Default null = unlimited; at most the ceiling
+	Default *RateLimitValue `json:"default"`
+
+	// Key person_per_minute: every /mcp request by one person, any credential and gateway. credential_per_minute: per personal API key or OAuth connection. service_account_per_minute: per service account, all its keys (team override). gateway_per_minute: per gateway, all callers together (team override as the default of the team's gateways; each gateway can set its own).
+	Key RateLimitKey `json:"key"`
+}
+
 // PlatformRole defines model for PlatformRole.
 type PlatformRole string
 
@@ -2430,6 +2825,105 @@ type PublishingSettings struct {
 type PublishingSettingsUpdate struct {
 	// DefaultPolicy approval_required: a platform admin approves each server, and each changed capability, before it reaches the catalog. self_publish: the team's owners and admins do.
 	DefaultPolicy PublishPolicy `json:"defaultPolicy"`
+}
+
+// RateLimitKey person_per_minute: every /mcp request by one person, any credential and gateway. credential_per_minute: per personal API key or OAuth connection. service_account_per_minute: per service account, all its keys (team override). gateway_per_minute: per gateway, all callers together (team override as the default of the team's gateways; each gateway can set its own).
+type RateLimitKey string
+
+// RateLimitValue Requests per minute; null means unlimited (or, for a ceiling, no ceiling)
+type RateLimitValue = int64
+
+// RedactionPattern defines model for RedactionPattern.
+type RedactionPattern struct {
+	Note *string `json:"note,omitempty"`
+
+	// Pattern An RE2 regular expression (Go regexp syntax; case-sensitive unless it starts with (?i)). Every match in a captured string becomes [REDACTED]. Must not match the empty string.
+	//
+	// Example: EMP-[0-9]{6}
+	Pattern string `json:"pattern"`
+}
+
+// RedactionRuleCount defines model for RedactionRuleCount.
+type RedactionRuleCount struct {
+	Count int32 `json:"count"`
+
+	// Rule A built-in rule name, sensitive_keys, or pattern:<index> for an admin pattern
+	Rule string `json:"rule"`
+}
+
+// RedactionTestRequest defines model for RedactionTestRequest.
+type RedactionTestRequest struct {
+	// Patterns Patterns to try instead of the saved ones (absent: the saved ones)
+	Patterns *[]RedactionPattern `json:"patterns,omitempty"`
+
+	// Sample JSON (member-name rules apply too) or plain text (string rules only)
+	Sample string `json:"sample"`
+}
+
+// RedactionTestResult defines model for RedactionTestResult.
+type RedactionTestResult struct {
+	Redacted   string `json:"redacted"`
+	Redactions int32  `json:"redactions"`
+
+	// Rules Which rules matched, and how often
+	Rules     []RedactionRuleCount `json:"rules"`
+	Truncated bool                 `json:"truncated"`
+}
+
+// RetentionKind call_metadata: call records (mcp_calls); captured_payloads: captured arguments and results; audit_log: the audit log (platform only); usage_rollups: hourly usage (platform only).
+type RetentionKind string
+
+// RetentionPeriod defines model for RetentionPeriod.
+type RetentionPeriod struct {
+	// BuiltInDays The default before any platform admin changed it (call_metadata 90, captured_payloads 14, audit_log 400, usage_rollups 400)
+	BuiltInDays int32 `json:"builtInDays"`
+
+	// Days The platform period
+	Days int32 `json:"days"`
+
+	// Kind call_metadata: call records (mcp_calls); captured_payloads: captured arguments and results; audit_log: the audit log (platform only); usage_rollups: hourly usage (platform only).
+	Kind            RetentionKind `json:"kind"`
+	MaxDays         int32         `json:"maxDays"`
+	MinDays         int32         `json:"minDays"`
+	TeamOverridable bool          `json:"teamOverridable"`
+}
+
+// RetentionPeriodSetting defines model for RetentionPeriodSetting.
+type RetentionPeriodSetting struct {
+	// Days Within the kind's minDays and maxDays
+	Days int32 `json:"days"`
+
+	// Kind call_metadata: call records (mcp_calls); captured_payloads: captured arguments and results; audit_log: the audit log (platform only); usage_rollups: hourly usage (platform only).
+	Kind RetentionKind `json:"kind"`
+}
+
+// RetentionRun defines model for RetentionRun.
+type RetentionRun struct {
+	// Deleted Rows deleted per kind (RetentionKind values as keys)
+	Deleted map[string]int64 `json:"deleted"`
+
+	// Errors Kinds that failed, with an error class (retried at the next run)
+	Errors     map[string]string `json:"errors"`
+	FinishedAt time.Time         `json:"finishedAt"`
+	StartedAt  time.Time         `json:"startedAt"`
+}
+
+// RetentionSettings defines model for RetentionSettings.
+type RetentionSettings struct {
+	// LastRun The latest run of the retention loop (null before the first)
+	LastRun *RetentionRun `json:"lastRun"`
+
+	// Periods Every kind, in a fixed order
+	Periods []RetentionPeriod `json:"periods"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision  Revision  `json:"revision"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// RetentionSettingsUpdate defines model for RetentionSettingsUpdate.
+type RetentionSettingsUpdate struct {
+	Periods []RetentionPeriodSetting `json:"periods"`
 }
 
 // Revision Increases on every change. Send it back in If-Match.
@@ -2576,6 +3070,30 @@ type TeamCreated struct {
 	Team  TeamSummary     `json:"team"`
 }
 
+// TeamLimitChange defines model for TeamLimitChange.
+type TeamLimitChange struct {
+	// Key person_per_minute: every /mcp request by one person, any credential and gateway. credential_per_minute: per personal API key or OAuth connection. service_account_per_minute: per service account, all its keys (team override). gateway_per_minute: per gateway, all callers together (team override as the default of the team's gateways; each gateway can set its own).
+	Key RateLimitKey `json:"key"`
+
+	// Value A value up to the ceiling, or null to inherit the platform default
+	Value *RateLimitValue `json:"value"`
+}
+
+// TeamLimits defines model for TeamLimits.
+type TeamLimits struct {
+	Items []TeamRateLimit `json:"items"`
+
+	// Revision The team's revision (If-Match for the admin update)
+	Revision Revision           `json:"revision"`
+	TeamId   openapi_types.UUID `json:"teamId"`
+	TeamSlug string             `json:"teamSlug"`
+}
+
+// TeamLimitsUpdate defines model for TeamLimitsUpdate.
+type TeamLimitsUpdate struct {
+	Items []TeamLimitChange `json:"items"`
+}
+
 // TeamPage defines model for TeamPage.
 type TeamPage struct {
 	Items      []TeamSummary `json:"items"`
@@ -2600,6 +3118,69 @@ type TeamPublishing struct {
 // TeamPublishingUpdate defines model for TeamPublishingUpdate.
 type TeamPublishingUpdate struct {
 	Override *PublishPolicy `json:"override"`
+}
+
+// TeamRateLimit defines model for TeamRateLimit.
+type TeamRateLimit struct {
+	// Ceiling Requests per minute; null means unlimited (or, for a ceiling, no ceiling)
+	Ceiling *RateLimitValue `json:"ceiling"`
+
+	// Default Requests per minute; null means unlimited (or, for a ceiling, no ceiling)
+	Default     *RateLimitValue `json:"default"`
+	Description string          `json:"description"`
+
+	// Effective What applies: override, else default, capped at the ceiling (null: unlimited). For gateway_per_minute, what the team's gateways without their own value get.
+	Effective *RateLimitValue `json:"effective"`
+
+	// Key person_per_minute: every /mcp request by one person, any credential and gateway. credential_per_minute: per personal API key or OAuth connection. service_account_per_minute: per service account, all its keys (team override). gateway_per_minute: per gateway, all callers together (team override as the default of the team's gateways; each gateway can set its own).
+	Key   RateLimitKey `json:"key"`
+	Label string       `json:"label"`
+
+	// Override The team's own value (null: inherits the default; always null when teamOverridable is false)
+	Override        *RateLimitValue `json:"override"`
+	TeamOverridable bool            `json:"teamOverridable"`
+}
+
+// TeamRetention defines model for TeamRetention.
+type TeamRetention struct {
+	// Periods The kinds teams can override (call_metadata, captured_payloads)
+	Periods []TeamRetentionPeriod `json:"periods"`
+
+	// Revision The team's revision (If-Match for the admin update)
+	Revision Revision           `json:"revision"`
+	TeamId   openapi_types.UUID `json:"teamId"`
+	TeamSlug string             `json:"teamSlug"`
+}
+
+// TeamRetentionChange defines model for TeamRetentionChange.
+type TeamRetentionChange struct {
+	// Days Within the kind's minDays and maxDays, or null to use the platform period
+	Days *int32 `json:"days"`
+
+	// Kind call_metadata: call records (mcp_calls); captured_payloads: captured arguments and results; audit_log: the audit log (platform only); usage_rollups: hourly usage (platform only).
+	Kind RetentionKind `json:"kind"`
+}
+
+// TeamRetentionPeriod defines model for TeamRetentionPeriod.
+type TeamRetentionPeriod struct {
+	// Default The platform period
+	Default int32 `json:"default"`
+
+	// Effective override, else default. Calls that also involve another team use the shorter of the two teams' periods
+	Effective int32 `json:"effective"`
+
+	// Kind call_metadata: call records (mcp_calls); captured_payloads: captured arguments and results; audit_log: the audit log (platform only); usage_rollups: hourly usage (platform only).
+	Kind    RetentionKind `json:"kind"`
+	MaxDays int32         `json:"maxDays"`
+	MinDays int32         `json:"minDays"`
+
+	// Override The team's own period in days (null: the platform period)
+	Override *int32 `json:"override"`
+}
+
+// TeamRetentionUpdate defines model for TeamRetentionUpdate.
+type TeamRetentionUpdate struct {
+	Periods []TeamRetentionChange `json:"periods"`
 }
 
 // TeamRole defines model for TeamRole.
@@ -2653,6 +3234,84 @@ type TrustedClients struct {
 // TrustedClientsUpdate defines model for TrustedClientsUpdate.
 type TrustedClientsUpdate struct {
 	Clients []TrustedClient `json:"clients"`
+}
+
+// UsageBucket defines model for UsageBucket.
+type UsageBucket struct {
+	Metrics UsageMetrics `json:"metrics"`
+	Start   time.Time    `json:"start"`
+}
+
+// UsageGroupBy team: the gateway's team (platform gateways are one row with key platform). day and hour are UTC buckets; hour allows at most 7 days.
+type UsageGroupBy string
+
+// UsageMetrics defines model for UsageMetrics.
+type UsageMetrics struct {
+	// Calls Recorded requests (lists and calls)
+	Calls int64 `json:"calls"`
+
+	// Errors Recorded requests with any outcome but ok
+	Errors int64 `json:"errors"`
+
+	// Outcomes Count per McpCallOutcome (outcomes with no calls are left out)
+	Outcomes map[string]int64 `json:"outcomes"`
+
+	// P50LatencyMs Median latency, interpolated within fixed buckets (null without calls)
+	P50LatencyMs  *int32 `json:"p50LatencyMs"`
+	P95LatencyMs  *int32 `json:"p95LatencyMs"`
+	RequestBytes  int64  `json:"requestBytes"`
+	ResponseBytes int64  `json:"responseBytes"`
+}
+
+// UsagePrincipalKind As CallPrincipal.kind
+type UsagePrincipalKind string
+
+// UsageReport defines model for UsageReport.
+type UsageReport struct {
+	From time.Time `json:"from"`
+
+	// GroupBy team: the gateway's team (platform gateways are one row with key platform). day and hour are UTC buckets; hour allows at most 7 days.
+	GroupBy UsageGroupBy `json:"groupBy"`
+
+	// RolledUpTo Calls up to this time are included (the rollup runs every 5 minutes); null before the first rollup
+	RolledUpTo *time.Time `json:"rolledUpTo"`
+
+	// Rows Time groupings in time order with empty buckets; others by calls, most first, at most limit
+	Rows   []UsageRow   `json:"rows"`
+	To     time.Time    `json:"to"`
+	Totals UsageMetrics `json:"totals"`
+
+	// Truncated More rows than limit (totals still cover everything)
+	Truncated bool `json:"truncated"`
+}
+
+// UsageRow defines model for UsageRow.
+type UsageRow struct {
+	// Capability groupBy capability
+	Capability *struct {
+		ExposedName string              `json:"exposedName"`
+		Id          *openapi_types.UUID `json:"id,omitempty"`
+		Server      *CallRef            `json:"server,omitempty"`
+	} `json:"capability,omitempty"`
+
+	// Key Stable within the grouping: a gateway, server or team ID, platform, a capability ID (or name:<exposedName> for calls that named no known capability), a principal kind, or the bucket start
+	Key string `json:"key"`
+
+	// Label A name to show (as recorded, for deleted objects)
+	Label   string       `json:"label"`
+	Metrics UsageMetrics `json:"metrics"`
+
+	// PrincipalKind As CallPrincipal.kind
+	PrincipalKind *UsagePrincipalKind `json:"principalKind,omitempty"`
+
+	// Ref The gateway, server or team (groupBy gateway, server, team)
+	Ref *CallRef `json:"ref,omitempty"`
+
+	// Series With series=true and a non-time grouping, one bucket per UTC day in the range (empty days included)
+	Series *[]UsageBucket `json:"series,omitempty"`
+
+	// Start groupBy day or hour
+	Start *time.Time `json:"start,omitempty"`
 }
 
 // User defines model for User.
@@ -2717,7 +3376,10 @@ type AuditToParam = time.Time
 // CallGatewayParam defines model for CallGatewayParam.
 type CallGatewayParam = openapi_types.UUID
 
-// CallOutcomeParam ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042).
+// CallIdParam defines model for CallIdParam.
+type CallIdParam = int64
+
+// CallOutcomeParam ok: answered. tool_error: the tool reported an error. denied: refused by policy (logged; the client saw not found, or for a service account calling a capability that requires an account, a clear refusal). upstream_error: unreachable, refused or malformed (also provider_unavailable: the provider's token endpoint failed). bad_request: the client's request was invalid. needs_authorization: not forwarded because the person must connect or reconnect an account; the client got a consent link (JSON-RPC -32042). rate_limited: not forwarded because a rate limit was exceeded (HTTP 429, JSON-RPC -32029; errorClass names the limit: person_per_minute, credential_per_minute, service_account_per_minute or gateway_per_minute).
 type CallOutcomeParam = McpCallOutcome
 
 // CallServerParam defines model for CallServerParam.
@@ -2780,12 +3442,44 @@ type ServiceAccountIdParam = openapi_types.UUID
 // TeamParam defines model for TeamParam.
 type TeamParam = string
 
+// UsageCapabilityParam defines model for UsageCapabilityParam.
+type UsageCapabilityParam = openapi_types.UUID
+
+// UsageFromParam defines model for UsageFromParam.
+type UsageFromParam = time.Time
+
+// UsageGroupByParam team: the gateway's team (platform gateways are one row with key platform). day and hour are UTC buckets; hour allows at most 7 days.
+type UsageGroupByParam = UsageGroupBy
+
+// UsageMethodParam defines model for UsageMethodParam.
+type UsageMethodParam string
+
+// UsagePrincipalKindParam As CallPrincipal.kind
+type UsagePrincipalKindParam = UsagePrincipalKind
+
+// UsageSeriesParam defines model for UsageSeriesParam.
+type UsageSeriesParam = bool
+
+// UsageToParam defines model for UsageToParam.
+type UsageToParam = time.Time
+
 // UserIdParam defines model for UserIdParam.
 type UserIdParam = openapi_types.UUID
 
 // AuditPageReply defines model for AuditPageReply.
 type AuditPageReply struct {
 	Data AuditPage `json:"data"`
+}
+
+// CallPayloadReply defines model for CallPayloadReply.
+type CallPayloadReply struct {
+	// Data What a call sent and received, as captured (redacted, then truncated). Never contains the identity JWT, provider tokens, client credentials or the server's static header.
+	Data CallPayload `json:"data"`
+}
+
+// CaptureSettingsReply defines model for CaptureSettingsReply.
+type CaptureSettingsReply struct {
+	Data CaptureSettings `json:"data"`
 }
 
 // ErrorReply defines model for ErrorReply.
@@ -2801,14 +3495,44 @@ type HealthReply struct {
 	Data Health `json:"data"`
 }
 
+// LimitSettingsReply defines model for LimitSettingsReply.
+type LimitSettingsReply struct {
+	Data LimitSettings `json:"data"`
+}
+
 // McpCallPageReply defines model for McpCallPageReply.
 type McpCallPageReply struct {
 	Data McpCallPage `json:"data"`
 }
 
+// McpCallReply defines model for McpCallReply.
+type McpCallReply struct {
+	Data McpCall `json:"data"`
+}
+
 // OkReply defines model for OkReply.
 type OkReply struct {
 	Data Ok `json:"data"`
+}
+
+// RetentionSettingsReply defines model for RetentionSettingsReply.
+type RetentionSettingsReply struct {
+	Data RetentionSettings `json:"data"`
+}
+
+// TeamLimitsReply defines model for TeamLimitsReply.
+type TeamLimitsReply struct {
+	Data TeamLimits `json:"data"`
+}
+
+// TeamRetentionReply defines model for TeamRetentionReply.
+type TeamRetentionReply struct {
+	Data TeamRetention `json:"data"`
+}
+
+// UsageReportReply defines model for UsageReportReply.
+type UsageReportReply struct {
+	Data UsageReport `json:"data"`
 }
 
 // StartLoginParams defines parameters for StartLogin.
@@ -2959,6 +3683,18 @@ type AdminListServiceAccountsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AdminUpdateCaptureSettingsParams defines parameters for AdminUpdateCaptureSettings.
+type AdminUpdateCaptureSettingsParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
+// AdminUpdateLimitSettingsParams defines parameters for AdminUpdateLimitSettings.
+type AdminUpdateLimitSettingsParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // AdminUpdateNetworkSettingsParams defines parameters for AdminUpdateNetworkSettings.
 type AdminUpdateNetworkSettingsParams struct {
 	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
@@ -2973,6 +3709,12 @@ type AdminUpdateTrustedClientsParams struct {
 
 // AdminUpdatePublishingSettingsParams defines parameters for AdminUpdatePublishingSettings.
 type AdminUpdatePublishingSettingsParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
+// AdminUpdateRetentionSettingsParams defines parameters for AdminUpdateRetentionSettings.
+type AdminUpdateRetentionSettingsParams struct {
 	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
 	IfMatch IfMatchHeader `json:"If-Match"`
 }
@@ -2994,11 +3736,56 @@ type AdminUpdateTeamParams struct {
 	IfMatch IfMatchHeader `json:"If-Match"`
 }
 
+// AdminUpdateTeamLimitsParams defines parameters for AdminUpdateTeamLimits.
+type AdminUpdateTeamLimitsParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // AdminUpdateTeamPublishingParams defines parameters for AdminUpdateTeamPublishing.
 type AdminUpdateTeamPublishingParams struct {
 	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
 	IfMatch IfMatchHeader `json:"If-Match"`
 }
+
+// AdminUpdateTeamRetentionParams defines parameters for AdminUpdateTeamRetention.
+type AdminUpdateTeamRetentionParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
+// AdminGetUsageParams defines parameters for AdminGetUsage.
+type AdminGetUsageParams struct {
+	// From Start (inclusive), on the hour; default 7 days before to
+	From *UsageFromParam `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End (exclusive), on the hour; default the start of the next hour
+	To      *UsageToParam      `form:"to,omitempty" json:"to,omitempty"`
+	GroupBy *UsageGroupByParam `form:"groupBy,omitempty" json:"groupBy,omitempty"`
+
+	// Gateway Gateway ID
+	Gateway *CallGatewayParam `form:"gateway,omitempty" json:"gateway,omitempty"`
+
+	// Server MCP server ID
+	Server *CallServerParam `form:"server,omitempty" json:"server,omitempty"`
+
+	// Capability Only calls of this capability (capability ID)
+	Capability    *UsageCapabilityParam    `form:"capability,omitempty" json:"capability,omitempty"`
+	PrincipalKind *UsagePrincipalKindParam `form:"principalKind,omitempty" json:"principalKind,omitempty"`
+
+	// Method Only this MCP method (default every recorded method, lists included)
+	Method *AdminGetUsageParamsMethod `form:"method,omitempty" json:"method,omitempty"`
+
+	// Series With a non-time groupBy, add per-day buckets (UsageRow.series) to each row
+	Series *UsageSeriesParam `form:"series,omitempty" json:"series,omitempty"`
+
+	// Team Team slug or ID (calls through its gateways, to its servers, or by its service accounts)
+	Team  *string     `form:"team,omitempty" json:"team,omitempty"`
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminGetUsageParamsMethod defines parameters for AdminGetUsage.
+type AdminGetUsageParamsMethod string
 
 // AdminListUsersParams defines parameters for AdminListUsers.
 type AdminListUsersParams struct {
@@ -3176,6 +3963,36 @@ type UpdateServiceAccountParams struct {
 	IfMatch IfMatchHeader `json:"If-Match"`
 }
 
+// GetTeamUsageParams defines parameters for GetTeamUsage.
+type GetTeamUsageParams struct {
+	// From Start (inclusive), on the hour; default 7 days before to
+	From *UsageFromParam `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End (exclusive), on the hour; default the start of the next hour
+	To      *UsageToParam      `form:"to,omitempty" json:"to,omitempty"`
+	GroupBy *UsageGroupByParam `form:"groupBy,omitempty" json:"groupBy,omitempty"`
+
+	// Gateway Gateway ID
+	Gateway *CallGatewayParam `form:"gateway,omitempty" json:"gateway,omitempty"`
+
+	// Server MCP server ID
+	Server *CallServerParam `form:"server,omitempty" json:"server,omitempty"`
+
+	// Capability Only calls of this capability (capability ID)
+	Capability    *UsageCapabilityParam    `form:"capability,omitempty" json:"capability,omitempty"`
+	PrincipalKind *UsagePrincipalKindParam `form:"principalKind,omitempty" json:"principalKind,omitempty"`
+
+	// Method Only this MCP method (default every recorded method, lists included)
+	Method *GetTeamUsageParamsMethod `form:"method,omitempty" json:"method,omitempty"`
+
+	// Series With a non-time groupBy, add per-day buckets (UsageRow.series) to each row
+	Series *UsageSeriesParam `form:"series,omitempty" json:"series,omitempty"`
+	Limit  *LimitParam       `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetTeamUsageParamsMethod defines parameters for GetTeamUsage.
+type GetTeamUsageParamsMethod string
+
 // DevLoginJSONRequestBody defines body for DevLogin for application/json ContentType.
 type DevLoginJSONRequestBody = DevLoginRequest
 
@@ -3200,6 +4017,15 @@ type AdminAddGatewayGrantJSONRequestBody = GatewayGrantCreate
 // AdminReviewMcpServerJSONRequestBody defines body for AdminReviewMcpServer for application/json ContentType.
 type AdminReviewMcpServerJSONRequestBody = McpPublishReview
 
+// AdminUpdateCaptureSettingsJSONRequestBody defines body for AdminUpdateCaptureSettings for application/json ContentType.
+type AdminUpdateCaptureSettingsJSONRequestBody = CaptureSettingsUpdate
+
+// AdminTestRedactionJSONRequestBody defines body for AdminTestRedaction for application/json ContentType.
+type AdminTestRedactionJSONRequestBody = RedactionTestRequest
+
+// AdminUpdateLimitSettingsJSONRequestBody defines body for AdminUpdateLimitSettings for application/json ContentType.
+type AdminUpdateLimitSettingsJSONRequestBody = LimitSettingsUpdate
+
 // AdminUpdateNetworkSettingsJSONRequestBody defines body for AdminUpdateNetworkSettings for application/json ContentType.
 type AdminUpdateNetworkSettingsJSONRequestBody = NetworkSettingsUpdate
 
@@ -3212,17 +4038,26 @@ type AdminUpdateTrustedClientsJSONRequestBody = TrustedClientsUpdate
 // AdminUpdatePublishingSettingsJSONRequestBody defines body for AdminUpdatePublishingSettings for application/json ContentType.
 type AdminUpdatePublishingSettingsJSONRequestBody = PublishingSettingsUpdate
 
+// AdminUpdateRetentionSettingsJSONRequestBody defines body for AdminUpdateRetentionSettings for application/json ContentType.
+type AdminUpdateRetentionSettingsJSONRequestBody = RetentionSettingsUpdate
+
 // AdminCreateTeamJSONRequestBody defines body for AdminCreateTeam for application/json ContentType.
 type AdminCreateTeamJSONRequestBody = TeamCreate
 
 // AdminUpdateTeamJSONRequestBody defines body for AdminUpdateTeam for application/json ContentType.
 type AdminUpdateTeamJSONRequestBody = TeamUpdate
 
+// AdminUpdateTeamLimitsJSONRequestBody defines body for AdminUpdateTeamLimits for application/json ContentType.
+type AdminUpdateTeamLimitsJSONRequestBody = TeamLimitsUpdate
+
 // AdminAssignOwnerJSONRequestBody defines body for AdminAssignOwner for application/json ContentType.
 type AdminAssignOwnerJSONRequestBody = OwnerAssign
 
 // AdminUpdateTeamPublishingJSONRequestBody defines body for AdminUpdateTeamPublishing for application/json ContentType.
 type AdminUpdateTeamPublishingJSONRequestBody = TeamPublishingUpdate
+
+// AdminUpdateTeamRetentionJSONRequestBody defines body for AdminUpdateTeamRetention for application/json ContentType.
+type AdminUpdateTeamRetentionJSONRequestBody = TeamRetentionUpdate
 
 // AdminUpdateUserJSONRequestBody defines body for AdminUpdateUser for application/json ContentType.
 type AdminUpdateUserJSONRequestBody = UserUpdate

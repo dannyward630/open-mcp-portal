@@ -8,7 +8,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { redirectTo } from "../components/providers/labels";
-import { missingScopes, resultText } from "../pages/connect/done";
+import { missingScopes, resultText, safeMissingScopes } from "../pages/connect/done";
 import { authConfig } from "./fixtures";
 import { connectRequest, providerId, providerSummaries, requestId } from "./fixtures-providers";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
@@ -76,6 +76,17 @@ describe("Connect page", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Nothing was connected" })).toBeInTheDocument();
     expect(calls.some((c) => c.method === "POST")).toBe(false);
     expect(go).not.toHaveBeenCalled();
+  });
+
+  it("doesn't call an account connected once its tokens were erased (needs reconnecting)", async () => {
+    open({
+      [`GET /v1/connect/requests/${requestId}`]: () => connectRequest({ reason: "needs_reconsent", grantedScopes: [], requestScopes: ["repo"], accountLabel: "octocat" }),
+    });
+    expect(await screen.findByText(/Your GitHub connection has to be renewed/)).toBeInTheDocument();
+    const request = screen.getByRole("region", { name: "The request" });
+    expect(request).toHaveTextContent("None: octocat has to be reconnected");
+    const scopes = screen.getByRole("list", { name: "GitHub will ask you to allow" });
+    expect(within(scopes).getByRole("listitem")).toHaveTextContent("New");
   });
 
   it("says a link made for someone else (404) can't be used, and never redirects", async () => {
@@ -164,17 +175,52 @@ describe("Connect result page", () => {
     }
   });
 
-  it("works signed out, naming the provider by its preset", async () => {
+  it("works signed out, without naming a provider it can't check", async () => {
     mockApi({ ...shellRoutes(), "GET /v1/me": () => Reply.error(401, "unauthorized") });
     renderApp("/connect/done?provider=github&result=denied");
-    expect(await screen.findByText(/Access wasn't allowed at GitHub/)).toBeInTheDocument();
+    expect(await screen.findByText(/Access wasn't allowed at the provider/)).toBeInTheDocument();
+    expect(screen.queryByText(/GitHub|github/)).toBeNull();
     expect(screen.queryByRole("link", { name: /Sign in/ })).toBeNull();
+  });
+
+  it("names only a known provider: anything else in the address gets generic words", async () => {
+    const { unmount } = open({ "GET /v1/auth-providers": () => providerSummaries }, "/connect/done?provider=Evil%20Corp%20Support&result=connected");
+    expect(await screen.findByRole("heading", { level: 1, name: "Connected to the provider" })).toBeInTheDocument();
+    expect(screen.queryByText(/Evil/)).toBeNull();
+    unmount();
+    open({ "GET /v1/auth-providers": () => providerSummaries }, "/connect/done?provider=google&result=connected");
+    expect(await screen.findByRole("heading", { level: 1, name: "Connected to Google" })).toBeInTheDocument();
+  });
+
+  it("lists left-out scopes only when they look like scopes, else says so generically", async () => {
+    const bad = [
+      "missing=call%20(555)%200100",
+      "missing=" + "a".repeat(101),
+      Array.from({ length: 21 }, (_, i) => `missing=s${i}`).join("&"),
+      "missing=repo&missing=%3Cscript%3E",
+    ];
+    for (const q of bad) {
+      const { unmount } = open({ "GET /v1/auth-providers": () => providerSummaries }, `/connect/done?provider=github&result=missing_scopes&${q}`);
+      expect(await screen.findByRole("heading", { level: 1, name: "Connected, but GitHub didn't allow everything" })).toBeInTheDocument();
+      expect(screen.getByText("Some of the permissions the tool needs weren't allowed.")).toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "Not allowed" })).toBeNull();
+      expect(screen.queryByText(/555|script|aaaa|s20/)).toBeNull();
+      unmount();
+    }
+    open({ "GET /v1/auth-providers": () => providerSummaries }, "/connect/done?provider=google&result=missing_scopes&missing=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.readonly");
+    expect(await screen.findByRole("region", { name: "Not allowed" })).toHaveTextContent("https://www.googleapis.com/auth/drive.readonly");
   });
 
   it("helpers", () => {
     expect(missingScopes("repo, admin:org  user")).toEqual(["repo", "admin:org", "user"]);
     expect(missingScopes(undefined)).toEqual([]);
     expect(missingScopes(["repo", "admin:org", "repo"])).toEqual(["repo", "admin:org"]);
+    expect(safeMissingScopes(["repo", "read:org", "a.b_c/d-e"])).toEqual(["repo", "read:org", "a.b_c/d-e"]);
+    expect(safeMissingScopes("x".repeat(100))).toEqual(["x".repeat(100)]);
+    expect(safeMissingScopes("x".repeat(101))).toBeNull();
+    expect(safeMissingScopes(["repo", "<b>"])).toBeNull();
+    expect(safeMissingScopes(Array.from({ length: 20 }, (_, i) => `s${i}`))).toHaveLength(20);
+    expect(safeMissingScopes(Array.from({ length: 21 }, (_, i) => `s${i}`))).toBeNull();
     expect(resultText("connected", "Slack").title).toBe("Connected to Slack");
   });
 });

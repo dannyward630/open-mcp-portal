@@ -145,7 +145,7 @@ func (q *Queries) GetOAuthSettings(ctx context.Context) (OauthSetting, error) {
 }
 
 const getOAuthToken = `-- name: GetOAuthToken :one
-SELECT t.id, t.grant_id, t.kind, t.token_hash, t.resource, t.expires_at, t.rotated_at, t.created_at, gr.id, gr.user_id, gr.gateway_id, gr.client_id, gr.client_kind, gr.client_name, gr.client_uri, gr.logo_uri, gr.resource, gr.created_at, gr.last_used_at, gr.revoked_at, gr.revoked_reason, u.id, u.oidc_issuer, u.oidc_subject, u.email, u.display_name, u.platform_role, u.status, u.claims, u.revision, u.created_at, u.updated_at, u.last_login_at, u.groups, g.slug AS gateway_slug
+SELECT t.id, t.grant_id, t.kind, t.token_hash, t.resource, t.expires_at, t.rotated_at, t.created_at, t.pepper_id, gr.id, gr.user_id, gr.gateway_id, gr.client_id, gr.client_kind, gr.client_name, gr.client_uri, gr.logo_uri, gr.resource, gr.created_at, gr.last_used_at, gr.revoked_at, gr.revoked_reason, u.id, u.oidc_issuer, u.oidc_subject, u.email, u.display_name, u.platform_role, u.status, u.claims, u.revision, u.created_at, u.updated_at, u.last_login_at, u.groups, g.slug AS gateway_slug
 FROM oauth_tokens t
 JOIN oauth_grants gr ON gr.id = t.grant_id
 JOIN users u ON u.id = gr.user_id
@@ -178,6 +178,7 @@ func (q *Queries) GetOAuthToken(ctx context.Context, arg GetOAuthTokenParams) (G
 		&i.OauthToken.ExpiresAt,
 		&i.OauthToken.RotatedAt,
 		&i.OauthToken.CreatedAt,
+		&i.OauthToken.PepperID,
 		&i.OauthGrant.ID,
 		&i.OauthGrant.UserID,
 		&i.OauthGrant.GatewayID,
@@ -321,8 +322,8 @@ func (q *Queries) InsertOAuthGrant(ctx context.Context, arg InsertOAuthGrantPara
 }
 
 const insertOAuthToken = `-- name: InsertOAuthToken :exec
-INSERT INTO oauth_tokens (grant_id, kind, token_hash, resource, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO oauth_tokens (grant_id, kind, token_hash, resource, expires_at, pepper_id)
+VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type InsertOAuthTokenParams struct {
@@ -331,6 +332,7 @@ type InsertOAuthTokenParams struct {
 	TokenHash string
 	Resource  string
 	ExpiresAt time.Time
+	PepperID  []byte
 }
 
 func (q *Queries) InsertOAuthToken(ctx context.Context, arg InsertOAuthTokenParams) error {
@@ -340,6 +342,7 @@ func (q *Queries) InsertOAuthToken(ctx context.Context, arg InsertOAuthTokenPara
 		arg.TokenHash,
 		arg.Resource,
 		arg.ExpiresAt,
+		arg.PepperID,
 	)
 	return err
 }
@@ -438,7 +441,7 @@ func (q *Queries) LockOAuthSettings(ctx context.Context) (OauthSetting, error) {
 }
 
 const lockOAuthToken = `-- name: LockOAuthToken :one
-SELECT id, grant_id, kind, token_hash, resource, expires_at, rotated_at, created_at FROM oauth_tokens WHERE id = $1 FOR UPDATE
+SELECT id, grant_id, kind, token_hash, resource, expires_at, rotated_at, created_at, pepper_id FROM oauth_tokens WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockOAuthToken(ctx context.Context, id uuid.UUID) (OauthToken, error) {
@@ -453,6 +456,7 @@ func (q *Queries) LockOAuthToken(ctx context.Context, id uuid.UUID) (OauthToken,
 		&i.ExpiresAt,
 		&i.RotatedAt,
 		&i.CreatedAt,
+		&i.PepperID,
 	)
 	return i, err
 }

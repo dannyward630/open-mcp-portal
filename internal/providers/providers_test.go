@@ -159,6 +159,14 @@ func TestSafeReturnPath(t *testing.T) {
 		"/settings/connections": true, "/connect/done?x=1": true, "/": true,
 		"": false, "//evil.example": false, "/\\evil.example": false, "https://evil.example": false, "javascript:alert(1)": false,
 		"relative": false, "/a//b": false, "/a\nb": false, "/" + strings.Repeat("a", 2000): false,
+		// Percent-encoded slashes and backslashes, any case, also double-encoded.
+		"/%2Fevil.example": false, "/%2fevil.example": false, "/%5Cevil.example": false, "/%5cevil.example": false,
+		"/%252Fevil.example": false, "/%252fevil.example": false, "/%255Cevil.example": false, "/%25255Cevil.example": false,
+		"/settings%2Fconnections": false, "/a?next=%2F%2Fevil": false, "%2F%2Fevil.example": false,
+		"/%0aevil": false, "/%250d%250a": false, "/a%zz": false, "/a%2525252525": false,
+		// Plain safe paths keep working, encoded or not.
+		"/gateways/0b7e1c2a-1f9e-4c1a-9d1e-2b7c0f3a4d5e": true, "/settings/connections?tab=github": true,
+		"/a%20b": true, "/caf%C3%A9": true, "/search?q=a%26b": true,
 	} {
 		if SafeReturnPath(p) != ok {
 			t.Errorf("SafeReturnPath(%q) = %v", p, !ok)

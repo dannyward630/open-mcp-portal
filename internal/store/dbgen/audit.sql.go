@@ -106,7 +106,11 @@ CROSS JOIN LATERAL (
                                          FROM provider_connections pc JOIN users cu ON cu.id = pc.user_id
                                          JOIN auth_providers cp ON cp.id = pc.provider_id WHERE pc.id = ids.target_uuid)
         WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' WHEN 'network' THEN 'Internal networks'
-                                       WHEN 'oauth_clients' THEN 'Trusted clients' END)
+                                       WHEN 'oauth_clients' THEN 'Trusted clients' WHEN 'limits' THEN 'Rate limits'
+                                       WHEN 'capture' THEN 'Payload capture' WHEN 'retention' THEN 'Retention'
+                                       WHEN 'keys' THEN 'Encryption keys' END)
+        WHEN 'mcp_call' THEN (SELECT 'Call ' || mc.id::text || ' · ' || COALESCE(mc.exposed_name, mc.method) FROM mcp_calls mc
+                              WHERE mc.id = (CASE WHEN a.target_id ~ '^[0-9]{1,18}$' THEN a.target_id::bigint END))
     END)::text AS label
 ) live
 WHERE ($1::uuid IS NULL OR a.team_id = $1::uuid)

@@ -4,6 +4,7 @@
 //	open-mcp-gateway serve     HTTP API, embedded UI and background loops
 //	open-mcp-gateway migrate   apply database migrations and exit
 //	open-mcp-gateway doctor    check the configuration, Postgres and migrations
+//	open-mcp-gateway rotate-keys  re-encrypt stored secrets with ENCRYPTION_KEY
 //	open-mcp-gateway version   print the version
 package main
 
@@ -23,6 +24,9 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
 	"github.com/ncecere/open-mcp-gateway/internal/config"
 	"github.com/ncecere/open-mcp-gateway/internal/doctor"
+	"github.com/ncecere/open-mcp-gateway/internal/keyrotation"
+	"github.com/ncecere/open-mcp-gateway/internal/secrets"
+	"github.com/ncecere/open-mcp-gateway/internal/store"
 )
 
 const usage = `usage: open-mcp-gateway <command>
@@ -31,6 +35,10 @@ commands:
   serve     HTTP API, embedded UI and background loops
   migrate   apply database migrations and exit
   doctor    check the configuration, Postgres and migrations (--json, --help)
+  rotate-keys
+            re-encrypt stored secrets from ENCRYPTION_KEY_PREVIOUS to
+            ENCRYPTION_KEY and list keys on an old API key pepper
+            (--dry-run, --batch-size, --help)
   version   print the version
 
 Configuration comes from environment variables and the optional YAML file
@@ -61,6 +69,8 @@ func run(args []string) error {
 		return nil
 	case "doctor":
 		return runDoctor(args[1:], os.Stdout)
+	case "rotate-keys":
+		return runRotateKeys(args[1:], os.Stdout)
 	case app.ModeServe, app.ModeMigrate:
 	default:
 		fmt.Fprint(os.Stderr, usage)
@@ -130,6 +140,87 @@ func runDoctor(args []string, stdout io.Writer) error {
 	}
 	if !rep.OK {
 		return errChecksFailed
+	}
+	return nil
+}
+
+// runRotateKeys implements `open-mcp-gateway rotate-keys [--dry-run]
+// [--batch-size 100]` (docs/deploy.md "Key rotation"): it checks that every
+// sealed value opens with ENCRYPTION_KEY or ENCRYPTION_KEY_PREVIOUS (and
+// stops, naming table and row, if any doesn't), re-seals values still on
+// the previous key, and lists keys still on another API key pepper.
+// Idempotent and safe while the gateway serves.
+func runRotateKeys(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("rotate-keys", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", false, "check and count; write nothing")
+	batch := fs.Int("batch-size", keyrotation.DefaultBatchSize, "values re-encrypted per transaction (1-10000)")
+	fs.Usage = func() {
+		fmt.Fprint(fs.Output(), "usage: open-mcp-gateway rotate-keys [--dry-run] [--batch-size 100]\n\n"+
+			"Re-encrypts every stored secret (server header values, signing keys, auth\n"+
+			"provider client secrets, connection tokens, PKCE verifiers, consent request\n"+
+			"IDs, captured payloads) from ENCRYPTION_KEY_PREVIOUS to ENCRYPTION_KEY, and\n"+
+			"lists keys still on API_KEY_PEPPER_PREVIOUS. Uses the same configuration as\n"+
+			"serve. Safe to run while the gateway serves and to run again.\n\n")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); errors.Is(err, flag.ErrHelp) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if *batch < 1 || *batch > 10_000 {
+		return fmt.Errorf("--batch-size must be between 1 and 10000")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("configuration:\n%w", err)
+	}
+	if err := cfg.Validate(app.ModeServe); err != nil {
+		return fmt.Errorf("invalid configuration:\n%w", err)
+	}
+	key, err := secrets.ParseKey(cfg.EncryptionKey)
+	if err != nil {
+		return fmt.Errorf("ENCRYPTION_KEY: %w", err)
+	}
+	var previous [][]byte
+	if cfg.EncryptionKeyPrevious != "" {
+		p, err := secrets.ParseKey(cfg.EncryptionKeyPrevious)
+		if err != nil {
+			return fmt.Errorf("ENCRYPTION_KEY_PREVIOUS: %w", err)
+		}
+		previous = append(previous, p)
+	}
+	box, err := secrets.New(key, previous...)
+	if err != nil {
+		return err
+	}
+	var peppers keyrotation.Peppers
+	if peppers.Current, err = secrets.ParseKey(cfg.APIKeyPepper); err != nil {
+		return fmt.Errorf("API_KEY_PEPPER: %w", err)
+	}
+	if cfg.APIKeyPepperPrevious != "" {
+		if peppers.Previous, err = secrets.ParseKey(cfg.APIKeyPepperPrevious); err != nil {
+			return fmt.Errorf("API_KEY_PEPPER_PREVIOUS: %w", err)
+		}
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	pool, err := store.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	if st, err := store.Migrations(ctx, pool); err != nil {
+		return fmt.Errorf("migration state: %w", err)
+	} else if st.Pending {
+		return fmt.Errorf("the database is at migration %d but this binary needs %d: run `open-mcp-gateway migrate` first", st.Current, st.Latest)
+	}
+	sum, err := keyrotation.Run(ctx, pool, box, peppers, keyrotation.Options{DryRun: *dryRun, BatchSize: *batch, Out: stdout})
+	if err != nil {
+		return err
+	}
+	if !*dryRun {
+		fmt.Fprintf(stdout, "\nDone: %d value(s) re-encrypted.\n", sum.Reencrypted())
 	}
 	return nil
 }

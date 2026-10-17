@@ -123,7 +123,7 @@ func (q *Queries) DeleteServiceAccount(ctx context.Context, id uuid.UUID) error 
 }
 
 const getServiceAccountKey = `-- name: GetServiceAccountKey :one
-SELECT k.id, k.service_account_id, k.name, k.prefix, k.digest, k.created_by, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, u.display_name AS created_by_name
+SELECT k.id, k.service_account_id, k.name, k.prefix, k.digest, k.created_by, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, k.pepper_id, u.display_name AS created_by_name
 FROM service_account_keys k
 LEFT JOIN users u ON u.id = k.created_by
 WHERE k.id = $1 AND k.service_account_id = $2
@@ -153,13 +153,14 @@ func (q *Queries) GetServiceAccountKey(ctx context.Context, arg GetServiceAccoun
 		&i.ServiceAccountKey.ExpiresAt,
 		&i.ServiceAccountKey.RevokedAt,
 		&i.ServiceAccountKey.LastUsedAt,
+		&i.ServiceAccountKey.PepperID,
 		&i.CreatedByName,
 	)
 	return i, err
 }
 
 const getServiceAccountKeyByDigest = `-- name: GetServiceAccountKeyByDigest :one
-SELECT k.id, k.service_account_id, k.name, k.prefix, k.digest, k.created_by, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, sa.id, sa.team_id, sa.name, sa.description, sa.role, sa.enabled, sa.revision, sa.created_by, sa.created_at, sa.updated_by, sa.updated_at, sa.last_used_at, t.id, t.slug, t.name, t.description, t.status, t.created_by, t.revision, t.created_at, t.updated_at, t.archived_at, t.publish_policy_override
+SELECT k.id, k.service_account_id, k.name, k.prefix, k.digest, k.created_by, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, k.pepper_id, sa.id, sa.team_id, sa.name, sa.description, sa.role, sa.enabled, sa.revision, sa.created_by, sa.created_at, sa.updated_by, sa.updated_at, sa.last_used_at, t.id, t.slug, t.name, t.description, t.status, t.created_by, t.revision, t.created_at, t.updated_at, t.archived_at, t.publish_policy_override, t.limit_overrides, t.retention_overrides
 FROM service_account_keys k
 JOIN service_accounts sa ON sa.id = k.service_account_id
 JOIN teams t ON t.id = sa.team_id
@@ -187,6 +188,7 @@ func (q *Queries) GetServiceAccountKeyByDigest(ctx context.Context, digest strin
 		&i.ServiceAccountKey.ExpiresAt,
 		&i.ServiceAccountKey.RevokedAt,
 		&i.ServiceAccountKey.LastUsedAt,
+		&i.ServiceAccountKey.PepperID,
 		&i.ServiceAccount.ID,
 		&i.ServiceAccount.TeamID,
 		&i.ServiceAccount.Name,
@@ -210,6 +212,8 @@ func (q *Queries) GetServiceAccountKeyByDigest(ctx context.Context, digest strin
 		&i.Team.UpdatedAt,
 		&i.Team.ArchivedAt,
 		&i.Team.PublishPolicyOverride,
+		&i.Team.LimitOverrides,
+		&i.Team.RetentionOverrides,
 	)
 	return i, err
 }
@@ -300,9 +304,9 @@ func (q *Queries) InsertServiceAccount(ctx context.Context, arg InsertServiceAcc
 }
 
 const insertServiceAccountKey = `-- name: InsertServiceAccountKey :one
-INSERT INTO service_account_keys (service_account_id, name, prefix, digest, created_by, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, service_account_id, name, prefix, digest, created_by, created_at, expires_at, revoked_at, last_used_at
+INSERT INTO service_account_keys (service_account_id, name, prefix, digest, created_by, expires_at, pepper_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, service_account_id, name, prefix, digest, created_by, created_at, expires_at, revoked_at, last_used_at, pepper_id
 `
 
 type InsertServiceAccountKeyParams struct {
@@ -312,6 +316,7 @@ type InsertServiceAccountKeyParams struct {
 	Digest           string
 	CreatedBy        uuid.NullUUID
 	ExpiresAt        time.Time
+	PepperID         []byte
 }
 
 func (q *Queries) InsertServiceAccountKey(ctx context.Context, arg InsertServiceAccountKeyParams) (ServiceAccountKey, error) {
@@ -322,6 +327,7 @@ func (q *Queries) InsertServiceAccountKey(ctx context.Context, arg InsertService
 		arg.Digest,
 		arg.CreatedBy,
 		arg.ExpiresAt,
+		arg.PepperID,
 	)
 	var i ServiceAccountKey
 	err := row.Scan(
@@ -335,6 +341,7 @@ func (q *Queries) InsertServiceAccountKey(ctx context.Context, arg InsertService
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.LastUsedAt,
+		&i.PepperID,
 	)
 	return i, err
 }
@@ -432,7 +439,7 @@ func (q *Queries) ListServiceAccountKeyGateways(ctx context.Context, keyIds []uu
 }
 
 const listServiceAccountKeys = `-- name: ListServiceAccountKeys :many
-SELECT k.id, k.service_account_id, k.name, k.prefix, k.digest, k.created_by, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, u.display_name AS created_by_name
+SELECT k.id, k.service_account_id, k.name, k.prefix, k.digest, k.created_by, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, k.pepper_id, u.display_name AS created_by_name
 FROM service_account_keys k
 LEFT JOIN users u ON u.id = k.created_by
 WHERE k.service_account_id = $1
@@ -467,6 +474,7 @@ func (q *Queries) ListServiceAccountKeys(ctx context.Context, serviceAccountID u
 			&i.ServiceAccountKey.ExpiresAt,
 			&i.ServiceAccountKey.RevokedAt,
 			&i.ServiceAccountKey.LastUsedAt,
+			&i.ServiceAccountKey.PepperID,
 			&i.CreatedByName,
 		); err != nil {
 			return nil, err
@@ -566,7 +574,7 @@ func (q *Queries) LockServiceAccount(ctx context.Context, arg LockServiceAccount
 const revokeServiceAccountKey = `-- name: RevokeServiceAccountKey :one
 UPDATE service_account_keys SET revoked_at = now()
 WHERE id = $1 AND service_account_id = $2 AND revoked_at IS NULL
-RETURNING id, service_account_id, name, prefix, digest, created_by, created_at, expires_at, revoked_at, last_used_at
+RETURNING id, service_account_id, name, prefix, digest, created_by, created_at, expires_at, revoked_at, last_used_at, pepper_id
 `
 
 type RevokeServiceAccountKeyParams struct {
@@ -588,6 +596,7 @@ func (q *Queries) RevokeServiceAccountKey(ctx context.Context, arg RevokeService
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.LastUsedAt,
+		&i.PepperID,
 	)
 	return i, err
 }

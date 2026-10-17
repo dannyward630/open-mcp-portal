@@ -1,0 +1,25 @@
+# Prometheus (in the namespace "monitoring"; patch to yours) scrapes
+# /metrics on the metrics port. The endpoint has no authentication: no one
+# else may reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-mcp-gateway-metrics
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/component: gateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090

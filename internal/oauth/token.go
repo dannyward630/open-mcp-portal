@@ -73,11 +73,14 @@ func (s *Service) takeCode(ctx context.Context, code string) (dbgen.OauthCode, b
 	if !validTokenShape(code, codePrefix) {
 		return dbgen.OauthCode{}, false, nil
 	}
-	row, err := s.q.TakeOAuthCode(ctx, s.digest(code))
-	if errors.Is(store.NotFound(err), store.ErrNotFound) {
-		return row, false, nil
+	for _, d := range s.digests(code) {
+		row, err := s.q.TakeOAuthCode(ctx, d)
+		if errors.Is(store.NotFound(err), store.ErrNotFound) {
+			continue
+		}
+		return row, err == nil, err
 	}
-	return row, err == nil, err
+	return dbgen.OauthCode{}, false, nil
 }
 
 // exchange redeems an authorization code (with its PKCE verifier) for tokens.
@@ -205,6 +208,7 @@ func (s *Service) issue(ctx context.Context, q *dbgen.Queries, g dbgen.OauthGran
 	}{{kindAccess, out.AccessToken, AccessTokenTTL}, {kindRefresh, out.RefreshToken, RefreshTokenTTL}} {
 		if err := q.InsertOAuthToken(ctx, dbgen.InsertOAuthTokenParams{
 			GrantID: g.ID, Kind: t.kind, TokenHash: s.digest(t.token), Resource: g.Resource, ExpiresAt: now.Add(t.ttl),
+			PepperID: s.pepperID(),
 		}); err != nil {
 			return Tokens{}, err
 		}
@@ -238,11 +242,14 @@ func (s *Service) lookup(ctx context.Context, token, prefix, kind string) (dbgen
 	if !validTokenShape(token, prefix) {
 		return dbgen.GetOAuthTokenRow{}, false, nil
 	}
-	row, err := s.q.GetOAuthToken(ctx, dbgen.GetOAuthTokenParams{TokenHash: s.digest(token), Kind: kind})
-	if errors.Is(store.NotFound(err), store.ErrNotFound) {
-		return row, false, nil
+	for _, d := range s.digests(token) {
+		row, err := s.q.GetOAuthToken(ctx, dbgen.GetOAuthTokenParams{TokenHash: d, Kind: kind})
+		if errors.Is(store.NotFound(err), store.ErrNotFound) {
+			continue
+		}
+		return row, err == nil, err
 	}
-	return row, err == nil, err
+	return dbgen.GetOAuthTokenRow{}, false, nil
 }
 
 // ErrInvalidToken: the access token is unknown, expired or revoked, its

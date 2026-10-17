@@ -5,6 +5,7 @@
  * when a team is chosen) and date range. Platform admins and auditors.
  */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
 import { api, unwrap } from "@/api/client";
 import { callColumns, callLabel, callsPrivacy, noCalls, outcomeFacet, serviceAccountFacet, useAdminServiceAccountOptions } from "@/components/gateways/calls-table";
@@ -78,7 +79,7 @@ export function AdminCallsPage() {
       description="Every call through every gateway: who called which tool or prompt (a person with a key or a connected app, or a team's service account), through which gateway, and how it went."
       notices={<Alert tone="info">{callsPrivacy}</Alert>}
       caption={terms.calls}
-      columns={callColumns({ gateway: true, adminLinks: true, narrow })}
+      columns={callColumns({ gateway: true, adminLinks: true, narrow, detail: (c) => <Link to="/admin/calls/$callId" params={{ callId: String(c.id) }} /> })}
       data={items}
       getRowId={(c) => String(c.id)}
       rowLabel={callLabel}

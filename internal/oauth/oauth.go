@@ -88,6 +88,10 @@ type Config struct {
 	Issuer string
 	// Pepper is API_KEY_PEPPER (decoded).
 	Pepper []byte
+	// PepperPrevious is API_KEY_PEPPER_PREVIOUS (decoded, nil when unset):
+	// tokens and codes digested with it are still accepted. Access tokens
+	// and codes expire soon; refresh tokens are replaced by their rotation.
+	PepperPrevious []byte
 	// Upstream supplies the address guard for metadata documents: the
 	// development allowance (which also lets a document be served over
 	// plain http on a loopback host) and the allowlist of internal networks.
@@ -99,6 +103,7 @@ type Service struct {
 	pool     *pgxpool.Pool
 	q        *dbgen.Queries
 	pepper   []byte
+	previous []byte
 	issuer   string
 	gateways *gateways.Service
 	docs     *metadataDocs
@@ -117,7 +122,7 @@ func New(pool *pgxpool.Pool, gws *gateways.Service, cfg Config) *Service {
 		up = &upstream.Client{}
 	}
 	s := &Service{
-		pool: pool, q: q, pepper: cfg.Pepper, issuer: strings.TrimRight(cfg.Issuer, "/"), gateways: gws,
+		pool: pool, q: q, pepper: cfg.Pepper, previous: cfg.PepperPrevious, issuer: strings.TrimRight(cfg.Issuer, "/"), gateways: gws,
 		docs: newMetadataDocs(up.GuardedDial(), up.AllowPrivate),
 		Log:  slog.Default(), now: time.Now,
 	}
@@ -167,8 +172,26 @@ func IsAccessToken(token string) bool { return validTokenShape(token, AccessPref
 
 // digest is a token's stored form: hex HMAC-SHA256(pepper, "oauth:" +
 // token). The label keeps it apart from API-key digests.
-func (s *Service) digest(token string) string {
-	m := hmac.New(sha256.New, s.pepper)
+func (s *Service) digest(token string) string { return digestWith(s.pepper, token) }
+
+// digests are a token's possible stored forms: with the current pepper,
+// then the previous one.
+func (s *Service) digests(token string) []string {
+	out := []string{s.digest(token)}
+	if s.previous != nil {
+		out = append(out, digestWith(s.previous, token))
+	}
+	return out
+}
+
+// pepperID is the pepper_id stored with new token digests.
+func (s *Service) pepperID() []byte {
+	sum := sha256.Sum256(s.pepper)
+	return sum[:8]
+}
+
+func digestWith(pepper []byte, token string) string {
+	m := hmac.New(sha256.New, pepper)
 	m.Write([]byte("oauth:"))
 	m.Write([]byte(token))
 	return hex.EncodeToString(m.Sum(nil))

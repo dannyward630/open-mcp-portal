@@ -16,6 +16,10 @@ resources:
   - ingress.yaml
   # Gateway API instead of an Ingress: replace ingress.yaml with
   # - httproute.yaml
+  # Prometheus scrapes /metrics on port 9090 from the monitoring namespace.
+  - networkpolicy-metrics.yaml
+  # With the Prometheus Operator's CRDs installed, add:
+  # - servicemonitor.yaml
 
 # Pin by digest (never a mutable tag).
 images:
@@ -36,8 +40,33 @@ configMapGenerator:
       - TRUSTED_PROXIES=10.0.0.0/8
       - ORG_NAME=Example Corp
       - SUPPORT_URL=https://help.example.org
+      # Prometheus metrics on their own port (no authentication: only the
+      # monitoring namespace may reach it, networkpolicy-metrics.yaml).
+      - METRICS_ADDR=:9090
 
 patches:
+  # The metrics port, on the pods and the Service (for a ServiceMonitor).
+  - target:
+      kind: Deployment
+      name: open-mcp-gateway
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/ports/-
+        value:
+          name: metrics
+          containerPort: 9090
+          protocol: TCP
+  - target:
+      kind: Service
+      name: open-mcp-gateway
+    patch: |-
+      - op: add
+        path: /spec/ports/-
+        value:
+          name: metrics
+          port: 9090
+          targetPort: metrics
+          protocol: TCP
   # The ingress controller's namespace.
   - target:
       kind: NetworkPolicy

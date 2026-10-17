@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { KeyRound, Network } from "lucide-react";
 import { myGatewaysQuery } from "../../api/queries";
+import { CaptureBadge } from "../../components/capture";
 import { accessLabel, capabilityCount, type MyGateway } from "../../components/gateways/labels";
 import { ListPage } from "../../components/templates/list-page";
 import { terms } from "../../lib/terms";
@@ -45,7 +46,17 @@ const columns = (narrow: boolean): DataTableColumn<MyGateway>[] => [
     cell: (g) => (
       <CellText
         className={s.compactCell}
-        primary={<TextLink render={<Link to="/gateways/$gatewayId" params={{ gatewayId: g.id }} />}>{g.name}</TextLink>}
+        primary={
+          <>
+            <TextLink render={<Link to="/gateways/$gatewayId" params={{ gatewayId: g.id }} />}>{g.name}</TextLink>
+            {g.capturesPayloads && (
+              <>
+                {" "}
+                <CaptureBadge label="Records what you send" />
+              </>
+            )}
+          </>
+        }
         secondary={
           narrow ? (
             <>

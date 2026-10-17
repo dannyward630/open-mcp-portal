@@ -1,6 +1,6 @@
 -- Call records of /mcp/{slug} (internal/calls). Metadata only.
 
--- name: InsertMCPCall :exec
+-- name: InsertMCPCall :one
 INSERT INTO mcp_calls (
     request_id, method, exposed_name, gateway_id, gateway_slug, gateway_name, gateway_team_id,
     server_id, server_slug, server_name, server_team_id, capability_id, principal_kind, user_id, api_key_id,
@@ -11,7 +11,8 @@ INSERT INTO mcp_calls (
     @server_id, @server_slug, @server_name, @server_team_id, @capability_id, @principal_kind, @user_id, @api_key_id,
     @key_name, @service_account_id, @service_account_name, @service_account_team_id, @oauth_grant_id, @oauth_client_name,
     @oauth_client_kind, @client_name, @outcome, @error_class, @latency_ms, @request_bytes, @response_bytes, @provider_slug
-);
+)
+RETURNING id, occurred_at;
 
 -- name: ListMCPCalls :many
 -- One page of calls, newest first. team_id: calls through the team's
@@ -32,8 +33,11 @@ SELECT c.id, c.occurred_at, c.request_id, c.method, c.exposed_name, c.gateway_id
        COALESCE(k.name, sk.name, c.key_name, '')::text AS api_key_name,
        COALESCE(st.slug, '')::text AS service_account_team_slug,
        (sa.id IS NOT NULL)::bool AS service_account_exists,
-       (COALESCE(c.oauth_client_kind, og.client_kind, '') = 'metadata')::bool AS oauth_client_verified
+       (COALESCE(c.oauth_client_kind, og.client_kind, '') = 'metadata')::bool AS oauth_client_verified,
+       c.gateway_team_id, c.server_team_id,
+       COALESCE(p.by_gateway, false)::bool AS payload_by_gateway, COALESCE(p.by_server, false)::bool AS payload_by_server
 FROM mcp_calls c
+LEFT JOIN mcp_call_payloads p ON p.call_id = c.id
 LEFT JOIN gateways g ON g.id = c.gateway_id
 LEFT JOIN mcp_servers s ON s.id = c.server_id
 LEFT JOIN users u ON u.id = c.user_id
@@ -53,5 +57,6 @@ WHERE (sqlc.narg(team_id)::uuid IS NULL
   AND (sqlc.narg(occurred_from)::timestamptz IS NULL OR c.occurred_at >= sqlc.narg(occurred_from)::timestamptz)
   AND (sqlc.narg(occurred_to)::timestamptz IS NULL OR c.occurred_at < sqlc.narg(occurred_to)::timestamptz)
   AND (sqlc.narg(before_id)::bigint IS NULL OR c.id < sqlc.narg(before_id)::bigint)
+  AND (sqlc.narg(call_id)::bigint IS NULL OR c.id = sqlc.narg(call_id)::bigint)
 ORDER BY c.id DESC
 LIMIT @page_size;

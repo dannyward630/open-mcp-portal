@@ -9,11 +9,14 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ncecere/open-mcp-gateway/internal/auth"
+	"github.com/ncecere/open-mcp-gateway/internal/capture"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-gateway/internal/secrets"
 	"github.com/ncecere/open-mcp-gateway/internal/testutil"
 )
 
@@ -40,6 +43,8 @@ type teamFix struct {
 	gateway string
 	// serviceAccount is a service account with one key (saKey).
 	serviceAccount, saKey string
+	// call is a call through the team's gateway, captured by the gateway.
+	call string
 }
 
 type matrixEnv struct {
@@ -108,7 +113,23 @@ func (e *matrixEnv) newTeam(slug, name string) teamFix {
 	tf.gateway = e.newGateway(tf.id)
 	tf.serviceAccount = e.newServiceAccount(tf.id)
 	tf.saKey = e.newServiceAccountKey(tf.serviceAccount)
+	tf.call = e.newCapturedCall(tf.id, tf.gateway, tf.member)
 	return tf
+}
+
+// newCapturedCall inserts a call through a team gateway with a payload its
+// gateway's switch captured.
+func (e *matrixEnv) newCapturedCall(teamID, gatewayID, userID string) string {
+	id := e.exec(`INSERT INTO mcp_calls (method, exposed_name, gateway_id, gateway_slug, gateway_name, gateway_team_id, principal_kind,
+		user_id, outcome) SELECT 'tools/call', 'srv__tool', g.id, g.slug, g.name, $1::uuid, 'api_key', $3::uuid, 'ok'
+		FROM gateways g WHERE g.id = $2::uuid RETURNING id::text`, teamID, gatewayID, userID)
+	callID, _ := strconv.ParseInt(id, 10, 64)
+	key, _ := secrets.ParseKey(testEncryptionKey)
+	box, _ := secrets.New(key)
+	args, _ := box.Seal([]byte(`{"q":"matrix"}`), capture.AAD(callID, capture.PartArguments))
+	e.exec(`INSERT INTO mcp_call_payloads (call_id, occurred_at, gateway_team_id, by_gateway, by_server, arguments_cipher, arguments_bytes)
+		VALUES ($1::bigint, now(), $2::uuid, true, false, $3, 14) RETURNING call_id::text`, callID, teamID, args)
+	return id
 }
 
 // newServiceAccount inserts a service account of a team.

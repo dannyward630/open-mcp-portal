@@ -99,7 +99,7 @@ export function storeGateway(qc: QueryClient, gateway: Gateway) {
   invalidateGateway(qc, gateway);
 }
 
-export type GatewayChange = { name?: string; description?: string; enabled?: boolean };
+export type GatewayChange = { name?: string; description?: string; enabled?: boolean; capturePayloads?: boolean; rateLimitPerMinute?: number | null };
 
 /** PATCH with If-Match on the gateway's revision, through the scope's API. */
 export async function updateGateway(scope: GatewayScope, gateway: Gateway, body: GatewayChange, revision = gateway.revision) {

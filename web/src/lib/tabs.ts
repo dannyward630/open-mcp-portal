@@ -3,8 +3,8 @@
  * Kept here so the router can validate ?tab= without loading page chunks.
  */
 
-/** Admin → Teams › one team. */
-export const adminTeamTabs = ["overview", "members", "settings"] as const;
+/** Admin → Teams › one team (Limits & retention: the team's overrides). */
+export const adminTeamTabs = ["overview", "members", "limits", "settings"] as const;
 export type AdminTeamTab = (typeof adminTeamTabs)[number];
 
 /** An MCP server's record (the team's and the admin's): Overview · Capabilities · Health · Settings. */
@@ -26,8 +26,8 @@ export type ServiceAccountTab = (typeof serviceAccountTabs)[number];
 export const authProviderTabs = ["overview", "settings"] as const;
 export type AuthProviderTab = (typeof authProviderTabs)[number];
 
-/** Team settings: Members (with open invites) · Audit log · General. */
-export const teamSettingsTabs = ["members", "audit", "general"] as const;
+/** Team settings: Members (with open invites) · Audit log · Limits & retention (read-only) · General. */
+export const teamSettingsTabs = ["members", "audit", "limits", "general"] as const;
 export type TeamSettingsTab = (typeof teamSettingsTabs)[number];
 
 /**

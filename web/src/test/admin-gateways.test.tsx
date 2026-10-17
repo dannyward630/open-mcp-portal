@@ -52,7 +52,7 @@ describe("Admin → Gateways", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Create platform gateway" })).toBeInTheDocument();
     await u.type(screen.getByRole("textbox", { name: "Name" }), "Company tools");
     await u.click(screen.getByRole("button", { name: "Create gateway" }));
-    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ slug: "company-tools", name: "Company tools", enabled: true }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ slug: "company-tools", name: "Company tools", enabled: true, capturePayloads: false }));
     expect(await screen.findByRole("heading", { level: 1, name: "Company tools" })).toBeInTheDocument();
   });
 });
@@ -249,7 +249,7 @@ describe("Admin → Calls", () => {
     const row = (await within(table).findByText("service-status__get_status")).closest("tr")!;
     expect(within(row).getByRole("link", { name: "Support tools" })).toHaveAttribute("href", `/admin/gateways/${gatewayId}`);
     expect(row).toHaveTextContent("OK");
-    expect(screen.getByText(/Arguments and results are never stored/)).toBeInTheDocument();
+    expect(screen.getByText(/Arguments and results are kept only for gateways and servers that record call contents/)).toBeInTheDocument();
     await waitFor(() =>
       expect(
         calls.some(

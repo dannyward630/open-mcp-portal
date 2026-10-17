@@ -14,7 +14,7 @@
  *   3. add its breadcrumb in breadcrumbs.tsx.
  * Only list pages that exist: no placeholders or "coming soon" links.
  */
-import { Activity, BadgeCheck, Bot, FileClock, Home, KeySquare, LayoutDashboard, Library, Network, Server, Settings, ShieldCheck, Users, UsersRound, Waypoints } from "lucide-react";
+import { Activity, BadgeCheck, BarChart3, Bot, Eraser, FileClock, Gauge, Home, KeySquare, LayoutDashboard, Library, Network, Server, Settings, ShieldCheck, Timer, Users, UsersRound, Waypoints } from "lucide-react";
 import { type ReactNode } from "react";
 import { terms } from "../../lib/terms";
 import { type Me } from "../../session";
@@ -48,6 +48,8 @@ export type TeamAccess = {
   isManager: boolean;
   /** A platform admin or auditor (may view any team's overview, settings, MCP servers, gateways and service accounts). */
   staff: boolean;
+  /** Owners, admins and editors, archived or not (the team's usage). */
+  canReadUsage: boolean;
 };
 
 export function teamAccess(me: Me, mine: Membership | undefined): TeamAccess {
@@ -59,10 +61,11 @@ export function teamAccess(me: Me, mine: Membership | undefined): TeamAccess {
     canEdit: isManager || (active && role === "editor"),
     isManager,
     staff: me.capabilities.platformAdmin || me.capabilities.platformAuditor,
+    canReadUsage: role === "owner" || role === "admin" || role === "editor",
   };
 }
 
-export type TeamPath = "/teams/$team" | "/teams/$team/servers" | "/teams/$team/gateways" | "/teams/$team/service-accounts" | "/teams/$team/settings";
+export type TeamPath = "/teams/$team" | "/teams/$team/servers" | "/teams/$team/gateways" | "/teams/$team/service-accounts" | "/teams/$team/usage" | "/teams/$team/settings";
 
 export type TeamNavItem = {
   to: TeamPath;
@@ -99,12 +102,20 @@ const teamNav: TeamNavItem[] = [
     access: (a) => a.member || a.staff,
     keywords: ["service account", "bot", "robot", "automation", "ci", "headless", "agent", "script", "key", "keys", "rotate", "omcp_sa"],
   },
+  // Owners, admins and editors (as the API allows; an archived team's editors still read it), and platform staff.
+  {
+    to: "/teams/$team/usage",
+    label: terms.usage,
+    icon: icon(BarChart3),
+    access: (a) => a.canReadUsage || a.staff,
+    keywords: ["usage", "calls", "analytics", "dashboard", "latency", "errors", "p95", "traffic", "statistics"],
+  },
   {
     to: "/teams/$team/settings",
     label: terms.teamSettings,
     icon: icon(Settings),
     access: (a) => a.member || a.staff,
-    keywords: ["members", "invites", "audit", "general", "leave"],
+    keywords: ["members", "invites", "audit", "general", "leave", "limits", "rate limit", "retention"],
   },
 ];
 
@@ -129,7 +140,11 @@ export type AdminPath =
   | "/admin/trusted-clients"
   | "/admin/auth-providers"
   | "/admin/audit"
-  | "/admin/calls";
+  | "/admin/calls"
+  | "/admin/usage"
+  | "/admin/limits"
+  | "/admin/retention"
+  | "/admin/capture";
 
 export type AdminNavItem = { to: AdminPath; label: string; icon: ReactNode; exact?: boolean };
 
@@ -169,6 +184,16 @@ export const adminSections: { label?: string; defaultOpen?: boolean; items: Admi
     items: [
       { to: "/admin/audit", label: terms.auditLog, icon: icon(FileClock) },
       { to: "/admin/calls", label: terms.calls, icon: icon(Activity) },
+      { to: "/admin/usage", label: terms.usage, icon: icon(BarChart3) },
+    ],
+  },
+  {
+    label: "Operations",
+    defaultOpen: true,
+    items: [
+      { to: "/admin/limits", label: terms.limits, icon: icon(Gauge) },
+      { to: "/admin/retention", label: terms.retention, icon: icon(Timer) },
+      { to: "/admin/capture", label: terms.payloadCapture, icon: icon(Eraser) },
     ],
   },
 ];
@@ -192,5 +217,9 @@ export const adminKeywords: Partial<Record<AdminPath, string[]>> = {
   "/admin/trusted-clients": ["oauth", "trusted", "client", "clients", "consent", "skip consent", "allowlist", "claude", "vs code", "metadata document", "cimd"],
   "/admin/auth-providers": ["oauth", "provider", "providers", "github", "google", "microsoft", "atlassian", "slack", "gitlab", "delegated", "token", "client secret", "redirect uri", "connections", "scopes"],
   "/admin/audit": ["audit log", "history", "changes", "who changed", "sign-ins", "export", "csv"],
-  "/admin/calls": ["calls", "call log", "tool calls", "usage", "activity", "denied", "errors", "latency"],
+  "/admin/calls": ["calls", "call log", "tool calls", "activity", "denied", "errors", "latency", "rate limited", "contents", "payload"],
+  "/admin/usage": ["usage", "analytics", "dashboard", "calls per day", "latency", "p50", "p95", "error rate", "traffic", "bytes"],
+  "/admin/limits": ["rate limit", "rate limits", "429", "throttle", "quota", "requests per minute", "ceiling", "default"],
+  "/admin/retention": ["retention", "delete", "purge", "keep", "days", "audit log", "call records", "gdpr"],
+  "/admin/capture": ["payload", "capture", "record", "redaction", "redact", "secrets", "pattern", "regex", "arguments", "results", "privacy"],
 };

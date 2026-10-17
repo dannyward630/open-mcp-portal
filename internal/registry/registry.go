@@ -364,6 +364,8 @@ type CreateInput struct {
 	Enabled                      bool
 	// Requirement is the user-authorization requirement (nil: none).
 	Requirement *RequirementInput
+	// CapturePayloads records calls' contents (team owners and admins only).
+	CapturePayloads bool
 }
 
 // UpdateInput holds optional changes. AuthHeaderName "" removes the header
@@ -377,6 +379,29 @@ type UpdateInput struct {
 	// it); false keeps it.
 	SetRequirement bool
 	Requirement    *RequirementInput
+	// CapturePayloads changes the capture switch (nil keeps it; only team
+	// owners and admins may change it).
+	CapturePayloads *bool
+}
+
+// errCaptureRole: only the server team's owners and admins switch capture.
+var errCaptureRole = apperr.New(403, "capture_role",
+	"Only the team's owners and admins can choose whether calls' contents are recorded")
+
+// setCapture applies a capture switch change (docs/phase6-operations.md
+// "Payload capture"): team owners and admins only; not a review trigger.
+func setCapture(ctx context.Context, q *dbgen.Queries, role string, row *dbgen.McpServer, on bool) error {
+	if row.CapturePayloads == on {
+		return nil
+	}
+	if !authz.RoleAtLeast(role, authz.RoleAdmin) {
+		return errCaptureRole
+	}
+	if err := q.SetMCPServerCapture(ctx, dbgen.SetMCPServerCaptureParams{ID: row.ID, CapturePayloads: on}); err != nil {
+		return err
+	}
+	row.CapturePayloads = on
+	return nil
 }
 
 func checkFields(name, description string, timeout int32) error {
@@ -416,7 +441,7 @@ func valueHint(v string) string {
 func snapshot(s dbgen.McpServer) map[string]any {
 	out := map[string]any{"slug": s.Slug, "name": s.Name, "description": s.Description, "url": s.URL,
 		"timeoutSeconds": s.TimeoutSeconds, "enabled": s.Enabled, "hasAuth": s.AuthValueCipher != nil,
-		"publishState": s.PublishState, "requirement": requirementSnapshot(s)}
+		"publishState": s.PublishState, "requirement": requirementSnapshot(s), "capturePayloads": s.CapturePayloads}
 	if s.AuthHeaderName != nil {
 		out["authHeaderName"] = *s.AuthHeaderName
 	}
@@ -460,6 +485,9 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 		if apperr.IsUniqueViolation(err, "mcp_servers_slug_key") {
 			return errSlugTaken
 		} else if err != nil {
+			return err
+		}
+		if err := setCapture(ctx, q, ta.role, &row, in.CapturePayloads); err != nil {
 			return err
 		}
 		e := a.Audit("mcp_server.create", "mcp_server", id.String())
@@ -553,6 +581,11 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 		row, err := q.UpdateMCPServer(ctx, p)
 		if err != nil {
 			return err
+		}
+		if in.CapturePayloads != nil {
+			if err := setCapture(ctx, q, ta.role, &row, *in.CapturePayloads); err != nil {
+				return err
+			}
 		}
 		reset := int64(0)
 		if row.AuthProviderID != cur.AuthProviderID {

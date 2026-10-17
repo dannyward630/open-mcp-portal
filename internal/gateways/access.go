@@ -258,6 +258,13 @@ type Mine struct {
 	Groups []string
 	// Offered counts the capabilities it offers them now.
 	Offered int64
+	// NeedsPerson (service accounts only) counts the capabilities it would
+	// offer that require a person's account (a provider requirement);
+	// service accounts are refused them, so Offered leaves them out.
+	NeedsPerson *int64
+	// CapturesPayloads: calls may be recorded with their contents (the
+	// gateway captures them, or the server of an offered capability does).
+	CapturesPayloads bool
 }
 
 // ListMine lists the gateways a person may use now, by name: enabled, and
@@ -277,7 +284,8 @@ func (s *Service) ListMine(ctx context.Context, u dbgen.User) ([]Mine, error) {
 		if err != nil {
 			return nil, err
 		}
-		m := Mine{View: View{Gateway: r.Gateway, TeamSlug: r.TeamSlug, TeamName: r.TeamName}, Access: c.Access, Groups: r.GrantGroups}
+		m := Mine{View: View{Gateway: r.Gateway, TeamSlug: r.TeamSlug, TeamName: r.TeamName}, Access: c.Access, Groups: r.GrantGroups,
+			CapturesPayloads: captures(r.Gateway, offers)}
 		if m.Groups == nil {
 			m.Groups = []string{}
 		}
@@ -320,12 +328,19 @@ func (s *Service) ListForServiceAccount(ctx context.Context, teamID uuid.UUID, r
 		if err != nil {
 			return nil, err
 		}
-		m := Mine{View: View{Gateway: r.Gateway, TeamSlug: r.TeamSlug, TeamName: r.TeamName}, Access: c.Access, Groups: []string{}}
+		m := Mine{View: View{Gateway: r.Gateway, TeamSlug: r.TeamSlug, TeamName: r.TeamName}, Access: c.Access, Groups: []string{},
+			CapturesPayloads: captures(r.Gateway, offers)}
+		var needsPerson int64
 		for _, o := range offers {
-			if o.Allowed {
+			switch {
+			case !o.Allowed:
+			case o.Requires != nil: // decision 29: people only
+				needsPerson++
+			default:
 				m.Offered++
 			}
 		}
+		m.NeedsPerson = &needsPerson
 		out = append(out, m)
 	}
 	return out, nil
@@ -370,7 +385,21 @@ func (s *Service) GetMine(ctx context.Context, u dbgen.User, id uuid.UUID) (Mine
 			allowed = append(allowed, o)
 		}
 	}
-	return Mine{View: v, Access: c.Access, Groups: groups, Offered: int64(len(allowed))}, allowed, nil
+	return Mine{View: v, Access: c.Access, Groups: groups, Offered: int64(len(allowed)), CapturesPayloads: captures(g, allowed)}, allowed, nil
+}
+
+// captures reports whether calls through g may be captured: the gateway
+// captures them, or the server of an offered capability does.
+func captures(g dbgen.Gateway, offers []Offer) bool {
+	if g.CapturePayloads {
+		return true
+	}
+	for _, o := range offers {
+		if o.Allowed && o.Server.CapturePayloads {
+			return true
+		}
+	}
+	return false
 }
 
 // Grants lists a platform gateway's grants (platform admins and auditors);

@@ -61,7 +61,7 @@ export function OverrideDialog({ cap, server, scope, onClose }: Props) {
   return (
     <FormDialog
       title={`Account for ${cap.name}`}
-      description="Which of the caller's accounts calls to this capability carry. The token goes to the server either way; this decides what is asked for and sent."
+      description={`Whether calls to ${cap.name} need the caller's ${req.providerName} account, and with which scopes.`}
       onClose={onClose}
       onSubmit={() => {
         setSubmitted(true);
@@ -80,9 +80,21 @@ export function OverrideDialog({ cap, server, scope, onClose }: Props) {
           if (m === "scopes" && scopes.length === 0) setScopes(serverScopes);
         }}
         options={[
-          { value: "inherit", label: "Same as the server", description: needsText({ providerName: req.providerName, scopes: serverScopes }) + "." },
-          { value: "none", label: "No account", description: "Calls carry no token and never ask the caller to connect." },
-          { value: "scopes", label: `Other ${req.providerName} scopes`, description: "Ask for only what this capability needs." },
+          {
+            value: "inherit",
+            label: "Same as the server",
+            description: `${needsText({ providerName: req.providerName, scopes: serverScopes })}. Callers connect with the server's scopes, and each call sends their token to ${server.name}. Service accounts can't use it.`,
+          },
+          {
+            value: "none",
+            label: "No account",
+            description: `Callers are never asked to connect, and calls send no token to ${server.name}. Service accounts can use it.`,
+          },
+          {
+            value: "scopes",
+            label: `Other ${req.providerName} scopes`,
+            description: `Callers connect with only the scopes below, and each call sends that token to ${server.name}. Service accounts can't use it.`,
+          },
         ]}
       />
       {mode === "scopes" && (

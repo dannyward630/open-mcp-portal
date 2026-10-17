@@ -16,7 +16,7 @@ describe("navigation lists", () => {
     for (const to of all) expect(paths, to).toContain(to);
   });
 
-  it("have the registry's and the gateways' sections, and none of the later phases' yet", () => {
+  it("have the registry's, the gateways' and the operations' sections", () => {
     expect(workspaceNav.map((n) => [n.label, n.to])).toEqual([
       ["Home", "/"],
       ["Catalog", "/catalog"],
@@ -36,7 +36,12 @@ describe("navigation lists", () => {
       "/admin/auth-providers",
       "/admin/audit",
       "/admin/calls",
+      "/admin/usage",
+      "/admin/limits",
+      "/admin/retention",
+      "/admin/capture",
     ]);
+    expect(teamNavFor(meFor("none", "editor"), team.slug).find((n) => n.label === "Usage")?.to).toBe("/teams/$team/usage");
     const labels = [...workspaceNav, ...teamNavFor(meFor("none", "owner"), team.slug), ...adminNav].map((n) => n.label);
     expect(labels).not.toContain("Connect");
   });
@@ -58,15 +63,18 @@ describe("navigation lists", () => {
       "/admin/auth-providers/$providerId",
       "/connect/$provider",
       "/connect/done",
+      "/teams/$team/calls/$callId",
+      "/admin/calls/$callId",
     ];
     for (const to of records) expect(paths, to).toContain(to);
   });
 
-  it("give every team role the overview, the MCP servers, the gateways, the service accounts and settings, and platform staff who aren't members the same", () => {
-    const all = ["Overview", "MCP servers", "Gateways", "Service accounts", "Team settings"];
-    for (const role of ["owner", "admin", "editor", "member"] as const) {
+  it("give every team role the overview, the MCP servers, the gateways, the service accounts and settings, editors and above usage, and platform staff who aren't members the same", () => {
+    const all = ["Overview", "MCP servers", "Gateways", "Service accounts", "Usage", "Team settings"];
+    for (const role of ["owner", "admin", "editor"] as const) {
       expect(teamNavFor(meFor("none", role), team.slug).map((n) => n.label)).toEqual(all);
     }
+    expect(teamNavFor(meFor("none", "member"), team.slug).map((n) => n.label)).toEqual(all.filter((l) => l !== "Usage"));
     expect(teamNavFor(meFor("platform_auditor", null), team.slug).map((n) => n.label)).toEqual(all);
     // Neither a member nor staff: nothing (the team page says "Team not found").
     expect(teamNavFor(meFor("none", null), team.slug)).toEqual([]);
@@ -74,15 +82,21 @@ describe("navigation lists", () => {
 
   it("works out team access like the server: managers, editors, an archived team and staff", () => {
     const me = meFor("none", "owner");
-    expect(teamAccess(me, myTeam("owner"))).toEqual({ member: true, canEdit: true, isManager: true, staff: false });
+    expect(teamAccess(me, myTeam("owner"))).toEqual({ member: true, canEdit: true, isManager: true, staff: false, canReadUsage: true });
     expect(teamAccess(me, myTeam("editor"))).toMatchObject({ canEdit: true, isManager: false });
     expect(teamAccess(me, myTeam("member"))).toMatchObject({ canEdit: false, isManager: false });
-    expect(teamAccess(me, myTeam("admin", { status: "archived" }))).toMatchObject({ canEdit: false, isManager: false });
-    expect(teamAccess(meFor("platform_admin", null), undefined)).toEqual({ member: false, canEdit: false, isManager: false, staff: true });
+    expect(teamAccess(me, myTeam("member"))).toMatchObject({ canReadUsage: false });
+    expect(teamAccess(me, myTeam("admin", { status: "archived" }))).toMatchObject({ canEdit: false, isManager: false, canReadUsage: true });
+    expect(teamAccess(meFor("platform_admin", null), undefined)).toEqual({ member: false, canEdit: false, isManager: false, staff: true, canReadUsage: false });
   });
 
   it("groups the admin pages and finds the current page's group", () => {
-    expect(adminSections.map((s) => s.label)).toEqual(["People", "Catalog", "Access", "Records"]);
+    expect(adminSections.map((s) => s.label)).toEqual(["People", "Catalog", "Access", "Records", "Operations"]);
+    expect(activeAdminGroup("/admin/usage")).toBe("Records");
+    expect(activeAdminGroup("/admin/calls/501")).toBe("Records");
+    expect(activeAdminGroup("/admin/limits")).toBe("Operations");
+    expect(activeAdminGroup("/admin/retention")).toBe("Operations");
+    expect(activeAdminGroup("/admin/capture")).toBe("Operations");
     expect(activeAdminGroup("/admin/gateways/abc")).toBe("Access");
     expect(activeAdminGroup("/admin/trusted-clients")).toBe("Access");
     expect(activeAdminGroup("/admin/auth-providers/abc")).toBe("Access");

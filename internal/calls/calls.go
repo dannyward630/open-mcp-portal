@@ -1,8 +1,9 @@
 // Package calls records and reads the metadata of every list and call
 // through a gateway (SPEC.md §5 "Call record", docs/decisions.md decision
 // 14): who, through which gateway, to which server and tool, the outcome,
-// latency and sizes. Arguments and results are never stored (payload
-// capture is opt-in and comes in Phase 6).
+// latency and sizes. Arguments and results are never stored here; payload
+// capture (opt-in, internal/capture) writes them in the same transaction
+// through Record's hook.
 package calls
 
 import (
@@ -10,10 +11,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ncecere/open-mcp-gateway/internal/apperr"
 	"github.com/ncecere/open-mcp-gateway/internal/authz"
+	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-gateway/internal/teams"
 )
@@ -31,13 +34,16 @@ const (
 	// connect (or reconnect) an account; the client got a consent link
 	// (JSON-RPC -32042).
 	OutcomeNeedsAuthorization = "needs_authorization"
+	// OutcomeRateLimited: not forwarded because a rate limit was exceeded
+	// (HTTP 429, JSON-RPC -32029); the error class names the limit.
+	OutcomeRateLimited = "rate_limited"
 )
 
 // ValidOutcome reports whether o is an outcome.
 func ValidOutcome(o string) bool {
 	switch o {
 	case OutcomeOK, OutcomeToolError, OutcomeDenied, OutcomeUpstreamError, OutcomeTimeout, OutcomeTooLarge, OutcomeBadRequest,
-		OutcomeNeedsAuthorization:
+		OutcomeNeedsAuthorization, OutcomeRateLimited:
 		return true
 	}
 	return false
@@ -47,6 +53,7 @@ var (
 	errTeamNotFound = apperr.NotFound("team_not_found", "Team not found")
 	errForbidden    = apperr.Forbidden("Only team owners and admins, and platform admins and auditors, can see the team's calls")
 	errPlatformRead = apperr.Forbidden("Only platform admins and auditors can see this")
+	errCallNotFound = apperr.NotFound("call_not_found", "Call not found")
 )
 
 // Principal kinds (the API's CallPrincipal.kind).
@@ -98,8 +105,37 @@ func clip(s string, n int) *string {
 
 func null(id uuid.UUID) uuid.NullUUID { return uuid.NullUUID{UUID: id, Valid: id != uuid.Nil} }
 
-// Record stores a call.
-func Record(ctx context.Context, q *dbgen.Queries, c Call) error {
+// Recorded is a stored call's ID and time.
+type Recorded = dbgen.InsertMCPCallRow
+
+// After runs in the transaction that stored a call (payload capture). Its
+// error never loses the call record: its writes are rolled back to a
+// savepoint and the error is returned as Record's captureErr.
+type After func(ctx context.Context, q *dbgen.Queries, rec Recorded) error
+
+// Record stores a call, then runs after (when not nil) in the same
+// transaction.
+func Record(ctx context.Context, pool *pgxpool.Pool, c Call, after After) (captureErr, err error) {
+	p := insertParams(c)
+	if after == nil {
+		_, err := dbgen.New(pool).InsertMCPCall(ctx, p)
+		return nil, err
+	}
+	err = store.InTx(ctx, pool, func(q *dbgen.Queries, tx pgx.Tx) error {
+		rec, err := q.InsertMCPCall(ctx, p)
+		if err != nil {
+			return err
+		}
+		captureErr = pgx.BeginFunc(ctx, tx, func(sp pgx.Tx) error { return after(ctx, dbgen.New(sp), rec) })
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return captureErr, nil
+}
+
+func insertParams(c Call) dbgen.InsertMCPCallParams {
 	if c.PrincipalKind == "" {
 		c.PrincipalKind = PrincipalAPIKey
 	}
@@ -117,7 +153,7 @@ func Record(ctx context.Context, q *dbgen.Queries, c Call) error {
 		p.ServerID, p.ServerTeamID = null(c.Server.ID), null(c.Server.TeamID)
 		p.ServerSlug, p.ServerName = &c.Server.Slug, &c.Server.Name
 	}
-	return q.InsertMCPCall(ctx, p)
+	return p
 }
 
 // Service reads call records.
@@ -162,33 +198,105 @@ func (f Filter) query() dbgen.ListMCPCallsParams {
 	return p
 }
 
-// ListTeam lists calls through the team's gateways, to its servers, or by
-// its service accounts through any gateway (team owners and admins;
-// platform admins and auditors).
-func (s *Service) ListTeam(ctx context.Context, a authz.Actor, ref string, f Filter) ([]dbgen.ListMCPCallsRow, error) {
+// Row is a call as a list shows it. Captured: a captured payload is stored
+// that the caller may open (team views: captured under that team's
+// gateway or server switch, and the caller is one of its owners or admins;
+// admin views: any).
+type Row struct {
+	dbgen.ListMCPCallsRow
+	Captured bool
+}
+
+// CapturedFor reports whether a call's payload was captured under team's
+// switch (its gateway's or its server's).
+func CapturedFor(r dbgen.ListMCPCallsRow, team uuid.UUID) bool {
+	return (r.PayloadByGateway && r.GatewayTeamID.Valid && r.GatewayTeamID.UUID == team) ||
+		(r.PayloadByServer && r.ServerTeamID.Valid && r.ServerTeamID.UUID == team)
+}
+
+// TeamScope is a team's call list as seen by an actor.
+type TeamScope struct {
+	Team dbgen.Team
+	// Role is the actor's role in the team ("" for platform staff who are not
+	// members).
+	Role string
+}
+
+// teamScope resolves a team whose calls the actor may see: its owners and
+// admins, and platform admins and auditors.
+func (s *Service) teamScope(ctx context.Context, a authz.Actor, ref string) (TeamScope, error) {
 	t, err := teams.Resolve(ctx, s.q, ref)
 	if err != nil {
-		return nil, err
+		return TeamScope{}, err
 	}
 	role, err := teams.MemberRole(ctx, s.q, t.ID, a.UserID)
 	if err != nil {
-		return nil, err
+		return TeamScope{}, err
 	}
 	switch {
 	case a.CanReadPlatform() || authz.RoleAtLeast(role, authz.RoleAdmin):
 	case role == "":
-		return nil, errTeamNotFound
+		return TeamScope{}, errTeamNotFound
 	default:
-		return nil, errForbidden
+		return TeamScope{}, errForbidden
+	}
+	return TeamScope{Team: t, Role: role}, nil
+}
+
+func teamRows(rows []dbgen.ListMCPCallsRow, sc TeamScope) []Row {
+	out := make([]Row, len(rows))
+	owner := authz.RoleAtLeast(sc.Role, authz.RoleAdmin)
+	for i, r := range rows {
+		out[i] = Row{ListMCPCallsRow: r, Captured: owner && CapturedFor(r, sc.Team.ID)}
+	}
+	return out
+}
+
+func adminRows(rows []dbgen.ListMCPCallsRow) []Row {
+	out := make([]Row, len(rows))
+	for i, r := range rows {
+		out[i] = Row{ListMCPCallsRow: r, Captured: r.PayloadByGateway || r.PayloadByServer}
+	}
+	return out
+}
+
+// ListTeam lists calls through the team's gateways, to its servers, or by
+// its service accounts through any gateway (team owners and admins;
+// platform admins and auditors).
+func (s *Service) ListTeam(ctx context.Context, a authz.Actor, ref string, f Filter) ([]Row, error) {
+	sc, err := s.teamScope(ctx, a, ref)
+	if err != nil {
+		return nil, err
 	}
 	p := f.query()
-	p.TeamID = null(t.ID)
-	return s.q.ListMCPCalls(ctx, p)
+	p.TeamID = null(sc.Team.ID)
+	rows, err := s.q.ListMCPCalls(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return teamRows(rows, sc), nil
+}
+
+// TeamCall returns one call listTeamCalls would list for the team (404
+// call_not_found otherwise), with the actor's scope.
+func (s *Service) TeamCall(ctx context.Context, a authz.Actor, ref string, id int64) (Row, TeamScope, error) {
+	sc, err := s.teamScope(ctx, a, ref)
+	if err != nil {
+		return Row{}, sc, err
+	}
+	rows, err := s.q.ListMCPCalls(ctx, dbgen.ListMCPCallsParams{TeamID: null(sc.Team.ID), CallID: &id, PageSize: 1})
+	if err != nil {
+		return Row{}, sc, err
+	}
+	if len(rows) == 0 {
+		return Row{}, sc, errCallNotFound
+	}
+	return teamRows(rows, sc)[0], sc, nil
 }
 
 // AdminList lists every call (platform admins and auditors). An unknown
 // team filter lists nothing.
-func (s *Service) AdminList(ctx context.Context, a authz.Actor, f Filter) ([]dbgen.ListMCPCallsRow, error) {
+func (s *Service) AdminList(ctx context.Context, a authz.Actor, f Filter) ([]Row, error) {
 	if !a.CanReadPlatform() {
 		return nil, errPlatformRead
 	}
@@ -196,11 +304,30 @@ func (s *Service) AdminList(ctx context.Context, a authz.Actor, f Filter) ([]dbg
 	if f.Team != "" {
 		t, err := teams.Resolve(ctx, s.q, f.Team)
 		if e, ok := apperr.As(err); ok && e.Status == 404 {
-			return []dbgen.ListMCPCallsRow{}, nil
+			return []Row{}, nil
 		} else if err != nil {
 			return nil, err
 		}
 		p.TeamID = null(t.ID)
 	}
-	return s.q.ListMCPCalls(ctx, p)
+	rows, err := s.q.ListMCPCalls(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return adminRows(rows), nil
+}
+
+// AdminCall returns any call (platform admins and auditors).
+func (s *Service) AdminCall(ctx context.Context, a authz.Actor, id int64) (Row, error) {
+	if !a.CanReadPlatform() {
+		return Row{}, errPlatformRead
+	}
+	rows, err := s.q.ListMCPCalls(ctx, dbgen.ListMCPCallsParams{CallID: &id, PageSize: 1})
+	if err != nil {
+		return Row{}, err
+	}
+	if len(rows) == 0 {
+		return Row{}, errCallNotFound
+	}
+	return adminRows(rows)[0], nil
 }

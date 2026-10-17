@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/providers"
+	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 )
 
@@ -292,8 +292,12 @@ func (a *api) revokeMyConnection(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) startMyConnection(w http.ResponseWriter, r *http.Request) {
 	id, _ := auth.FromContext(r.Context())
-	if ok, wait := a.limiter.Allow("connect-start:"+id.User.ID.String(), connectStartsPerMinute, time.Minute); !ok {
-		w.Header().Set("Retry-After", strconv.Itoa(max(int((wait+time.Second-1)/time.Second), 1)))
+	ok, wait, err := ratelimit.Allow(r.Context(), a.limiter, "connect-start:"+id.User.ID.String(), connectStartsPerMinute)
+	if failed(w, r, err) {
+		return
+	}
+	if !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(ratelimit.RetryAfter(wait)))
 		httpx.Error(w, http.StatusTooManyRequests, "slow_down", "Too many attempts to connect. Try again shortly.")
 		return
 	}
@@ -317,7 +321,7 @@ func (a *api) getConnectRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	req := v.Request
 	httpx.JSON(w, http.StatusOK, apitypes.ConnectRequest{
-		Id: v.ID, Provider: toAPIProviderRef(v.Provider), Reason: apitypes.ConnectRequestReason(req.Reason),
+		Id: v.ID, Provider: toAPIProviderRef(v.Provider), Reason: apitypes.ConnectRequestReason(v.Reason),
 		RequiredScopes: nonNilStrings(req.RequiredScopes), RequestScopes: v.RequestScopes, GrantedScopes: v.Granted,
 		AccountLabel: v.AccountLabel, Gateway: apitypes.CallRef{Id: req.GatewayID, Slug: v.GatewaySlug, Name: v.GatewayName, Exists: v.GatewayExists},
 		Capability: apitypes.ConnectRequestCapability{Kind: apitypes.GatewayCapabilityKind(req.CapabilityKind), ExposedName: req.ExposedName,

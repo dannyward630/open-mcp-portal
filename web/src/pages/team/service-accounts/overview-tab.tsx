@@ -4,11 +4,15 @@
  * own gateways, linked, and the platform gateways granted to the team (a
  * team grant covers its service accounts; there are no grants to one
  * account), each with what it reaches with its role
- * (GET .../service-accounts/{id}/gateways).
+ * (GET .../service-accounts/{id}/gateways). Capabilities that need a
+ * person's account (a provider requirement) aren't reached: service accounts
+ * are refused them (decision 29), so they're counted apart and noted.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { capabilityCount } from "../../../components/gateways/labels";
+import { serviceAccountsCant } from "../../../components/providers/labels";
+import { plural } from "../../../lib/format";
 import { terms } from "../../../lib/terms";
 import { useCurrentUser } from "../../../session";
 import { ErrorAlert } from "@/components/ui/alert/alert";
@@ -68,6 +72,7 @@ function AccessCard({ account }: { account: ServiceAccount }) {
   const staff = me.capabilities.platformAdmin || me.capabilities.platformAuditor;
   const gateways = useQuery(accountGatewaysQuery(slug, account.id));
   const items = gateways.data ?? [];
+  const needsPerson = items.reduce((n, g) => n + (g.needsPersonCount ?? 0), 0);
   return (
     <Card
       title="Access"
@@ -88,10 +93,18 @@ function AccessCard({ account }: { account: ServiceAccount }) {
                 <span className={`${s.secondary} ${s.mono}`}>{g.slug}</span>
               </Td>
               <Td>{accountAccessText(g, team.name)}</Td>
-              <Td>{capabilityCount(g.capabilityCount)}</Td>
+              <Td>
+                {capabilityCount(g.capabilityCount)}
+                {(g.needsPersonCount ?? 0) > 0 && <span className={s.secondary}>{`${plural(g.needsPersonCount!, "more needs", "more need")} a person's account`}</span>}
+              </Td>
             </Tr>
           ))}
         </Table>
+      )}
+      {needsPerson > 0 && (
+        <p className={items.length > 0 ? `${s.muted} ${s.pad}` : s.muted}>
+          {`${plural(needsPerson, "capability", "capabilities")} on these gateways ${needsPerson === 1 ? "needs" : "need"} a person's account, such as their GitHub account. ${serviceAccountsCant} Its keys get an error for them; people call them with their own keys or connected apps.`}
+        </p>
       )}
       <p className={items.length > 0 ? `${s.muted} ${s.pad}` : s.muted}>
         {`A grant of a platform gateway to ${team.name} covers its service accounts; grants to people or SSO groups don't. `}

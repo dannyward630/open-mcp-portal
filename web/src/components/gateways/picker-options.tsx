@@ -9,6 +9,7 @@ import { serviceAccountsCant } from "../providers/labels";
 import { Badge } from "@/components/ui/badge/badge";
 import { Checkbox } from "@/components/ui/checkbox/checkbox";
 import { NativeSelect } from "@/components/ui/input/input";
+import { CaptureBadge } from "../capture";
 import { SourceBadge } from "./badges";
 import { groupBy } from "./capability-list";
 import { type Gateway, type GatewayCapability, type GatewayKind, type GatewayOption, gatewayKindLabels, minRoleChoices, minRoleLabels, type TeamRole } from "./labels";
@@ -109,6 +110,7 @@ function OptionRow({ option: o, role, roles, problem, onToggle, onRole }: RowPro
           {gatewayKindLabels[o.kind].one}
         </Badge>
         {o.requires && <RequiresBadge req={o.requires} note={serviceAccountsCant} />}
+        {o.serverCapturesPayloads && <CaptureBadge label="Server records contents" />}
         {roles && selected && (
           <NativeSelect
             size="sm"

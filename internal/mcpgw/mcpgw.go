@@ -26,7 +26,14 @@
 // (internal/identity) and never the client's credential. Lists are served
 // from the approved definitions in the database, without contacting
 // servers. Every list and call is recorded in mcp_calls, without arguments
-// or results.
+// or results; when the gateway or the server captures payloads, a
+// forwarded call's arguments and result are stored with it, redacted
+// (internal/capture).
+//
+// Every authenticated request that passes gateway resolution counts toward
+// the rate limits (internal/limits, counted in PostgreSQL and shared by
+// every replica): over a limit it is answered 429 with Retry-After and
+// JSON-RPC -32029, recorded as rate_limited and never forwarded.
 package mcpgw
 
 import (
@@ -35,11 +42,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,11 +59,15 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/apperr"
 	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
 	"github.com/ncecere/open-mcp-gateway/internal/calls"
+	"github.com/ncecere/open-mcp-gateway/internal/capture"
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
+	"github.com/ncecere/open-mcp-gateway/internal/limits"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
+	"github.com/ncecere/open-mcp-gateway/internal/observability"
 	"github.com/ncecere/open-mcp-gateway/internal/providers"
+	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
@@ -105,6 +118,9 @@ const (
 	// URLElicitationRequiredError: the person must open a URL (connect an
 	// account) and try again.
 	codeURLElicitationRequired = -32042
+	// codeRateLimited is the implementation-defined code of a request over
+	// a rate limit (HTTP 429).
+	codeRateLimited = -32029
 )
 
 // Methods.
@@ -139,9 +155,15 @@ type Handler struct {
 	// Providers supplies people's delegated credentials for capabilities
 	// that require an auth provider (nil: such calls are refused).
 	Providers *providers.Service
-	Pool      *pgxpool.Pool
-	AppURL    string
-	Log       *slog.Logger
+	// Limits and RateStore apply the rate limits (nil: none).
+	Limits    *limits.Service
+	RateStore ratelimit.Store
+	// Capture stores the payloads of calls whose gateway or server captures
+	// them (nil: never).
+	Capture *capture.Service
+	Pool    *pgxpool.Pool
+	AppURL  string
+	Log     *slog.Logger
 }
 
 func (h *Handler) log() *slog.Logger {
@@ -259,6 +281,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rc := &request{h: h, w: w, r: r, start: start, msg: msg, principal: principal, requestBytes: int64(len(body))}
 	if !rc.resolveGateway(slug) {
+		return
+	}
+	defer rc.observe()
+	if !rc.rateLimit() {
 		return
 	}
 	if msg.Method == "" || len(msg.ID) == 0 {
@@ -391,6 +417,81 @@ type request struct {
 	requestBytes int64
 	gateway      dbgen.Gateway
 	caller       gateways.Caller
+	// outcome is the recorded outcome (metrics; "" for requests that are
+	// not recorded).
+	outcome string
+	// forwarded: the call reached its server (call latency metric).
+	forwarded bool
+	// capture is the payload to store with the call record (nil: none).
+	capture *capture.Input
+}
+
+// observe records the request's metrics.
+func (rc *request) observe() {
+	method, outcome := rc.msg.Method, rc.outcome
+	if method == "" || len(rc.msg.ID) == 0 {
+		method = "notification"
+	}
+	if outcome == "" {
+		outcome = calls.OutcomeOK
+	}
+	observability.ObserveMCP(method, outcome, time.Since(rc.start))
+}
+
+// rateLimit counts the request toward every limit that applies and, over
+// one, answers 429 (recorded as rate_limited for lists and calls). The
+// caller's own tightest limit is shown in RateLimit-* headers.
+func (rc *request) rateLimit() bool {
+	h := rc.h
+	if h.Limits == nil || h.RateStore == nil {
+		return true
+	}
+	ctx := rc.r.Context()
+	p := rc.principal
+	sub := limits.Subject{Gateway: rc.gateway}
+	switch {
+	case p.account != nil:
+		t := p.account.Team
+		sub.ServiceAccountID, sub.ServiceAccountTeam = p.account.Account.ID, &t
+	case p.grant != nil:
+		sub.UserID, sub.CredentialID = p.user.ID, p.grant.ID
+	default:
+		sub.UserID, sub.CredentialID = p.user.ID, p.keyID
+	}
+	if rc.gateway.TeamID.Valid {
+		t, err := dbgen.New(h.Pool).GetTeamByID(ctx, rc.gateway.TeamID.UUID)
+		if err != nil {
+			rc.internal(err)
+			return false
+		}
+		sub.GatewayTeam = &t
+	}
+	d, err := h.Limits.Check(ctx, h.RateStore, sub)
+	if err != nil {
+		rc.internal(err)
+		return false
+	}
+	retry := ratelimit.RetryAfter(d.Reset)
+	if d.Own != nil {
+		hd := rc.w.Header()
+		hd.Set("RateLimit-Limit", strconv.FormatInt(d.Own.Limit, 10))
+		hd.Set("RateLimit-Remaining", strconv.FormatInt(d.Own.Remaining, 10))
+		hd.Set("RateLimit-Reset", strconv.Itoa(retry))
+	}
+	if d.Exceeded == "" {
+		return true
+	}
+	observability.MCPRateLimited.WithLabelValues(d.Exceeded).Inc()
+	rc.w.Header().Set("Retry-After", strconv.Itoa(retry))
+	name := strings.TrimSuffix(d.Exceeded, "_per_minute")
+	n := writeRPC(rc.w, http.StatusTooManyRequests, rc.msg.ID, nil, &rpcError{Code: codeRateLimited,
+		Message: fmt.Sprintf("Rate limit exceeded (%s); try again in %d s", strings.ReplaceAll(name, "_", " "), retry),
+		Data:    map[string]any{"reason": "rate_limited", "limit": d.Exceeded, "limitPerMinute": d.LimitPerMinute, "retryAfterSeconds": retry}})
+	rc.outcome = calls.OutcomeRateLimited
+	if recorded(rc.msg.Method) && len(rc.msg.ID) > 0 {
+		rc.record(calls.Call{Outcome: calls.OutcomeRateLimited, ErrorClass: d.Exceeded, ExposedName: rc.requestedName()}, n)
+	}
+	return false
 }
 
 func recorded(method string) bool {
@@ -461,6 +562,7 @@ func isNotFound(err error) bool {
 }
 
 func (rc *request) internal(err error) {
+	rc.outcome = "error"
 	rc.h.log().ErrorContext(rc.r.Context(), "mcp request failed", "err", err, "request_id", httpx.RequestID(rc.r.Context()))
 	writeRPC(rc.w, http.StatusInternalServerError, rc.msg.ID, nil, &rpcError{Code: codeInternal, Message: "Something went wrong"})
 }
@@ -507,8 +609,10 @@ func (rc *request) requestedName() string {
 	return ""
 }
 
-// record stores the exchange's metadata (never its arguments or result).
+// record stores the exchange's metadata, and its captured payload when the
+// call was forwarded and the gateway or server captures payloads.
 func (rc *request) record(c calls.Call, responseBytes int64) {
+	rc.outcome = c.Outcome
 	c.RequestID, c.Method, c.Gateway = httpx.RequestID(rc.r.Context()), rc.msg.Method, rc.gateway
 	p := rc.principal
 	c.PrincipalKind, c.APIKeyID, c.KeyName = p.kind, p.keyID, p.keyName
@@ -524,8 +628,25 @@ func (rc *request) record(c calls.Call, responseBytes int64) {
 	c.Latency, c.RequestBytes, c.ResponseBytes = time.Since(rc.start), rc.requestBytes, responseBytes
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(rc.r.Context()), 5*time.Second)
 	defer cancel()
-	if err := calls.Record(ctx, dbgen.New(rc.h.Pool), c); err != nil {
+	if rc.forwarded && c.Server != nil {
+		observability.ObserveCall(rc.gateway.Slug, c.Server.Slug, c.Latency)
+	}
+	var after calls.After
+	var prepared *capture.Prepared
+	if rc.capture != nil && rc.h.Capture != nil {
+		var err error
+		if prepared, err = rc.h.Capture.Prepare(ctx, *rc.capture); err != nil {
+			rc.h.Capture.Failed(ctx, err)
+		} else {
+			after = rc.h.Capture.Hook(prepared)
+		}
+		rc.capture = nil
+	}
+	captureErr, err := calls.Record(ctx, rc.h.Pool, c, after)
+	if err != nil {
 		rc.h.log().WarnContext(ctx, "could not record an MCP call", "err", err, "request_id", c.RequestID)
+	} else if prepared != nil {
+		rc.h.Capture.Recorded(ctx, prepared, captureErr)
 	}
 	rc.h.log().DebugContext(ctx, "mcp call", "gateway", rc.gateway.Slug, "method", c.Method, "name", c.ExposedName,
 		"outcome", c.Outcome, "error_class", c.ErrorClass, "latency_ms", c.Latency.Milliseconds(), "request_id", c.RequestID)

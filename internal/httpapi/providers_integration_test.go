@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -526,6 +527,21 @@ func TestDelegatedCredentialsEndToEnd(t *testing.T) {
 	}
 }
 
+// TestConnectReturnToEncoded: percent-encoded slashes and backslashes (any
+// case, also double-encoded) can't smuggle an open redirect through
+// returnTo; plain paths still work. (Its own person: start is rate limited.)
+func TestConnectReturnToEncoded(t *testing.T) {
+	e := newProvEnv(t)
+	for _, bad := range []string{"/%2F%2Fevil.example", "/%2fevil.example", "/%5Cevil.example", "/%5cevil.example", "/%252F%252Fevil.example",
+		"/%255cevil.example", "/settings%2Fconnections"} {
+		code, ec, _ := e.start(e.member, map[string]any{"providerId": e.provider.Id, "returnTo": bad})
+		mustCode(t, "returnTo "+bad, code, ec, 400, "invalid_return_to")
+	}
+	if to := e.connect(e.member, map[string]any{"providerId": e.provider.Id, "returnTo": "/settings/connections?connected=github"}); to != "/settings/connections?connected=github" {
+		t.Fatalf("connected = %s", to)
+	}
+}
+
 func TestDelegatedCredentialRefusals(t *testing.T) {
 	e := newProvEnv(t)
 
@@ -543,11 +559,33 @@ func TestDelegatedCredentialRefusals(t *testing.T) {
 	if last := e.scalar(`SELECT outcome || ' ' || error_class || ' ' || provider_slug FROM mcp_calls ORDER BY id DESC LIMIT 1`); last != "denied service_account github" {
 		t.Fatalf("recorded %q", last)
 	}
+	// What it reaches leaves out what needs a person's account, and says
+	// how much that is.
+	saReach := func() string {
+		t.Helper()
+		var gws []apitypes.MyGateway
+		if code := e.owner.get(saBase+"/"+sa.Id.String()+"/gateways", &gws); code != 200 || len(gws) != 1 || gws[0].NeedsPersonCount == nil {
+			t.Fatalf("service account gateways = %d %+v", code, gws)
+		}
+		return fmt.Sprintf("%d+%d", gws[0].CapabilityCount, *gws[0].NeedsPersonCount)
+	}
+	if got := saReach(); got != "0+4" {
+		t.Fatalf("service account reach = %s", got)
+	}
 	// Echo without a requirement works for it, with no provider header.
 	code, ec := e.override("echo", map[string]any{"mode": "none"})
 	mustCode(t, "override none", code, ec, 200, "")
 	if out := e.callTool(saKey, "status__echo"); out["result"] == nil {
 		t.Fatalf("service account echo = %v", out)
+	}
+	if got := saReach(); got != "1+3" {
+		t.Fatalf("service account reach after override = %s", got)
+	}
+	// A person's view of the same gateway counts them all, without the field.
+	var mine []apitypes.MyGateway
+	if code := e.member.get("/v1/me/gateways", &mine); code != 200 || len(mine) != 1 || mine[0].Slug != "support" || mine[0].CapabilityCount != 4 ||
+		mine[0].NeedsPersonCount != nil {
+		t.Fatalf("my gateways = %d %+v", code, mine)
 	}
 
 	// A turned-off provider: refused, and nobody can connect.
@@ -681,10 +719,28 @@ func TestAuthProviderManagement(t *testing.T) {
 		t.Fatalf("filter = %d %+v", code, sp.Items)
 	}
 
+	// A consent link reports the connection as it is now, not as it was
+	// when the link was made.
+	stale := requestID(e.consentURL(e.callTool(e.key, "status__provider_token"), "not_connected"))
+	linkReason := func(want string, granted []string, label bool) {
+		t.Helper()
+		var cr apitypes.ConnectRequest
+		code, ec := e.member.call("GET", "/v1/connect/requests/"+stale, nil, &cr, nil)
+		mustCode(t, "connect request", code, ec, 200, "")
+		if string(cr.Reason) != want || !slices.Equal(cr.GrantedScopes, granted) || (cr.AccountLabel != nil) != label {
+			t.Fatalf("request = %+v, want reason %s granted %v", cr, want, granted)
+		}
+	}
+	e.connect(e.member, map[string]any{"providerId": p.Id, "scopes": []string{"read:user"}})
+	linkReason("missing_scopes", []string{"read:user"}, true)
+
+	// A repeated call reuses the link; it was made for not_connected.
+	if again := requestID(e.consentURL(e.callTool(e.key, "status__provider_token"), "missing_scopes")); again != stale {
+		t.Fatalf("link not reused: %s vs %s", again, stale)
+	}
+
 	// A client ID change resets connections.
-	out := e.callTool(e.key, "status__provider_token")
-	link := e.consentURL(out, "not_connected")
-	e.connect(e.member, map[string]any{"providerId": p.Id, "requestId": requestID(link)})
+	e.connect(e.member, map[string]any{"providerId": p.Id, "scopes": []string{"repo"}})
 	var cur apitypes.AuthProvider
 	e.admin.get(base, &cur)
 	code, ec = e.admin.call("PATCH", base, map[string]any{"clientId": "another-app", "revocationUrl": nil}, &cur, ifMatch(cur.Revision))
@@ -695,6 +751,9 @@ func TestAuthProviderManagement(t *testing.T) {
 	if v := e.scalar(`SELECT status || ' ' || (access_token_cipher IS NULL)::text FROM provider_connections`); v != "needs_reconsent true" {
 		t.Fatalf("connection after client change = %s", v)
 	}
+	// Tokens erased: the link says so, with no granted scopes (the account
+	// label stays so the person knows what to reconnect).
+	linkReason("needs_reconsent", []string{}, true)
 	if v := e.scalar(`SELECT (metadata->>'connectionsReset') || ' ' || (metadata->>'clientSecretChanged') FROM audit_log
 		WHERE action = 'auth_provider.update' ORDER BY id DESC LIMIT 1`); v != "1 false" {
 		t.Fatalf("update audit = %s", v)

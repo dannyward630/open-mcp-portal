@@ -1,18 +1,20 @@
 /*
- * Call records (metadata only: never arguments or results) as a list: when,
+ * Call records (metadata; contents only where a gateway or server records them) as a list: when,
  * who (a person with the key they used or "via" the connected app, or a
  * team's service account), what was called, through which gateway to which
  * server, the outcome (with why it failed, in words, and the auth provider
  * whose account the capability needed) and how long it took.
  * A gateway's Activity tab and Admin › Calls share the columns and the
  * outcome facet. On a phone, who and when (and the gateway) move under what
- * was called, so the outcome stays in view.
+ * was called, so the outcome stays in view. What was called links to the
+ * call's own page (`detail`), and a Contents column marks recorded calls.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
+import type { ReactElement } from "react";
 import { api, unwrap } from "../../api/client";
-import { serviceAccountsQuery } from "../../api/queries";
+import { authProvidersQuery, serviceAccountsQuery } from "../../api/queries";
 import { RelativeTime, timeColumn } from "../templates/list-page";
 import { Badge } from "@/components/ui/badge/badge";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
@@ -128,12 +130,27 @@ export function CallError({ code }: { code: string }) {
   );
 }
 
-/** The auth provider whose account the capability needed (its slug, as recorded). */
+/**
+ * A recorded provider slug as the provider's name, from the providers people can connect (GET /v1/auth-providers);
+ * the slug itself for one that's turned off or gone.
+ */
+export function useProviderName(slug: string) {
+  const providers = useQuery({ ...authProvidersQuery(), enabled: Boolean(slug) });
+  return providers.data?.find((p) => p.slug === slug)?.name ?? slug;
+}
+
+/** The provider's name in the Account column, with its slug as the tooltip. */
+function ProviderName({ slug }: { slug: string }) {
+  return <span title={slug}>{useProviderName(slug)}</span>;
+}
+
+/** The auth provider whose account the capability needed (named when it's known, else its slug as recorded). */
 function ProviderBadge({ slug }: { slug: string }) {
+  const name = useProviderName(slug);
   return (
     <span className={s.secondary}>
       <Badge size="sm" variant="outline" title="The account the capability needed">
-        {`Account: ${slug}`}
+        {`Account: ${name}`}
       </Badge>
     </span>
   );
@@ -142,11 +159,13 @@ function ProviderBadge({ slug }: { slug: string }) {
 type Opts = {
   gateway?: boolean;
   adminLinks?: boolean;
+  /** The call's own page, as a link element (team: /teams/$team/calls/$callId; admin: /admin/calls/$callId). */
+  detail?: (c: McpCall) => ReactElement;
   /** A phone-width window (NARROW_QUERY): When, Who and Gateway start hidden and show under Called instead. */
   narrow?: boolean;
 };
 
-export function callColumns({ gateway = false, adminLinks = false, narrow = false }: Opts = {}): DataTableColumn<McpCall>[] {
+export function callColumns({ gateway = false, adminLinks = false, detail, narrow = false }: Opts = {}): DataTableColumn<McpCall>[] {
   return [
     { ...timeColumn<McpCall>("occurredAt", "When", (c) => c.occurredAt), sortable: false, defaultHiddenNarrow: true },
     {
@@ -165,7 +184,7 @@ export function callColumns({ gateway = false, adminLinks = false, narrow = fals
         <CellText
           className={s.compactCell}
           wrap="anywhere"
-          primary={<span className={s.mono}>{what(c)}</span>}
+          primary={detail ? <TextLink render={detail(c)} className={s.mono}>{what(c)}</TextLink> : <span className={s.mono}>{what(c)}</span>}
           secondary={narrow ? <NarrowLine call={c} gateway={gateway} /> : c.exposedName ? c.method : undefined}
         />
       ),
@@ -221,7 +240,21 @@ export function callColumns({ gateway = false, adminLinks = false, narrow = fals
       header: "Account",
       accessor: (c) => c.providerSlug ?? "",
       defaultHidden: true,
-      cell: (c) => (c.providerSlug ? <span className={s.mono}>{c.providerSlug}</span> : <span className={s.muted}>—</span>),
+      cell: (c) => (c.providerSlug ? <ProviderName slug={c.providerSlug} /> : <span className={s.muted}>—</span>),
+    },
+    {
+      id: "captured",
+      header: "Contents",
+      accessor: (c) => (c.captured ? "Recorded" : ""),
+      defaultHiddenNarrow: true,
+      cell: (c) =>
+        c.captured ? (
+          <Badge size="sm" tone="info" title="Its arguments and result were recorded; open the call to view them">
+            Recorded
+          </Badge>
+        ) : (
+          <span className={s.muted}>—</span>
+        ),
     },
     { id: "latency", header: "Time", accessor: (c) => c.latencyMs, cell: (c) => <span className={s.nowrap}>{c.latencyMs.toLocaleString()} ms</span>, defaultHiddenNarrow: true },
     { id: "size", header: "Size", accessor: (c) => c.requestBytes + c.responseBytes, defaultHidden: true, cell: (c) => <span className={s.nowrap}>{`${bytes(c.requestBytes)} in · ${bytes(c.responseBytes)} out`}</span> },
@@ -232,5 +265,6 @@ export function callColumns({ gateway = false, adminLinks = false, narrow = fals
 
 export const noCalls = <EmptyState size="compact" icon={<Activity />} title="No calls match these filters." description="Clear a filter to see more." />;
 
-/** Call metadata only: said once above every call list. */
-export const callsPrivacy = "Only metadata is recorded: who called what, when, and how it went. Arguments and results are never stored.";
+/** What a call record holds: said once above every call list. */
+export const callsPrivacy =
+  "Each call is recorded as metadata: who called what, when, and how it went. Arguments and results are kept only for gateways and servers that record call contents (marked Recorded), and opening them is audited.";

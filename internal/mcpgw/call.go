@@ -100,6 +100,7 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 	isError := false
 	switch kind {
 	case upstream.KindTool:
+		rc.captureCall(o, args, target, token, cred)
 		res, _, err := client.CallTool(ctx, target, o.Capability.Name, args)
 		if err != nil {
 			rc.upstreamFailed(rec, err)
@@ -116,6 +117,7 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 				return
 			}
 		}
+		rc.captureCall(o, args, target, token, cred)
 		res, _, err := client.GetPrompt(ctx, target, o.Capability.Name, sargs)
 		if err != nil {
 			rc.upstreamFailed(rec, err)
@@ -139,6 +141,7 @@ func (rc *request) relay(rec calls.Call, result any, isError bool) {
 		rc.record(rec, n)
 		return
 	}
+	rc.captureResult(encoded)
 	n := rc.reply(json.RawMessage(encoded))
 	rec.Outcome = calls.OutcomeOK
 	if isError {
@@ -207,6 +210,9 @@ func (rc *request) upstreamFailed(rec calls.Call, err error) {
 		code, rec.Outcome = codeInvalidParams, calls.OutcomeBadRequest
 	case ue.RPCCode == codeResourceNotFound:
 		code, rec.Outcome, rec.ErrorClass = codeResourceNotFound, calls.OutcomeBadRequest, upstream.ClassNotFound
+	}
+	if ue.RPCCode != 0 {
+		rc.captureError(code, ue.Message)
 	}
 	n := rc.fail(code, ue.Message)
 	rc.record(rec, n)

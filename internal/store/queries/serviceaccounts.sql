@@ -50,8 +50,8 @@ SELECT count(*)::bigint FROM service_account_keys
 WHERE service_account_id = $1 AND revoked_at IS NULL AND expires_at > now();
 
 -- name: InsertServiceAccountKey :one
-INSERT INTO service_account_keys (service_account_id, name, prefix, digest, created_by, expires_at)
-VALUES (@service_account_id, @name, @prefix, @digest, @created_by, @expires_at)
+INSERT INTO service_account_keys (service_account_id, name, prefix, digest, created_by, expires_at, pepper_id)
+VALUES (@service_account_id, @name, @prefix, @digest, @created_by, @expires_at, sqlc.narg(pepper_id))
 RETURNING *;
 
 -- name: ListServiceAccountKeys :many

@@ -21,6 +21,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/authz"
 	"github.com/ncecere/open-mcp-gateway/internal/config"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 )
@@ -73,10 +74,12 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 
 // Service holds the dependencies for sign-in and session handling.
 type Service struct {
-	cfg     config.Config
-	pool    *pgxpool.Pool
-	q       *dbgen.Queries
-	limiter *limiter
+	cfg  config.Config
+	pool *pgxpool.Pool
+	q    *dbgen.Queries
+	// limiter counts sign-in attempts per address and /v1 requests per
+	// person (in memory until SetRateStore installs the shared store).
+	limiter ratelimit.Store
 	log     *slog.Logger
 
 	oidcMu sync.Mutex
@@ -88,7 +91,7 @@ func NewService(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *Servic
 		cfg:     cfg,
 		pool:    pool,
 		q:       dbgen.New(pool),
-		limiter: newLimiter(),
+		limiter: ratelimit.New(),
 		log:     log,
 	}
 }
@@ -207,7 +210,7 @@ func (s *Service) RequireSession(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if !s.admit(w, "user:"+row.User.ID.String(), s.cfg.RequestsPerMinute, "Too many requests. Try again shortly.") {
+		if !s.admit(w, r, "user:"+row.User.ID.String(), s.cfg.RequestsPerMinute, "Too many requests. Try again shortly.") {
 			return
 		}
 		id := Identity{User: row.User, SessionID: row.Session.ID.String(), CSRFToken: row.Session.CSRFToken}
@@ -260,16 +263,21 @@ func (s *Service) LoginURL(next string) string {
 	return "/?next=" + url.QueryEscape(next)
 }
 
-// admitLogin limits sign-in attempts per client address.
+// SetRateStore makes sign-in and /v1 limits use a shared store (the
+// PostgreSQL counters every replica uses).
+func (s *Service) SetRateStore(st ratelimit.Store) { s.limiter = st }
+
+// admitLogin limits sign-in attempts per client address (hashed).
 func (s *Service) admitLogin(w http.ResponseWriter, r *http.Request) bool {
-	return s.admit(w, "login:"+Digest(s.clientIP(r)), s.cfg.LoginAttemptsPerMinute, "Too many sign-in attempts. Try again shortly.")
+	return s.admit(w, r, ratelimit.Bucket("login", s.clientIP(r)), s.cfg.LoginAttemptsPerMinute, "Too many sign-in attempts. Try again shortly.")
 }
 
-func (s *Service) admit(w http.ResponseWriter, key string, limit int, message string) bool {
-	if limit <= 0 {
-		return true
+func (s *Service) admit(w http.ResponseWriter, r *http.Request, key string, limit int, message string) bool {
+	ok, wait, err := ratelimit.Allow(r.Context(), s.limiter, key, limit)
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return false
 	}
-	ok, wait := s.limiter.allow(key, limit, time.Minute)
 	if !ok {
 		w.Header().Set("Retry-After", retryAfter(wait))
 		httpx.Error(w, http.StatusTooManyRequests, "rate_limited", message)

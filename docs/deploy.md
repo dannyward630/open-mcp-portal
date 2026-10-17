@@ -48,9 +48,12 @@ file named by `OMG_CONFIG_FILE`. Each secret can also be read from a file named 
 |---|---|---|
 | `APP_URL` | yes | Public **https** origin, for example `https://mcp.example.org`. It must match the Ingress host. |
 | `DATABASE_URL` | yes (secret) | `postgres://user:pass@host:5432/db?sslmode=require`. URL-encode the password. |
-| `ENCRYPTION_KEY` | yes (secret) | 32 random bytes, base64. Encrypts MCP server header values and the identity signing keys. |
-| `ENCRYPTION_KEY_PREVIOUS` | while rotating (secret) | The old key, still accepted for decryption. |
-| `API_KEY_PEPPER` | yes (secret) | 32 random bytes, base64. Keys the HMAC that stores personal API keys. **Changing it invalidates every API key**, and it has no `_PREVIOUS`. |
+| `ENCRYPTION_KEY` | yes (secret) | 32 random bytes, base64. Encrypts MCP server header values, identity signing keys, auth provider client secrets, people's provider tokens and captured call payloads. |
+| `ENCRYPTION_KEY_PREVIOUS` | while rotating (secret) | The old key, still accepted for decryption until `rotate-keys` re-encrypts everything. See [Key rotation](#key-rotation). |
+| `API_KEY_PEPPER` | yes (secret) | 32 random bytes, base64. Keys the HMAC that stores API keys, service account keys and connected apps' tokens. Rotate it with `API_KEY_PEPPER_PREVIOUS`, never by just replacing it. |
+| `API_KEY_PEPPER_PREVIOUS` | while rotating (secret) | The old pepper: keys and tokens made with it keep working, and keys are re-digested on use. |
+| `METRICS_ADDR` | optional | Prometheus `/metrics` on its own listener, for example `:9090` (empty: off). See [Metrics](#metrics). |
+| `RETENTION_INTERVAL`, `RETENTION_BATCH_SIZE` | optional | How often old data is deleted (default 15m) and rows per transaction (1000). Periods are set in Admin › Retention. |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID` | yes | The only production sign-in method. The redirect URI to register is `${APP_URL}/auth/callback`. |
 | `OIDC_CLIENT_SECRET` | yes (secret) | |
 | `BOOTSTRAP_ADMIN_SUBJECT` | first install | The OIDC `sub` made platform admin on first sign-in. It takes effect once. |
@@ -123,7 +126,7 @@ kubectl -n open-mcp-gateway create secret generic open-mcp-gateway-runtime \
 |---|---|
 | `DATABASE_URL` | `migrate` init container and `gateway` |
 | `ENCRYPTION_KEY`, `API_KEY_PEPPER`, `OIDC_CLIENT_SECRET` | `gateway` (required: a missing key stops the pod with `CreateContainerConfigError`) |
-| `ENCRYPTION_KEY_PREVIOUS` | `gateway`, optional, only during a rotation |
+| `ENCRYPTION_KEY_PREVIOUS`, `API_KEY_PEPPER_PREVIOUS` | `gateway`, optional, only during a rotation |
 
 Store `ENCRYPTION_KEY` and `API_KEY_PEPPER` in your secrets store as well. A database backup is useless without them:
 see [Backups](#backups). Secrets are not hashed into the pod template, so after changing one, run
@@ -157,6 +160,9 @@ pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `A
 - **Service `open-mcp-gateway`**: port `http` 80 → 8088. No session affinity.
 - **PodDisruptionBudget**: `maxUnavailable: 1`. Unhealthy pods never block a drain.
 - **ServiceAccount** with `automountServiceAccountToken: false`. The gateway never calls the Kubernetes API.
+- **Metrics port**: none by default. With `METRICS_ADDR=:9090`, add the container port `metrics` (commented in the
+  Deployment), a Service port and a NetworkPolicy from the monitoring namespace; the example overlay does all three and
+  keeps an example `ServiceMonitor` beside it. See [Metrics](#metrics).
 - **NetworkPolicies** select only the gateway pods, so the base can share a namespace:
   - default deny;
   - ingress on TCP 8088 from the ingress controller's namespace (placeholder `ingress-controller`; patch it);
@@ -210,12 +216,16 @@ balancers stop sending traffic. It then gives in-flight requests `SHUTDOWN_TIMEO
 
 - The gateway is stateless, so scale the Deployment horizontally. All shared state is in PostgreSQL.
 - Background loops:
-  - The MCP server health checks (`HEALTH_CHECK_INTERVAL`, default 5m) and the signing-key rotation take a PostgreSQL
-    advisory lock, so one replica runs each at a time.
-  - Session cleanup runs on every replica. Its deletes are idempotent.
+  - The MCP server health checks (`HEALTH_CHECK_INTERVAL`, default 5m), the signing-key rotation, the retention loop
+    (`RETENTION_INTERVAL`, default 15m) and the usage rollup (every 5 minutes) take a PostgreSQL advisory lock, so one
+    replica runs each at a time (`omg_loop_leader` says which).
+  - Session cleanup and the deletion of old rate limit windows run on every replica. Their deletes are idempotent.
 - Each replica holds a pgx connection pool. Size Postgres `max_connections` (or a pooler) for replicas × pool size.
-- Rate limits (`REQUESTS_PER_MINUTE`, `LOGIN_ATTEMPTS_PER_MINUTE`) are counted per process in this release. With N
-  replicas, the effective limit is up to N times the setting.
+- **Rate limits are shared by every replica.** The limits on `/mcp/{slug}` (Admin › Limits), the OAuth endpoints,
+  connect start, sign-in (`LOGIN_ATTEMPTS_PER_MINUTE`) and `/v1` (`REQUESTS_PER_MINUTE`) are counted in one PostgreSQL
+  table (`rate_limit_counters`, UNLOGGED: counters may be lost on a crash or failover) in fixed one-minute windows. One
+  statement per `/mcp` request; a single gateway's counter row is fine to a few thousand requests per second. Client
+  addresses are stored only as SHA-256 digests. Front unauthenticated traffic with the ingress's own limits.
 
 ## Upgrades
 
@@ -234,18 +244,66 @@ backups:
 - Without `ENCRYPTION_KEY`, restored MCP server header values and identity signing keys cannot be decrypted.
 - Without `API_KEY_PEPPER`, every API key stops working.
 
+## Metrics
+
+Set `METRICS_ADDR` (for example `:9090`) to serve Prometheus metrics at `/metrics` on a listener of its own. It has no
+authentication: allow only your monitoring namespace (the example overlay's `networkpolicy-metrics.yaml`). Labels never
+carry user, key, service account, team or request IDs; gateway, server and provider slugs are limited to existing
+objects (at most `METRICS_MAX_OBJECTS`, default 200 each, then `other`) and dropped when the object is deleted.
+
+| Metric | Labels |
+|---|---|
+| `omg_build_info` | `version`, `commit` |
+| `omg_mcp_requests_total`, `omg_mcp_request_duration_seconds` | `method` (MCP methods, `notification`, else `other`), `outcome` |
+| `omg_mcp_call_duration_seconds` | `gateway`, `server` |
+| `omg_mcp_rate_limited_total` | `limit` |
+| `omg_payload_captures_total`, `omg_payload_capture_errors_total`, `omg_payload_redactions_total` | `rule` (redactions) |
+| `omg_provider_token_refresh_total` | `provider`, `result` (`ok`, `refused`, `unavailable`) |
+| `omg_server_health_checks_total`, `omg_mcp_servers` | `result` / `state` (`healthy`, `failing`, `unknown`) |
+| `omg_http_requests_total`, `omg_http_request_duration_seconds` | `route` (pattern), `method`, `code` (`2xx`…) |
+| `omg_retention_deleted_total`, `omg_retention_last_success_timestamp_seconds` | `kind` |
+| `omg_usage_rollup_last_success_timestamp_seconds`, `omg_loop_leader` | `loop` |
+| `omg_db_pool_*` | |
+
+Plus the Go and process collectors. Useful alerts: `omg_payload_capture_errors_total` increasing; no replica with
+`omg_loop_leader{loop="retention"} == 1` for an hour; `omg_mcp_servers{state="failing"} > 0`; a high rate of
+`omg_mcp_rate_limited_total`.
+
 ## Key rotation
 
-- **`ENCRYPTION_KEY`.** Move the current value to `ENCRYPTION_KEY_PREVIOUS`, set a new `ENCRYPTION_KEY`, and roll the
-  pods. Old values still decrypt. There is no bulk re-encrypt command yet: values are re-sealed when they are re-entered
-  (MCP server headers) or replaced (signing keys rotate every 30 days). Keep the previous key until both have happened.
-- **`API_KEY_PEPPER`.** Changing it invalidates every API key, and there is no `_PREVIOUS`.
+**`ENCRYPTION_KEY`** seals MCP server header values, signing keys' private keys, auth provider client secrets,
+provider connection tokens, PKCE verifiers, consent request IDs and captured payloads.
+
+1. **Set previous.** Put the current value in `ENCRYPTION_KEY_PREVIOUS` and a new one (`openssl rand -base64 32`) in
+   `ENCRYPTION_KEY`, in the runtime secret.
+2. **Roll** every pod (`kubectl rollout restart`), and wait until no pod runs with the old configuration: new values are
+   sealed with the new key, old ones still open.
+3. **Dry run.** `kubectl exec deploy/open-mcp-gateway -- /open-mcp-gateway rotate-keys --dry-run` checks that every
+   sealed value opens with one of the two keys and counts them per column. If any doesn't, it stops and names the table
+   and row: find the key it was sealed with, or re-enter or delete that value.
+4. **Rotate.** `… rotate-keys` re-seals values still on the previous key in batches (`--batch-size`, default 100) with
+   row locks; safe while serving and safe to run again. It audits `platform.secrets_reencrypt` per batch and
+   `platform.key_rotation` (counts only).
+5. **Verify.** `… doctor` reports `keys encryption: … ENCRYPTION_KEY_PREVIOUS can be removed`.
+6. **Remove `ENCRYPTION_KEY_PREVIOUS`** and roll again. Keep the old key with your backups made before the rotation.
+
+**`API_KEY_PEPPER`** keys the digests of API keys, service account keys and connected apps' tokens. Digests can't be
+recomputed without the key, so rotation happens on use:
+
+1. Put the current value in `API_KEY_PEPPER_PREVIOUS` and a new one in `API_KEY_PEPPER`; roll the pods.
+2. Keys used from then on are re-digested with the new pepper (audited `api_key.pepper_rehash` /
+   `service_account_key.pepper_rehash`). Connected apps' access tokens expire within an hour and their refresh tokens are
+   replaced when used.
+3. `rotate-keys` (or `rotate-keys --dry-run`) lists usable keys still on the previous pepper (kind, ID, name, owner or
+   team, last use); `doctor` counts them.
+4. After 2-4 weeks, remove `API_KEY_PEPPER_PREVIOUS`. Keys never used meanwhile stop working; their owners create new
+   ones. Connected apps that weren't used sign in again.
 
 ## Not covered yet
 
-- No metrics endpoint, ServiceMonitor, dashboards, alerts or tracing. Logs are JSON on stdout.
+- No dashboards, alert rules or tracing (metrics: [Metrics](#metrics)). Logs are JSON on stdout.
 - No in-cluster PostgreSQL component, backup CronJob or restore procedure. Bring your own Postgres and backups.
 - No `k8s-smoke` (kind) test. `make k8s-validate` only renders the manifests and checks their schemas.
 - No published image or release workflow. The example's digest is a placeholder.
 - No Helm chart and no HorizontalPodAutoscaler.
-- No rate limits shared across replicas, and no SSE relay.
+- No SSE relay.

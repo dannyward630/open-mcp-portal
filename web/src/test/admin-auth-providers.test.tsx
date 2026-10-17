@@ -148,6 +148,25 @@ describe("Admin → Auth providers", () => {
     await waitFor(() => expect(patches(calls)).toHaveLength(1));
   });
 
+  it("names the servers that still require it before Delete is tried, when the record counts some", async () => {
+    const u = userEvent.setup();
+    const calls = mockApi(
+      routes("platform_admin", {
+        [`GET ${base}/${providerId}`]: () => authProvider({ serverCount: 2 }),
+        "GET /v1/admin/mcp-servers": () => page([mcpServer({ id: "s1", slug: "github-tools" }), mcpServer({ id: "s2", slug: "issues" })]),
+      }),
+    );
+    renderApp(`${record}?tab=settings`);
+    await u.click(await screen.findByRole("button", { name: "Delete provider" }));
+    const ask = await screen.findByRole("alertdialog", { name: "Delete GitHub?" });
+    expect(within(ask).getByText(/2 servers still require GitHub, so it can't be deleted/)).toBeInTheDocument();
+    expect(await within(ask).findByRole("link", { name: "platform-tools / github-tools" })).toHaveAttribute("href", "/admin/servers/s1");
+    expect(within(ask).getByRole("link", { name: "platform-tools / issues" })).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "GET" && c.url === "/v1/admin/mcp-servers" && c.search.get("provider") === providerId)).toBe(true);
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    expect(await axe(ask)).toHaveNoViolations();
+  });
+
   it("names the servers that still require it when Delete is refused (409 in_use)", async () => {
     const u = userEvent.setup();
     const servers = [{ id: "s1", slug: "github-tools", teamSlug: "platform-tools" }];

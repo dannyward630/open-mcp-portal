@@ -42,6 +42,9 @@ const pages = {
   serviceAccounts: () => import("./pages/team/service-accounts/routes"),
   adminProviders: () => import("./pages/admin/providers/routes"),
   connect: () => import("./pages/connect/routes"),
+  teamUsage: () => import("./pages/team/usage"),
+  teamCalls: () => import("./pages/team/calls/routes"),
+  adminOperations: () => import("./pages/admin/operations/routes"),
 };
 const lazy = lazyRouteComponent;
 type Page = ReturnType<typeof lazyRouteComponent>;
@@ -114,8 +117,13 @@ const apiKeysRoute = createRoute({
 });
 /** The MCP clients the person allowed with OAuth sign-in. */
 const connectedAppsRoute = createRoute({ getParentRoute: () => appRoute, path: "settings/connected-apps", component: lazy(pages.oauth, "ConnectedAppsPage") });
-/** The accounts the person connected with auth providers (GitHub, Google…) so tools can act as them. */
-const myConnectionsRoute = createRoute({ getParentRoute: () => appRoute, path: "settings/connections", component: lazy(pages.account, "MyConnectionsPage") });
+/** The accounts the person connected with auth providers (GitHub, Google…) so tools can act as them; ?connected= after connecting from here. */
+const myConnectionsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "settings/connections",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: lazy(pages.account, "MyConnectionsPage"),
+});
 
 /* ---------------- my gateways (everyone signed in) ---------------- */
 
@@ -195,6 +203,16 @@ const teamServiceAccountRoute = createRoute({
   component: lazy(pages.serviceAccounts, "ServiceAccountPage"),
 });
 
+/** The team's usage; the range and grouping (?range=, ?groupBy=…) pass through. */
+const teamUsageRoute = createRoute({
+  getParentRoute: () => teamRoute,
+  path: "usage",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: lazy(pages.teamUsage, "TeamUsagePage"),
+});
+/** One of the team's call records (linked from the gateways' Activity tabs). */
+const teamCallRoute = createRoute({ getParentRoute: () => teamRoute, path: "calls/$callId", component: lazy(pages.teamCalls, "TeamCallPage") });
+
 /* ---------------- admin ---------------- */
 
 const adminRoute = createRoute({ getParentRoute: () => appRoute, path: "admin", component: AdminGate });
@@ -232,6 +250,8 @@ const appTree = appRoute.addChildren([
     teamGatewayRoute,
     teamServiceAccountsRoute,
     teamServiceAccountRoute,
+    teamUsageRoute,
+    teamCallRoute,
   ]),
   adminRoute.addChildren([
     adminIndexRoute,
@@ -249,6 +269,11 @@ const appTree = appRoute.addChildren([
     adminList("auth-providers", lazy(pages.adminProviders, "AdminAuthProvidersPage")),
     adminTabs("auth-providers/$providerId", authProviderTabs, lazy(pages.adminProviders, "AdminAuthProviderPage")),
     adminList("calls", lazy(pages.adminGateways, "AdminCallsPage")),
+    adminList("calls/$callId", lazy(pages.adminGateways, "AdminCallPage")),
+    adminList("usage", lazy(pages.adminOperations, "AdminUsagePage")),
+    adminList("limits", lazy(pages.adminOperations, "AdminLimitsPage")),
+    adminList("retention", lazy(pages.adminOperations, "AdminRetentionPage")),
+    adminList("capture", lazy(pages.adminOperations, "AdminCapturePage")),
     adminList("audit", lazy(pages.adminAudit, "AdminAuditPage")),
   ]),
 ]);

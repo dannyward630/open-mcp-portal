@@ -13,6 +13,7 @@ import { DetailPage } from "../templates/detail-page";
 import type { ActionItem } from "../templates/action-menu";
 import { TextLink } from "@/components/ui/text-link/text-link";
 import s from "../../pages/shared.module.css";
+import { CaptureBadge } from "../capture";
 import { EnabledBadge, PendingChangesBadge, PublishStateBadge } from "./badges";
 import { CapabilitiesTab } from "./capabilities-tab";
 import { ServerNotices } from "./catalog-card";
@@ -43,6 +44,7 @@ export function ServerRecord({ server, scope, abilities, notices, links = [] }: 
           <PublishStateBadge state={server.publishState} />
           <PendingChangesBadge count={server.pendingChanges} />
           {!server.enabled && <EnabledBadge enabled={false} />}
+          {server.capturePayloads && <CaptureBadge />}
         </span>
       }
       description={server.description || undefined}

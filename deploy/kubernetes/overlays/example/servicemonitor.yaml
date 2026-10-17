@@ -1,0 +1,22 @@
+# An example ServiceMonitor for the Prometheus Operator. Not in the
+# kustomization's resources: it needs the operator's CRDs. Add it there (or
+# copy it) when the cluster has them; the release label is whatever your
+# Prometheus selects ServiceMonitors by.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: open-mcp-gateway
+  namespace: open-mcp-gateway
+  labels:
+    app.kubernetes.io/name: open-mcp-gateway
+    app.kubernetes.io/part-of: open-mcp-gateway
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/component: gateway
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

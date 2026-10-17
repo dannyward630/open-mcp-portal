@@ -30,6 +30,11 @@ export const terms = {
   calls: "Calls",
   authProviders: "Auth providers",
   myConnections: "My connections",
+  usage: "Usage",
+  limits: "Limits",
+  retention: "Retention",
+  payloadCapture: "Payload capture",
+  limitsAndRetention: "Limits & retention",
 } as const;
 
 /** A switchable object's state. */

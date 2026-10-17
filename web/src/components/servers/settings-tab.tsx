@@ -8,7 +8,9 @@
  * names the provider and scopes whose user token the server receives. Under
  * approval_required, a published server goes back to review (pending) when
  * its URL changes or its requirement widens what a capability receives: the
- * form says so before the save, and the saved message after it.
+ * form says so before the save, and the saved message after it. "Record
+ * call contents" is for the team's owners and admins (editors read it; it's
+ * only sent when changed) and asks first when turned on.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -17,7 +19,9 @@ import { api, ApiError, ifMatch, unwrap } from "../../api/client";
 import { authProvidersQuery } from "../../api/queries";
 import { invalidScopeText, scopesProblem } from "../providers/labels";
 import { useAuthConfig } from "../../session";
+import { captureWhat, useCaptureRetention } from "../capture";
 import { ConfirmMutationDialog } from "../confirm-dialog";
+import { Switch } from "@/components/ui/switch/switch";
 import { Alert } from "@/components/ui/alert/alert";
 import { useRevisionForm } from "../templates/revision-form";
 import { DangerAction, DangerZone, SettingsPage, SettingsSection } from "../templates/settings-page";
@@ -32,7 +36,7 @@ import { RequirementFields } from "./requirement-section";
 import { capabilitiesQuery, invalidateServer, type ServerAbilities, type ServerScope, storeServer } from "./scope";
 import { type AuthEdit, AuthFields, EnabledSwitch, type ServerForm, serverFieldErrors, serverProblems, TimeoutField, UrlField } from "./server-fields";
 
-type SettingsForm = ServerForm & { requirement: RequirementForm };
+type SettingsForm = ServerForm & { requirement: RequirementForm; capturePayloads: boolean };
 
 const formOf = (x: McpServer): SettingsForm => ({
   name: x.name,
@@ -42,6 +46,7 @@ const formOf = (x: McpServer): SettingsForm => ({
   timeoutSeconds: x.timeoutSeconds,
   enabled: x.enabled,
   requirement: requirementFormOf(x),
+  capturePayloads: x.capturePayloads ?? false,
 });
 const labels = {
   name: "Name",
@@ -51,6 +56,7 @@ const labels = {
   timeoutSeconds: "Timeout (seconds)",
   enabled: "Enabled",
   requirement: "User authorization",
+  capturePayloads: "Record call contents",
 };
 const noAuthEdit: AuthEdit = { value: "", remove: false };
 
@@ -87,6 +93,8 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
   const caps = useQuery(capabilitiesQuery(scope, server.id));
   const [auth, setAuth] = useState<AuthEdit>(noAuthEdit);
   const [submitted, setSubmitted] = useState(false);
+  const [confirmingCapture, setConfirmingCapture] = useState<true | null>(null);
+  const kept = useCaptureRetention(server.teamSlug, false);
   const save = useMutation({
     mutationFn: async (_: { before: McpServer; urlChanged: boolean }) => {
       const name = form.authHeaderName.trim();
@@ -104,11 +112,13 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
             enabled: form.enabled,
             ...authBody,
             ...(requirement === undefined ? {} : { requirement }),
+            ...(form.capturePayloads !== saved.capturePayloads ? { capturePayloads: form.capturePayloads } : {}),
           },
         }),
       );
     },
     onSuccess: (updated, { before, urlChanged }) => {
+      setConfirmingCapture(null);
       setAuth(noAuthEdit);
       setSubmitted(false);
       storeServer(qc, updated);
@@ -155,7 +165,9 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       error={errors.url || reqRefused ? undefined : save.error}
       onSave={() => {
         setSubmitted(true);
-        if (!invalid) save.mutate({ before: server, urlChanged });
+        if (invalid) return;
+        if (!saved.capturePayloads && form.capturePayloads) setConfirmingCapture(true);
+        else save.mutate({ before: server, urlChanged });
       }}
       onDiscard={() => {
         setForm(saved);
@@ -209,7 +221,36 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
           </Alert>
         )}
       </SettingsSection>
+      <SettingsSection
+        title="Record call contents"
+        description="Off by default: call records hold only who called what, when and how it went. Gateways using this server, and their callers, see that it records."
+      >
+        <Switch
+          label="Record call contents"
+          description={[
+            `${captureWhat} Applies to calls through any gateway.`,
+            `Readable by ${server.teamName}'s owners and admins and by platform admins and auditors; every view is recorded in the audit log.`,
+            kept,
+            canEdit && !abilities.canManage ? "Only the team's owners and admins can change it." : undefined,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          disabled={!canEdit || !abilities.canManage}
+          checked={form.capturePayloads}
+          onCheckedChange={(v) => set({ capturePayloads: v })}
+        />
+      </SettingsSection>
       {scope.kind === "team" && abilities.canManage && <DeleteServer server={server} />}
+      <ConfirmMutationDialog
+        target={confirmingCapture}
+        onClose={() => setConfirmingCapture(null)}
+        mutation={save}
+        onConfirm={() => save.mutate({ before: server, urlChanged })}
+        tone="primary"
+        title={`Record what's sent to ${server.name}?`}
+        description={`${captureWhat} This covers calls through every gateway that offers its capabilities, including other teams' gateways; their callers are told it records. Readable by ${server.teamName}'s owners and admins and by platform staff; every view is audited.`}
+        confirmLabel="Record call contents"
+      />
     </SettingsPage>
   );
 }

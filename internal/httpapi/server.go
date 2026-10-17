@@ -15,18 +15,22 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
 	"github.com/ncecere/open-mcp-gateway/internal/auth"
 	"github.com/ncecere/open-mcp-gateway/internal/calls"
+	"github.com/ncecere/open-mcp-gateway/internal/capture"
 	"github.com/ncecere/open-mcp-gateway/internal/config"
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
 	"github.com/ncecere/open-mcp-gateway/internal/identity"
+	"github.com/ncecere/open-mcp-gateway/internal/limits"
 	"github.com/ncecere/open-mcp-gateway/internal/oauth"
 	"github.com/ncecere/open-mcp-gateway/internal/platform"
 	"github.com/ncecere/open-mcp-gateway/internal/providers"
 	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
+	"github.com/ncecere/open-mcp-gateway/internal/retention"
 	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-gateway/internal/teams"
+	"github.com/ncecere/open-mcp-gateway/internal/usage"
 )
 
 // Deps are the dependencies shared by handlers.
@@ -50,6 +54,15 @@ type Deps struct {
 	Providers *providers.Service
 	// MCP serves /mcp/{slug} (internal/mcpgw).
 	MCP http.Handler
+	// Limits, Capture, Retention and Usage are Phase 6's operations
+	// (docs/phase6-operations.md).
+	Limits    *limits.Service
+	Capture   *capture.Service
+	Retention *retention.Service
+	Usage     *usage.Service
+	// RateStore counts the OAuth endpoints', connect start's and other
+	// per-minute limits (nil: in memory, for tests).
+	RateStore ratelimit.Store
 
 	// Web is the built single-page app; WebBuilt is false when only the
 	// placeholder is embedded.
@@ -62,8 +75,9 @@ type Deps struct {
 type api struct {
 	Deps
 	q *dbgen.Queries
-	// limiter counts the OAuth endpoints' requests per address.
-	limiter *ratelimit.Limiter
+	// limiter counts the OAuth endpoints' requests per address and connect
+	// starts per person (Deps.RateStore).
+	limiter ratelimit.Store
 }
 
 // route is one entry in the served surface.
@@ -84,14 +98,17 @@ func opsRoutes(d Deps) []route {
 
 // apiRoutes is the full served surface, grouped by area.
 func apiRoutes(d Deps) []route {
-	a := &api{Deps: d, limiter: ratelimit.New()}
+	a := &api{Deps: d, limiter: d.RateStore}
+	if a.limiter == nil {
+		a.limiter = ratelimit.New()
+	}
 	if d.Pool != nil {
 		a.q = dbgen.New(d.Pool)
 	}
 	routes := opsRoutes(d)
 	for _, group := range [][]route{a.authRoutes(), a.teamRoutes(), a.platformAdminRoutes(), a.mcpServerRoutes(), a.mcpAdminRoutes(),
 		a.gatewayRoutes(), a.gatewayAdminRoutes(), a.meGatewayRoutes(), a.mcpRoutes(), a.oauthRoutes(), a.oauthRESTRoutes(),
-		a.serviceAccountRoutes(), a.serviceAccountAdminRoutes(), a.providerRoutes()} {
+		a.serviceAccountRoutes(), a.serviceAccountAdminRoutes(), a.providerRoutes(), a.operationsRoutes(), a.operationsAdminRoutes()} {
 		routes = append(routes, group...)
 	}
 	return routes

@@ -41,6 +41,8 @@ function teamLink(team: string, e: AuditEntry): ReactElement | null {
     case "service_account":
     case "service_account_key":
       return serviceAccountLink(team, e);
+    case "mcp_call":
+      return /^\d+$/.test(e.targetId) ? <Link to="/teams/$team/calls/$callId" params={{ team, callId: e.targetId }} /> : null;
     default:
       return null;
   }
@@ -65,6 +67,8 @@ function platformLink(e: AuditEntry): ReactElement | null {
       return e.teamSlug ? serviceAccountLink(e.teamSlug, e) : null;
     case "auth_provider":
       return <Link to="/admin/auth-providers/$providerId" params={{ providerId: id }} />;
+    case "mcp_call":
+      return /^\d+$/.test(id) ? <Link to="/admin/calls/$callId" params={{ callId: id }} /> : null;
     case "provider_connection":
     case "oauth_grant": {
       // A connected app or account is listed on its person's admin page.

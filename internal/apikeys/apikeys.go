@@ -36,6 +36,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/audit"
 	"github.com/ncecere/open-mcp-gateway/internal/authz"
 	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-gateway/internal/secrets"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
 )
@@ -87,8 +88,17 @@ type Service struct {
 	pool     *pgxpool.Pool
 	q        *dbgen.Queries
 	pepper   []byte
+	previous []byte
 	gateways Gateways
 }
+
+// SetPreviousPepper accepts keys digested with API_KEY_PEPPER_PREVIOUS
+// (decoded) and re-digests them with the current pepper when used.
+func (s *Service) SetPreviousPepper(p []byte) { s.previous = p }
+
+// PepperID is the pepper_id stored with a digest: the first 8 bytes of
+// SHA-256 of the pepper.
+func PepperID(pepper []byte) []byte { return secrets.KeyID(pepper) }
 
 // New returns a Service; pepper is API_KEY_PEPPER (decoded), and gateways
 // checks the gateways a new key is limited to (nil: keys can't be limited).
@@ -234,7 +244,7 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, in CreateInput) (Cr
 		}
 		k, err := q.InsertAPIKey(ctx, dbgen.InsertAPIKeyParams{
 			UserID: a.UserID, Name: name, Prefix: secret[:prefixLen], Digest: Digest(s.pepper, secret),
-			ExpiresAt: time.Now().Add(time.Duration(days) * 24 * time.Hour),
+			ExpiresAt: time.Now().Add(time.Duration(days) * 24 * time.Hour), PepperID: PepperID(s.pepper),
 		})
 		if err != nil {
 			return err
@@ -338,22 +348,47 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (Principal, e
 	if !LooksLikeKey(secret) {
 		return Principal{}, ErrInvalid
 	}
-	row, err := s.q.GetAPIKeyByDigest(ctx, Digest(s.pepper, secret))
+	digest := Digest(s.pepper, secret)
+	row, err := s.q.GetAPIKeyByDigest(ctx, digest)
+	previous := false
+	if errors.Is(store.NotFound(err), store.ErrNotFound) && s.previous != nil {
+		// Made before the pepper rotation: re-digested below.
+		digest, previous = Digest(s.previous, secret), true
+		row, err = s.q.GetAPIKeyByDigest(ctx, digest)
+	}
 	if errors.Is(store.NotFound(err), store.ErrNotFound) {
 		return Principal{}, ErrInvalid
 	} else if err != nil {
 		return Principal{}, err
 	}
 	// The digest lookup is exact; compare again in constant time anyway.
-	if !hmac.Equal([]byte(row.ApiKey.Digest), []byte(Digest(s.pepper, secret))) ||
+	if !hmac.Equal([]byte(row.ApiKey.Digest), []byte(digest)) ||
 		Status(row.ApiKey, time.Now()) != StatusActive || row.User.Status != "active" {
 		return Principal{}, ErrInvalid
+	}
+	if previous {
+		if err := s.rehash(ctx, row.ApiKey, digest, Digest(s.pepper, secret)); err != nil {
+			return Principal{}, err
+		}
 	}
 	scope, err := s.q.ListAPIKeyGatewayIDs(ctx, row.ApiKey.ID)
 	if err != nil {
 		return Principal{}, err
 	}
 	return Principal{Key: row.ApiKey, User: row.User, Gateways: scope}, nil
+}
+
+// rehash moves a key found with the previous pepper to the current one.
+// Audited as api_key.pepper_rehash by the system.
+func (s *Service) rehash(ctx context.Context, k dbgen.ApiKey, old, digest string) error {
+	return store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
+		n, err := q.RehashAPIKey(ctx, dbgen.RehashAPIKeyParams{ID: k.ID, OldDigest: old, Digest: digest, PepperID: PepperID(s.pepper)})
+		if err != nil || n == 0 {
+			return err // n == 0: another request did it
+		}
+		return audit.Record(ctx, q, audit.Entry{ActorKind: audit.ActorSystem, Action: "api_key.pepper_rehash", TargetType: "api_key",
+			TargetID: k.ID.String(), Metadata: map[string]any{"name": k.Name, "prefix": k.Prefix}})
+	})
 }
 
 // Touch records that a key was used (at most once a minute).

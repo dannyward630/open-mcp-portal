@@ -66,6 +66,19 @@ func (c Config) validateSecrets() []error {
 	} else if _, err := secrets.ParseKey(c.APIKeyPepper); err != nil {
 		errs = append(errs, fmt.Errorf("API_KEY_PEPPER: %w (generate one with `openssl rand -base64 32`)", err))
 	}
+	if c.APIKeyPepperPrevious != "" {
+		prev, err := secrets.ParseKey(c.APIKeyPepperPrevious)
+		cur, curErr := secrets.ParseKey(c.APIKeyPepper)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("API_KEY_PEPPER_PREVIOUS: %w", err))
+		case curErr == nil && string(prev) == string(cur):
+			errs = append(errs, errors.New("API_KEY_PEPPER_PREVIOUS must differ from API_KEY_PEPPER (remove it once the rotation is done)"))
+		}
+	}
+	if c.MetricsAddr != "" && c.MetricsAddr == c.ListenAddr {
+		errs = append(errs, errors.New("METRICS_ADDR must differ from LISTEN_ADDR: metrics have their own listener"))
+	}
 	if c.HealthCheckInterval != 0 && c.HealthCheckInterval < 30*time.Second {
 		errs = append(errs, errors.New("HEALTH_CHECK_INTERVAL must be 0 (off) or at least 30s"))
 	}

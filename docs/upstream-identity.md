@@ -80,6 +80,12 @@ The gateway doesn't check that the provider account belongs to the person (for e
 the provider who the token belongs to and compare it with the identity token's `email` or `sub`. If the provider answers
 `401` the token was revoked: return a tool error; the person reconnects under Account › My connections.
 
+**Recorded call contents.** When your team (or a gateway's) turns on "Record call contents"
+([phase6-operations.md](phase6-operations.md), "Payload capture"), the gateway stores each call's arguments and your
+result, redacted. Headers are never stored, and the identity token, the provider token and your server's static header
+value are replaced by `[REDACTED]` wherever they appear in a result, but don't echo credentials: other secrets in your
+results are only caught by the redaction rules.
+
 ## Go (go-jose)
 
 ```go

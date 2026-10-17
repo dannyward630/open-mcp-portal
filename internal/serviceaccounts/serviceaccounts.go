@@ -94,8 +94,13 @@ type Service struct {
 	pool     *pgxpool.Pool
 	q        *dbgen.Queries
 	pepper   []byte
+	previous []byte
 	gateways Gateways
 }
+
+// SetPreviousPepper accepts keys digested with API_KEY_PEPPER_PREVIOUS
+// (decoded) and re-digests them with the current pepper when used.
+func (s *Service) SetPreviousPepper(p []byte) { s.previous = p }
 
 // New returns a Service; pepper is API_KEY_PEPPER (decoded).
 func New(pool *pgxpool.Pool, pepper []byte, gateways Gateways) *Service {
@@ -611,6 +616,7 @@ func (s *Service) CreateKey(ctx context.Context, a authz.Actor, ref string, id u
 		}
 		k, err := q.InsertServiceAccountKey(ctx, dbgen.InsertServiceAccountKeyParams{
 			ServiceAccountID: sa.ID, Name: name, Prefix: secret[:prefixLen], Digest: apikeys.Digest(s.pepper, secret),
+			PepperID:  apikeys.PepperID(s.pepper),
 			CreatedBy: by(a), ExpiresAt: time.Now().Add(time.Duration(days) * 24 * time.Hour),
 		})
 		if err != nil {
@@ -705,6 +711,12 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (Principal, e
 	}
 	d := apikeys.Digest(s.pepper, secret)
 	row, err := s.q.GetServiceAccountKeyByDigest(ctx, d)
+	previous := false
+	if errors.Is(store.NotFound(err), store.ErrNotFound) && s.previous != nil {
+		// Made before the pepper rotation: re-digested below.
+		d, previous = apikeys.Digest(s.previous, secret), true
+		row, err = s.q.GetServiceAccountKeyByDigest(ctx, d)
+	}
 	if errors.Is(store.NotFound(err), store.ErrNotFound) {
 		return Principal{}, ErrInvalid
 	} else if err != nil {
@@ -715,11 +727,32 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (Principal, e
 		!row.ServiceAccount.Enabled || row.Team.Status != teams.StatusActive {
 		return Principal{}, ErrInvalid
 	}
+	if previous {
+		if err := s.rehash(ctx, row, d, apikeys.Digest(s.pepper, secret)); err != nil {
+			return Principal{}, err
+		}
+	}
 	scope, err := s.q.ListServiceAccountKeyGatewayIDs(ctx, row.ServiceAccountKey.ID)
 	if err != nil {
 		return Principal{}, err
 	}
 	return Principal{Key: row.ServiceAccountKey, Account: row.ServiceAccount, Team: row.Team, Gateways: scope}, nil
+}
+
+// rehash moves a key found with the previous pepper to the current one.
+// Audited as service_account_key.pepper_rehash by the system.
+func (s *Service) rehash(ctx context.Context, row dbgen.GetServiceAccountKeyByDigestRow, old, digest string) error {
+	k := row.ServiceAccountKey
+	return store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
+		n, err := q.RehashServiceAccountKey(ctx, dbgen.RehashServiceAccountKeyParams{ID: k.ID, OldDigest: old, Digest: digest,
+			PepperID: apikeys.PepperID(s.pepper)})
+		if err != nil || n == 0 {
+			return err // n == 0: another request did it
+		}
+		return audit.Record(ctx, q, audit.Entry{ActorKind: audit.ActorSystem, TeamID: row.Team.ID, Action: "service_account_key.pepper_rehash",
+			TargetType: "service_account_key", TargetID: k.ID.String(), Metadata: map[string]any{"name": k.Name, "prefix": k.Prefix,
+				"serviceAccountId": row.ServiceAccount.ID.String()}})
+	})
 }
 
 // Touch records that a key and its account were used (at most once a

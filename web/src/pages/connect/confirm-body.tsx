@@ -31,6 +31,18 @@ function reasonText(r: ConnectRequest, what: string) {
   }
 }
 
+/**
+ * The account connected now. A connection that needs renewing has no
+ * tokens left (a changed client ID, a refused refresh), so it isn't
+ * connected; its account is named only as the one to reconnect.
+ */
+function connectedNow(r: ConnectRequest) {
+  if (r.reason === "needs_reconsent") {
+    return r.accountLabel ? `None: ${r.accountLabel} has to be reconnected` : "None: the connection has to be renewed";
+  }
+  return r.accountLabel ?? (r.grantedScopes.length ? "An account (no name given)" : "No account");
+}
+
 type Props = {
   request: ConnectRequest;
   titleId: string;
@@ -82,7 +94,7 @@ export function ConfirmBody({ request: r, titleId, email, start, leaving }: Prop
           <dt>Provider</dt>
           <dd>{r.provider.preset && presetLabels[r.provider.preset] !== p ? `${p} (${presetLabels[r.provider.preset]})` : p}</dd>
           <dt>Connected now</dt>
-          <dd>{r.accountLabel ?? (r.grantedScopes.length ? "An account (no name given)" : "No account")}</dd>
+          <dd>{connectedNow(r)}</dd>
         </dl>
       </section>
       <section aria-labelledby={`${titleId}-scopes`}>

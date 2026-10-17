@@ -68,7 +68,22 @@ const actionLabels: Record<string, string> = {
   "provider_connection.create": "Connected account",
   "provider_connection.refresh_failed": "Account needs reconnecting",
   "provider_connection.revoke": "Disconnected account",
+  // Operations (docs/phase6-operations.md).
+  "settings.limits_update": "Changed rate limits",
+  "team.limits_update": "Changed team rate limits",
+  "settings.capture_update": "Changed redaction patterns",
+  "settings.retention_update": "Changed retention periods",
+  "team.retention_update": "Changed team retention",
+  "mcp_call.payload_view": "Viewed call contents",
+  "retention.purge": "Deleted old records",
+  "api_key.pepper_rehash": "Re-secured API key after key rotation",
+  "service_account_key.pepper_rehash": "Re-secured service account key after key rotation",
+  "platform.secrets_reencrypt": "Re-encrypted stored secrets",
+  "platform.key_rotation": "Rotated encryption keys",
 };
+
+/** Whose view of a call's contents it was (mcp_call.payload_view, metadata.via). */
+export const payloadViewVia: Record<string, string> = { team: "on the team's page", admin: "in Admin" };
 
 /** Why an account was disconnected (provider_connection.revoke, metadata.reason). */
 export const connectionRevokeReasons: Record<string, string> = {
@@ -92,6 +107,8 @@ export function actionLabel(action: string, entry?: Partial<Pick<AuditEntry, "af
   const reason = action === "oauth.revoke" || action === "provider_connection.revoke" ? entry?.metadata?.reason : undefined;
   const reasons = action === "oauth.revoke" ? oauthRevokeReasons : connectionRevokeReasons;
   if (known && typeof reason === "string" && reasons[reason]) return `${known} ${reasons[reason]}`;
+  const via = action === "mcp_call.payload_view" ? entry?.metadata?.via : undefined;
+  if (known && typeof via === "string" && payloadViewVia[via]) return `${known} ${payloadViewVia[via]}`;
   if (known) return known;
   const [group = "", rest = ""] = action.split(".");
   const words = rest.replace(/_/g, " ");
@@ -108,11 +125,13 @@ export const actionGroups: { prefix: string; label: string; platform?: boolean }
   { prefix: "gateway.", label: "Gateways" },
   { prefix: "service_account.", label: "Service accounts" },
   { prefix: "service_account_key.", label: "Service account keys" },
+  { prefix: "mcp_call.", label: "Call contents" },
   { prefix: "api_key.", label: "API keys", platform: true },
   { prefix: "oauth.", label: "Connected apps", platform: true },
   { prefix: "auth_provider.", label: "Auth providers", platform: true },
   { prefix: "provider_connection.", label: "Connected accounts", platform: true },
   { prefix: "settings.", label: "Platform settings", platform: true },
+  { prefix: "retention.", label: "Retention", platform: true },
   { prefix: "platform.", label: "Platform and users", platform: true },
   { prefix: "auth.", label: "Sign-in", platform: true },
 ];
@@ -190,6 +209,7 @@ export const targetTypeLabels: Record<string, string> = {
   oauth_grant: "Connected app",
   auth_provider: "Auth provider",
   provider_connection: "Connected account",
+  mcp_call: "Call",
 };
 
 /** An entry's action and target in one line for a short list ("Added member: Una User"). */

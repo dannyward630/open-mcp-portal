@@ -25,6 +25,10 @@ var exampleKeyHashes = map[string]string{
 
 // isExampleKey reports whether value decodes to the example key of setting.
 func isExampleKey(setting, value string) bool {
+	return isExample(exampleKeyHashes[setting], value)
+}
+
+func isExample(hash, value string) bool {
 	if value == "" {
 		return false
 	}
@@ -33,7 +37,7 @@ func isExampleKey(setting, value string) bool {
 		return false
 	}
 	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]) == exampleKeyHashes[setting]
+	return hex.EncodeToString(sum[:]) == hash
 }
 
 // LoopbackAppURL reports whether APP_URL is a loopback origin such as
@@ -68,6 +72,10 @@ func (c Config) SafetyErrors(mode string) []error {
 		errs = append(errs, errors.New("ENCRYPTION_KEY is the public example value from .env.example, so stored secrets are not protected. "+
 			"Generate a new key with `openssl rand -base64 32`; if secrets were already stored, "+
 			"set ENCRYPTION_KEY_PREVIOUS to the old value until they are re-entered"))
+	}
+	if isExampleKey("API_KEY_PEPPER", c.APIKeyPepperPrevious) {
+		errs = append(errs, errors.New("API_KEY_PEPPER_PREVIOUS is the public example value from .env.example: keys digested with it "+
+			"were never protected. Revoke them instead of keeping them valid, and remove API_KEY_PEPPER_PREVIOUS"))
 	}
 	if isExampleKey("API_KEY_PEPPER", c.APIKeyPepper) {
 		errs = append(errs, errors.New("API_KEY_PEPPER is the public example value from .env.example, so stored API key digests "+

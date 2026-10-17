@@ -168,6 +168,7 @@ func (a *api) createTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	setIf(&ci.AuthValue, in.AuthValue)
 	setIf(&ci.TimeoutSeconds, in.TimeoutSeconds)
 	setIf(&ci.Enabled, in.Enabled)
+	setIf(&ci.CapturePayloads, in.CapturePayloads)
 	ci.Requirement = fromAPIRequirement(in.Requirement)
 	res, err := a.Registry.Create(r.Context(), a.actor(r), r.PathValue("team"), ci)
 	if failed(w, r, err) {
@@ -220,6 +221,7 @@ func (a *api) updateTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	v, err := a.Registry.Update(r.Context(), a.actor(r), r.PathValue("team"), id, registry.UpdateInput{
 		Name: in.Name, Description: in.Description, URL: in.Url, AuthHeaderName: in.AuthHeaderName, AuthValue: in.AuthValue,
 		TimeoutSeconds: in.TimeoutSeconds, Enabled: in.Enabled, SetRequirement: setRequirement, Requirement: fromAPIRequirement(in.Requirement),
+		CapturePayloads: in.CapturePayloads,
 	}, rev)
 	if failed(w, r, err) {
 		return

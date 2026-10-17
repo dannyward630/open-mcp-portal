@@ -14,12 +14,16 @@ import (
 // key's digest has no field here, and its secret is only ever returned by
 // create.
 
-func (a *api) toAPIGateway(v gateways.View) apitypes.Gateway {
+// toAPIGateway converts a gateway; effective is its rate limit now
+// (gatewayLimits).
+func (a *api) toAPIGateway(v gateways.View, effective *int64) apitypes.Gateway {
 	g := v.Gateway
+	capture := g.CapturePayloads
 	out := apitypes.Gateway{
 		Id: g.ID, Slug: g.Slug, Name: g.Name, Description: g.Description, OwnerKind: apitypes.GatewayOwnerKind(g.OwnerKind),
 		Enabled: g.Enabled, Url: a.Gateways.URL(g.Slug), CapabilityCount: v.CapabilityCount, UnavailableCount: v.UnavailableCount,
 		GrantCount: v.GrantCount, Revision: g.Revision, CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt,
+		CapturePayloads: &capture, RateLimitPerMinute: g.RateLimitPerMinute, EffectiveRateLimitPerMinute: effective,
 	}
 	if g.TeamID.Valid {
 		id := g.TeamID.UUID
@@ -33,7 +37,7 @@ func toAPIGatewayCapability(s gateways.Selected) apitypes.GatewayCapability {
 		CapabilityId: s.Capability.ID, ServerId: s.Server.ID, ServerSlug: s.Server.Slug, ServerName: s.Server.Name,
 		TeamSlug: s.TeamSlug, Kind: apitypes.GatewayCapabilityKind(s.Capability.Kind), Name: s.Capability.Name,
 		ExposedName: s.ExposedName, Title: s.Capability.Title, Description: s.Capability.Description, Available: s.Available,
-		Requires: toAPIRequirement(s.Requires, nil),
+		Requires: toAPIRequirement(s.Requires, nil), ServerCapturesPayloads: &s.Server.CapturePayloads,
 	}
 	if s.MinRole != nil {
 		r := apitypes.TeamRole(*s.MinRole)
@@ -55,8 +59,10 @@ func toAPISelection(s gateways.Selection) apitypes.GatewayCapabilities {
 }
 
 func toAPIGatewayOption(o gateways.Option) apitypes.GatewayOption {
+	capture := o.ServerCapturePayloads
 	return apitypes.GatewayOption{
-		CapabilityId: o.ID, ServerId: o.ServerID, ServerSlug: o.ServerSlug, ServerName: o.ServerName, TeamSlug: o.TeamSlug,
+		ServerCapturesPayloads: &capture,
+		CapabilityId:           o.ID, ServerId: o.ServerID, ServerSlug: o.ServerSlug, ServerName: o.ServerName, TeamSlug: o.TeamSlug,
 		TeamName: o.TeamName, Source: apitypes.GatewayOptionSource(o.Source), Kind: apitypes.GatewayCapabilityKind(o.Kind),
 		Name: o.Name, ExposedName: o.ExposedName, Title: o.Title, Description: o.Description,
 		Requires: toAPIRequirement(o.Requires, nil),
@@ -85,6 +91,7 @@ func (a *api) toAPIMyGateway(m gateways.Mine) apitypes.MyGateway {
 	out := apitypes.MyGateway{
 		Id: g.ID, Slug: g.Slug, Name: g.Name, Description: g.Description, OwnerKind: apitypes.GatewayOwnerKind(g.OwnerKind),
 		Url: a.Gateways.URL(g.Slug), Access: make([]apitypes.MyGatewayAccess, len(m.Access)), CapabilityCount: m.Offered,
+		NeedsPersonCount: m.NeedsPerson, CapturesPayloads: &m.CapturesPayloads,
 	}
 	for i, acc := range m.Access {
 		out.Access[i] = apitypes.MyGatewayAccess(acc)
@@ -113,9 +120,12 @@ func toAPIKey(v apikeys.View, now time.Time) apitypes.ApiKey {
 	return out
 }
 
-func toAPICall(r dbgen.ListMCPCallsRow) apitypes.McpCall {
+func toAPICall(c calls.Row) apitypes.McpCall {
+	r := c.ListMCPCallsRow
+	captured := c.Captured
 	out := apitypes.McpCall{
-		Id: r.ID, OccurredAt: r.OccurredAt, Method: r.Method, ExposedName: r.ExposedName,
+		Captured: &captured,
+		Id:       r.ID, OccurredAt: r.OccurredAt, Method: r.Method, ExposedName: r.ExposedName,
 		Gateway:    apitypes.CallRef{Id: r.GatewayID, Slug: r.GatewaySlug, Name: r.GatewayName, Exists: r.GatewayExists},
 		Principal:  toAPICallPrincipal(r),
 		ClientName: r.ClientName, Outcome: apitypes.McpCallOutcome(r.Outcome), ErrorClass: r.ErrorClass, LatencyMs: r.LatencyMs,

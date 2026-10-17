@@ -6,7 +6,7 @@
  * up here when it's added there.
  */
 import { useNavigate } from "@tanstack/react-router";
-import { BadgeCheck, Bot, Boxes, FileClock, KeyRound, KeySquare, Link2, Network, Plug, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Bot, Boxes, FileClock, Gauge, KeyRound, KeySquare, Link2, Network, Plug, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
 import { useMemo } from "react";
 import { requestIntent } from "../../lib/intents";
 import { type TeamSettingsTab } from "../../lib/tabs";
@@ -114,6 +114,15 @@ function teamPlacesGroup(navigate: Navigate, me: Me, team: { slug: string; name:
       show: a.canEdit || (!a.member && a.staff),
       hint,
       onSelect: go("audit"),
+    },
+    {
+      id: "team-tab:limits",
+      label: terms.limitsAndRetention,
+      icon: <Gauge aria-hidden />,
+      keywords: ["limits", "rate limit", "requests per minute", "429", "retention", "kept", "deleted", "days"],
+      show: a.member || a.staff,
+      hint,
+      onSelect: go("limits"),
     },
     {
       id: "team-tab:general",

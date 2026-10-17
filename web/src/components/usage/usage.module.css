@@ -1,0 +1,38 @@
+/* The usage dashboards: controls, charts side by side, the breakdown. Semantic tokens only. */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.control {
+  width: 11rem;
+  max-width: 100%;
+}
+
+.controlWide {
+  width: 16rem;
+  max-width: 100%;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-5);
+}
+
+@media (max-width: 60rem) {
+  .grid2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}

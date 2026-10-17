@@ -6,6 +6,7 @@
  * can see them.
  */
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Activity, Lock } from "lucide-react";
 import { api, unwrap } from "../../api/client";
 import { adminGatewaysKey, teamGatewaysKey } from "../../api/queries";
@@ -69,7 +70,15 @@ function CallList({ gateway, scope }: { gateway: Gateway; scope: GatewayScope })
       <ListPage<McpCall>
         id="gateway-calls"
         caption="Calls"
-        columns={callColumns({ narrow })}
+        columns={callColumns({
+          narrow,
+          detail: (c) =>
+            scope.kind === "team" ? (
+              <Link to="/teams/$team/calls/$callId" params={{ team: scope.team, callId: String(c.id) }} />
+            ) : (
+              <Link to="/admin/calls/$callId" params={{ callId: String(c.id) }} />
+            ),
+        })}
         data={items}
         getRowId={(c) => String(c.id)}
         rowLabel={callLabel}
