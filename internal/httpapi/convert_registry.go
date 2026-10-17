@@ -26,6 +26,10 @@ func toAPIHealth(h *dbgen.McpHealthCheck, withMessage bool) apitypes.ServerHealt
 		return apitypes.ServerHealth{Status: "unknown"}
 	}
 	out := apitypes.ServerHealth{Status: "healthy", CheckedAt: &h.CheckedAt, StatusSince: &h.StatusSince, LatencyMs: &h.LatencyMs}
+	if h.SignInRequired {
+		yes := true
+		out.SignInRequired = &yes
+	}
 	if !h.Ok {
 		out.Status = "failing"
 		if h.ErrorClass != nil {
@@ -47,7 +51,7 @@ func nonEmpty(s string) *string {
 	return &s
 }
 
-func toAPIServer(v registry.ServerView) apitypes.McpServer {
+func (a *api) toAPIServer(v registry.ServerView) apitypes.McpServer {
 	s := v.Server
 	return apitypes.McpServer{
 		Id: s.ID, TeamId: s.TeamID, TeamSlug: v.TeamSlug, TeamName: v.TeamName,
@@ -62,8 +66,69 @@ func toAPIServer(v registry.ServerView) apitypes.McpServer {
 		Counts: toAPICounts(v.Counts), PendingChanges: v.PendingChanges, Health: toAPIHealth(v.Health, true),
 		RefreshedAt: s.RefreshedAt, LastRefreshError: s.LastRefreshError,
 		Requirement: toAPIServerRequirement(v.Requirement), CapturePayloads: &s.CapturePayloads,
+		AuthMode: authModePtr(s), Oauth: a.toAPIServerOAuth(v), SendIdentity: &s.SendIdentity,
 		Revision: s.Revision, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
+}
+
+func authModePtr(s dbgen.McpServer) *apitypes.McpServerAuthMode {
+	m := apitypes.McpServerAuthMode(registry.AuthModeOf(s))
+	return &m
+}
+
+// clientIDHint is the last six characters of a client ID (a CIMD URL in
+// full).
+func clientIDHint(p dbgen.AuthProvider) string {
+	if p.Registration != nil && *p.Registration == registry.RegistrationCIMD {
+		return p.ClientID
+	}
+	r := []rune(p.ClientID)
+	if len(r) <= 6 {
+		return p.ClientID
+	}
+	return string(r[len(r)-6:])
+}
+
+// toAPIServerOAuth is an oauth server's sign-in (nil for other modes):
+// never the client secret.
+func (a *api) toAPIServerOAuth(v registry.ServerView) *apitypes.McpServerOAuth {
+	o := v.OAuth
+	if o == nil {
+		return nil
+	}
+	p := o.Provider
+	out := &apitypes.McpServerOAuth{
+		ProviderId: p.ID, ProviderSlug: p.Slug, Resource: deref(p.Resource), ResourceMetadataUrl: deref(p.ResourceMetadataUrl),
+		AuthorizationServer: deref(p.AuthorizationServer), Issuer: deref(p.Issuer), AuthorizationEndpoint: p.AuthorizationUrl,
+		TokenEndpoint: p.TokenUrl, RevocationEndpoint: p.RevocationUrl, Scopes: nonNilStrings(p.DefaultScopes),
+		ScopesSupported: nonNilStrings(p.ScopesSupported), Registration: apitypes.McpServerOAuthRegistration(deref(p.Registration)),
+		ClientIdHint: clientIDHint(p), HasClientSecret: p.ClientSecretCipher != nil, ClientSecretExpiresAt: p.ClientSecretExpiresAt,
+		TokenAuthMethod: apitypes.AuthProviderTokenAuthMethod(p.TokenAuthMethod), SendResource: p.SendResource,
+		IssParameterSupported: p.IssParamSupported, ConnectionCount: o.ConnectionCount,
+		SetupConnection: apitypes.McpServerOAuthSetupConnection{Status: apitypes.McpServerOAuthSetupConnectionStatus(o.Setup.Status),
+			PersonName: o.Setup.PersonName, AuthorizedAt: o.Setup.AuthorizedAt},
+	}
+	redirect := a.Registry.RedirectURI()
+	out.RedirectUri = &redirect
+	if o.Setup.PersonID.Valid {
+		id := o.Setup.PersonID.UUID
+		out.SetupConnection.PersonId = &id
+	}
+	if p.DiscoveredAt != nil {
+		out.DiscoveredAt = *p.DiscoveredAt
+	}
+	if o.Linked != nil {
+		ref := toAPIRegistryProviderRef(*o.Linked)
+		out.PlatformProvider = &ref
+	}
+	return out
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // toAPIOverride is a capability's requirement override.
@@ -113,7 +178,12 @@ func toAPICapabilities(cs []registry.CapabilityView) []apitypes.McpCapability {
 
 func toAPITestResult(r registry.TestResult) apitypes.McpTestResult {
 	out := apitypes.McpTestResult{Ok: r.OK, LatencyMs: r.Latency.Milliseconds(),
-		ServerName: nonEmpty(r.ServerName), ServerVersion: nonEmpty(r.ServerVersion), ProtocolVersion: nonEmpty(r.ProtocolVersion)}
+		ServerName: nonEmpty(r.ServerName), ServerVersion: nonEmpty(r.ServerVersion), ProtocolVersion: nonEmpty(r.ProtocolVersion),
+		ReadAs: r.ReadAs}
+	if r.SetupRequired {
+		yes := true
+		out.SetupRequired = &yes
+	}
 	if r.OK {
 		out.Counts = &apitypes.CapabilityCounts{Tools: int64(r.Counts.Tools), Resources: int64(r.Counts.Resources),
 			ResourceTemplates: int64(r.Counts.ResourceTemplates), Prompts: int64(r.Counts.Prompts)}
@@ -137,6 +207,10 @@ func toAPIRefresh(r registry.RefreshResult) apitypes.McpRefreshResult {
 func toAPIHealthCheck(h dbgen.McpHealthCheck) apitypes.McpHealthCheck {
 	out := apitypes.McpHealthCheck{CheckedAt: h.CheckedAt, Ok: h.Ok, LatencyMs: h.LatencyMs,
 		Trigger: apitypes.McpHealthCheckTrigger(h.Trigger), HttpStatus: h.HttpStatus, Message: nonEmpty(h.Message)}
+	if h.SignInRequired {
+		yes := true
+		out.SignInRequired = &yes
+	}
 	if h.ErrorClass != nil {
 		c := apitypes.McpErrorClass(*h.ErrorClass)
 		out.ErrorClass = &c
@@ -148,7 +222,7 @@ func toAPICatalogServer(v registry.ServerView) apitypes.CatalogServer {
 	s := v.Server
 	out := apitypes.CatalogServer{Id: s.ID, Slug: s.Slug, Name: s.Name, Description: s.Description,
 		TeamSlug: v.TeamSlug, TeamName: v.TeamName, Counts: toAPICounts(v.Approved), Health: toAPIHealth(v.Health, false),
-		CapturePayloads: &s.CapturePayloads}
+		CapturePayloads: &s.CapturePayloads, AuthMode: authModePtr(s)}
 	if s.PublishedAt != nil {
 		out.PublishedAt = *s.PublishedAt
 	}

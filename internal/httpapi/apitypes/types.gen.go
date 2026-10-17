@@ -131,13 +131,16 @@ func (e AuthProviderCreateScopeSeparator) Valid() bool {
 
 // Defines values for AuthProviderKind.
 const (
-	Oauth2 AuthProviderKind = "oauth2"
+	AuthProviderKindMcpServer AuthProviderKind = "mcp_server"
+	AuthProviderKindOauth2    AuthProviderKind = "oauth2"
 )
 
 // Valid indicates whether the value is a known member of the AuthProviderKind enum.
 func (e AuthProviderKind) Valid() bool {
 	switch e {
-	case Oauth2:
+	case AuthProviderKindMcpServer:
+		return true
+	case AuthProviderKindOauth2:
 		return true
 	default:
 		return false
@@ -348,6 +351,141 @@ func (e ConnectRequestReason) Valid() bool {
 	case ConnectRequestReasonNeedsReconsent:
 		return true
 	case ConnectRequestReasonNotConnected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DetectAuthOutcome.
+const (
+	DetectAuthOutcomeNoAuth      DetectAuthOutcome = "no_auth"
+	DetectAuthOutcomeOauth       DetectAuthOutcome = "oauth"
+	DetectAuthOutcomeOtherAuth   DetectAuthOutcome = "other_auth"
+	DetectAuthOutcomeUnreachable DetectAuthOutcome = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the DetectAuthOutcome enum.
+func (e DetectAuthOutcome) Valid() bool {
+	switch e {
+	case DetectAuthOutcomeNoAuth:
+		return true
+	case DetectAuthOutcomeOauth:
+		return true
+	case DetectAuthOutcomeOtherAuth:
+		return true
+	case DetectAuthOutcomeUnreachable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DetectAuthProblemCode.
+const (
+	EndpointNotAllowed          DetectAuthProblemCode = "endpoint_not_allowed"
+	InvalidMetadata             DetectAuthProblemCode = "invalid_metadata"
+	IssuerMismatch              DetectAuthProblemCode = "issuer_mismatch"
+	MetadataNotFound            DetectAuthProblemCode = "metadata_not_found"
+	NoPkce                      DetectAuthProblemCode = "no_pkce"
+	NoRefresh                   DetectAuthProblemCode = "no_refresh"
+	NoRegistration              DetectAuthProblemCode = "no_registration"
+	NoResourceMetadata          DetectAuthProblemCode = "no_resource_metadata"
+	ResourceMismatch            DetectAuthProblemCode = "resource_mismatch"
+	SeveralAuthorizationServers DetectAuthProblemCode = "several_authorization_servers"
+)
+
+// Valid indicates whether the value is a known member of the DetectAuthProblemCode enum.
+func (e DetectAuthProblemCode) Valid() bool {
+	switch e {
+	case EndpointNotAllowed:
+		return true
+	case InvalidMetadata:
+		return true
+	case IssuerMismatch:
+		return true
+	case MetadataNotFound:
+		return true
+	case NoPkce:
+		return true
+	case NoRefresh:
+		return true
+	case NoRegistration:
+		return true
+	case NoResourceMetadata:
+		return true
+	case ResourceMismatch:
+		return true
+	case SeveralAuthorizationServers:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DetectAuthRegistrationCimdUnavailableReason.
+const (
+	AppUrlNotPublic DetectAuthRegistrationCimdUnavailableReason = "app_url_not_public"
+	NotSupported    DetectAuthRegistrationCimdUnavailableReason = "not_supported"
+)
+
+// Valid indicates whether the value is a known member of the DetectAuthRegistrationCimdUnavailableReason enum.
+func (e DetectAuthRegistrationCimdUnavailableReason) Valid() bool {
+	switch e {
+	case AppUrlNotPublic:
+		return true
+	case NotSupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DetectAuthStepPurpose.
+const (
+	AuthorizationServerMetadata DetectAuthStepPurpose = "authorization_server_metadata"
+	Mcp                         DetectAuthStepPurpose = "mcp"
+	ResourceMetadata            DetectAuthStepPurpose = "resource_metadata"
+)
+
+// Valid indicates whether the value is a known member of the DetectAuthStepPurpose enum.
+func (e DetectAuthStepPurpose) Valid() bool {
+	switch e {
+	case AuthorizationServerMetadata:
+		return true
+	case Mcp:
+		return true
+	case ResourceMetadata:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DetectAuthStepResult.
+const (
+	DetectAuthStepResultChallenge  DetectAuthStepResult = "challenge"
+	DetectAuthStepResultError      DetectAuthStepResult = "error"
+	DetectAuthStepResultNotAllowed DetectAuthStepResult = "not_allowed"
+	DetectAuthStepResultNotFound   DetectAuthStepResult = "not_found"
+	DetectAuthStepResultOk         DetectAuthStepResult = "ok"
+	DetectAuthStepResultTimeout    DetectAuthStepResult = "timeout"
+)
+
+// Valid indicates whether the value is a known member of the DetectAuthStepResult enum.
+func (e DetectAuthStepResult) Valid() bool {
+	switch e {
+	case DetectAuthStepResultChallenge:
+		return true
+	case DetectAuthStepResultError:
+		return true
+	case DetectAuthStepResultNotAllowed:
+		return true
+	case DetectAuthStepResultNotFound:
+		return true
+	case DetectAuthStepResultOk:
+		return true
+	case DetectAuthStepResultTimeout:
 		return true
 	default:
 		return false
@@ -584,16 +722,16 @@ func (e McpErrorClass) Valid() bool {
 
 // Defines values for McpHealthCheckTrigger.
 const (
-	Manual    McpHealthCheckTrigger = "manual"
-	Scheduled McpHealthCheckTrigger = "scheduled"
+	McpHealthCheckTriggerManual    McpHealthCheckTrigger = "manual"
+	McpHealthCheckTriggerScheduled McpHealthCheckTrigger = "scheduled"
 )
 
 // Valid indicates whether the value is a known member of the McpHealthCheckTrigger enum.
 func (e McpHealthCheckTrigger) Valid() bool {
 	switch e {
-	case Manual:
+	case McpHealthCheckTriggerManual:
 		return true
-	case Scheduled:
+	case McpHealthCheckTriggerScheduled:
 		return true
 	default:
 		return false
@@ -627,6 +765,99 @@ const (
 func (e McpServerTransport) Valid() bool {
 	switch e {
 	case StreamableHttp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpServerAuthMode.
+const (
+	McpServerAuthModeNone         McpServerAuthMode = "none"
+	McpServerAuthModeOauth        McpServerAuthMode = "oauth"
+	McpServerAuthModeStaticHeader McpServerAuthMode = "static_header"
+)
+
+// Valid indicates whether the value is a known member of the McpServerAuthMode enum.
+func (e McpServerAuthMode) Valid() bool {
+	switch e {
+	case McpServerAuthModeNone:
+		return true
+	case McpServerAuthModeOauth:
+		return true
+	case McpServerAuthModeStaticHeader:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpServerOAuthRegistration.
+const (
+	McpServerOAuthRegistrationCimd             McpServerOAuthRegistration = "cimd"
+	McpServerOAuthRegistrationDcr              McpServerOAuthRegistration = "dcr"
+	McpServerOAuthRegistrationManual           McpServerOAuthRegistration = "manual"
+	McpServerOAuthRegistrationPlatformProvider McpServerOAuthRegistration = "platform_provider"
+)
+
+// Valid indicates whether the value is a known member of the McpServerOAuthRegistration enum.
+func (e McpServerOAuthRegistration) Valid() bool {
+	switch e {
+	case McpServerOAuthRegistrationCimd:
+		return true
+	case McpServerOAuthRegistrationDcr:
+		return true
+	case McpServerOAuthRegistrationManual:
+		return true
+	case McpServerOAuthRegistrationPlatformProvider:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpServerOAuthRegistrationChoice.
+const (
+	McpServerOAuthRegistrationChoiceAuto             McpServerOAuthRegistrationChoice = "auto"
+	McpServerOAuthRegistrationChoiceCimd             McpServerOAuthRegistrationChoice = "cimd"
+	McpServerOAuthRegistrationChoiceDcr              McpServerOAuthRegistrationChoice = "dcr"
+	McpServerOAuthRegistrationChoiceManual           McpServerOAuthRegistrationChoice = "manual"
+	McpServerOAuthRegistrationChoicePlatformProvider McpServerOAuthRegistrationChoice = "platform_provider"
+)
+
+// Valid indicates whether the value is a known member of the McpServerOAuthRegistrationChoice enum.
+func (e McpServerOAuthRegistrationChoice) Valid() bool {
+	switch e {
+	case McpServerOAuthRegistrationChoiceAuto:
+		return true
+	case McpServerOAuthRegistrationChoiceCimd:
+		return true
+	case McpServerOAuthRegistrationChoiceDcr:
+		return true
+	case McpServerOAuthRegistrationChoiceManual:
+		return true
+	case McpServerOAuthRegistrationChoicePlatformProvider:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpServerOAuthSetupConnectionStatus.
+const (
+	McpServerOAuthSetupConnectionStatusActive         McpServerOAuthSetupConnectionStatus = "active"
+	McpServerOAuthSetupConnectionStatusMissing        McpServerOAuthSetupConnectionStatus = "missing"
+	McpServerOAuthSetupConnectionStatusNeedsReconsent McpServerOAuthSetupConnectionStatus = "needs_reconsent"
+)
+
+// Valid indicates whether the value is a known member of the McpServerOAuthSetupConnectionStatus enum.
+func (e McpServerOAuthSetupConnectionStatus) Valid() bool {
+	switch e {
+	case McpServerOAuthSetupConnectionStatusActive:
+		return true
+	case McpServerOAuthSetupConnectionStatusMissing:
+		return true
+	case McpServerOAuthSetupConnectionStatusNeedsReconsent:
 		return true
 	default:
 		return false
@@ -1420,7 +1651,7 @@ type AuthProvider struct {
 	HasClientSecret      bool               `json:"hasClientSecret"`
 	Id                   openapi_types.UUID `json:"id"`
 
-	// Kind oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+	// Kind oauth2: a platform provider, OAuth 2.0 authorization code grant (with PKCE where the provider supports it). mcp_server: the OAuth client of one MCP server in oauth mode (docs/phase7-upstream-oauth.md), bound to that server; never listed among platform providers and never reusable
 	Kind    AuthProviderKind `json:"kind"`
 	LogoUrl *string          `json:"logoUrl"`
 
@@ -1508,7 +1739,7 @@ type AuthProviderCreate struct {
 // AuthProviderCreateScopeSeparator defines model for AuthProviderCreate.ScopeSeparator.
 type AuthProviderCreateScopeSeparator string
 
-// AuthProviderKind oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+// AuthProviderKind oauth2: a platform provider, OAuth 2.0 authorization code grant (with PKCE where the provider supports it). mcp_server: the OAuth client of one MCP server in oauth mode (docs/phase7-upstream-oauth.md), bound to that server; never listed among platform providers and never reusable
 type AuthProviderKind string
 
 // AuthProviderPreset defines model for AuthProviderPreset.
@@ -1564,7 +1795,7 @@ type AuthProviderSummary struct {
 	DefaultScopes ScopeList          `json:"defaultScopes"`
 	Id            openapi_types.UUID `json:"id"`
 
-	// Kind oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+	// Kind oauth2: a platform provider, OAuth 2.0 authorization code grant (with PKCE where the provider supports it). mcp_server: the OAuth client of one MCP server in oauth mode (docs/phase7-upstream-oauth.md), bound to that server; never listed among platform providers and never reusable
 	Kind    AuthProviderKind `json:"kind"`
 	LogoUrl *string          `json:"logoUrl"`
 
@@ -1742,6 +1973,9 @@ type CapabilityRequirement struct {
 	Connected  *bool              `json:"connected,omitempty"`
 	ProviderId openapi_types.UUID `json:"providerId"`
 
+	// ProviderKind mcp_server when the capability's server is in oauth mode (the person signs in to the server itself; providerName is the server's name). Absent before Phase 7
+	ProviderKind *AuthProviderKind `json:"providerKind,omitempty"`
+
 	// ProviderName Example: GitHub
 	ProviderName string `json:"providerName"`
 
@@ -1810,6 +2044,9 @@ type CatalogCapability struct {
 
 // CatalogServer defines model for CatalogServer.
 type CatalogServer struct {
+	// AuthMode oauth means each person signs in to the server's own service before calling it. Absent from servers before Phase 7
+	AuthMode *McpServerAuthMode `json:"authMode,omitempty"`
+
 	// CapturePayloads The server's team records call arguments and results (McpServer.capturePayloads). Absent from servers before Phase 6.
 	CapturePayloads *bool `json:"capturePayloads,omitempty"`
 
@@ -1844,11 +2081,16 @@ type CatalogServerPage struct {
 // ConnectRequest Why a call asked the person to connect an account (a consent link from JSON-RPC -32042)
 type ConnectRequest struct {
 	// AccountLabel The account connected now, if any
-	AccountLabel *string                  `json:"accountLabel"`
-	Capability   ConnectRequestCapability `json:"capability"`
-	CreatedAt    time.Time                `json:"createdAt"`
-	ExpiresAt    time.Time                `json:"expiresAt"`
-	Gateway      CallRef                  `json:"gateway"`
+	AccountLabel *string `json:"accountLabel"`
+
+	// AuthorizationServerHost For an MCP server's own sign-in (provider.kind mcp_server), the host of its authorization server, for "lets <server> act as you at github.com"; null or absent for platform providers
+	//
+	// Example: github.com
+	AuthorizationServerHost *string                  `json:"authorizationServerHost,omitempty"`
+	Capability              ConnectRequestCapability `json:"capability"`
+	CreatedAt               time.Time                `json:"createdAt"`
+	ExpiresAt               time.Time                `json:"expiresAt"`
+	Gateway                 CallRef                  `json:"gateway"`
 
 	// GrantedScopes What the person's active connection has now (empty when none)
 	GrantedScopes ScopeList            `json:"grantedScopes"`
@@ -1901,6 +2143,136 @@ type ConnectStarted struct {
 	// Scopes Everything asked for
 	Scopes ScopeList `json:"scopes"`
 }
+
+// DetectAuthChallenge The parsed WWW-Authenticate header of the 401
+type DetectAuthChallenge struct {
+	Error               *string `json:"error"`
+	ResourceMetadataUrl *string `json:"resourceMetadataUrl"`
+
+	// Scheme Example: Bearer
+	Scheme string `json:"scheme"`
+
+	// Scope OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	Scope ScopeList `json:"scope"`
+}
+
+// DetectAuthOutcome no_auth: initialize worked without credentials (authMode none). oauth: a Bearer challenge and usable metadata (authMode oauth possible; check problems). other_auth: 401/403 without usable OAuth metadata (use a static header). unreachable: network error, timeout, 5xx or not an MCP endpoint
+type DetectAuthOutcome string
+
+// DetectAuthProblem defines model for DetectAuthProblem.
+type DetectAuthProblem struct {
+	Blocking bool `json:"blocking"`
+
+	// Code blocking ones stop oauth mode: resource_mismatch (the metadata's resource isn't this URL; see suggestedUrl), metadata_not_found, invalid_metadata, issuer_mismatch, no_pkce (S256 not listed, so the MCP spec says not to proceed), endpoint_not_allowed (an endpoint isn't https or is refused by the address rules). Informational: no_resource_metadata (found by the well-known fallback), several_authorization_servers (the first is used unless another is chosen), no_registration (enter a client), no_refresh (refresh_token not in grant_types_supported)
+	Code    DetectAuthProblemCode `json:"code"`
+	Message string                `json:"message"`
+}
+
+// DetectAuthProblemCode blocking ones stop oauth mode: resource_mismatch (the metadata's resource isn't this URL; see suggestedUrl), metadata_not_found, invalid_metadata, issuer_mismatch, no_pkce (S256 not listed, so the MCP spec says not to proceed), endpoint_not_allowed (an endpoint isn't https or is refused by the address rules). Informational: no_resource_metadata (found by the well-known fallback), several_authorization_servers (the first is used unless another is chosen), no_registration (enter a client), no_refresh (refresh_token not in grant_types_supported)
+type DetectAuthProblemCode string
+
+// DetectAuthRegistration How the gateway can get a client, and what to give a manual one
+type DetectAuthRegistration struct {
+	CimdUnavailableReason *DetectAuthRegistrationCimdUnavailableReason `json:"cimdUnavailableReason"`
+
+	// ClientMetadataUrl The gateway's Client ID Metadata Document (the client ID for cimd)
+	ClientMetadataUrl string `json:"clientMetadataUrl"`
+
+	// MatchingProviders Enabled platform providers whose authorization and token endpoints equal the discovered ones
+	MatchingProviders []ProviderRef `json:"matchingProviders"`
+
+	// Options Always includes manual
+	Options []McpServerOAuthRegistration `json:"options"`
+
+	// Recommended How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+	Recommended McpServerOAuthRegistration `json:"recommended"`
+
+	// RedirectUri Register this callback with a manual client
+	//
+	// Example: https://mcp.example.com/connect/callback
+	RedirectUri string `json:"redirectUri"`
+}
+
+// DetectAuthRegistrationCimdUnavailableReason defines model for DetectAuthRegistration.CimdUnavailableReason.
+type DetectAuthRegistrationCimdUnavailableReason string
+
+// DetectAuthRequest defines model for DetectAuthRequest.
+type DetectAuthRequest struct {
+	// Url The MCP endpoint, checked like a server URL
+	Url string `json:"url"`
+}
+
+// DetectAuthResourceMetadata RFC 9728 protected-resource metadata
+type DetectAuthResourceMetadata struct {
+	AuthorizationServers   []string `json:"authorizationServers"`
+	BearerMethodsSupported []string `json:"bearerMethodsSupported"`
+	Resource               string   `json:"resource"`
+	ResourceName           *string  `json:"resourceName"`
+
+	// ScopesSupported OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	ScopesSupported ScopeList `json:"scopesSupported"`
+
+	// Url Where it was read
+	Url string `json:"url"`
+}
+
+// DetectAuthResult defines model for DetectAuthResult.
+type DetectAuthResult struct {
+	AuthorizationServer *DetectAuthServerMetadata `json:"authorizationServer"`
+	Challenge           *DetectAuthChallenge      `json:"challenge"`
+	HttpStatus          *int32                    `json:"httpStatus"`
+
+	// Outcome no_auth: initialize worked without credentials (authMode none). oauth: a Bearer challenge and usable metadata (authMode oauth possible; check problems). other_auth: 401/403 without usable OAuth metadata (use a static header). unreachable: network error, timeout, 5xx or not an MCP endpoint
+	Outcome          DetectAuthOutcome           `json:"outcome"`
+	Problems         []DetectAuthProblem         `json:"problems"`
+	Registration     *DetectAuthRegistration     `json:"registration"`
+	ResourceMetadata *DetectAuthResourceMetadata `json:"resourceMetadata"`
+	Steps            []DetectAuthStep            `json:"steps"`
+
+	// SuggestedScopes The challenge's scope, else the resource metadata's scopes_supported
+	SuggestedScopes ScopeList `json:"suggestedScopes"`
+
+	// SuggestedUrl The metadata's resource when it differs from url only by a trailing slash or the case of scheme and host; register the server with this URL
+	SuggestedUrl *string `json:"suggestedUrl"`
+
+	// Url The URL probed
+	Url string `json:"url"`
+}
+
+// DetectAuthServerMetadata RFC 8414 / OpenID Connect metadata of the chosen authorization server
+type DetectAuthServerMetadata struct {
+	AuthorizationEndpoint             string   `json:"authorizationEndpoint"`
+	ClientIdMetadataDocumentSupported bool     `json:"clientIdMetadataDocumentSupported"`
+	CodeChallengeMethodsSupported     []string `json:"codeChallengeMethodsSupported"`
+	GrantTypesSupported               []string `json:"grantTypesSupported"`
+	IssParameterSupported             bool     `json:"issParameterSupported"`
+	Issuer                            string   `json:"issuer"`
+
+	// MetadataUrl Example: https://github.com/.well-known/oauth-authorization-server/login/oauth
+	MetadataUrl          string  `json:"metadataUrl"`
+	RegistrationEndpoint *string `json:"registrationEndpoint"`
+	RevocationEndpoint   *string `json:"revocationEndpoint"`
+
+	// ScopesSupported OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted.
+	ScopesSupported                   ScopeList `json:"scopesSupported"`
+	TokenEndpoint                     string    `json:"tokenEndpoint"`
+	TokenEndpointAuthMethodsSupported []string  `json:"tokenEndpointAuthMethodsSupported"`
+}
+
+// DetectAuthStep One request the probe made, so the UI can show what was tried
+type DetectAuthStep struct {
+	HttpStatus *int32                `json:"httpStatus"`
+	LatencyMs  int64                 `json:"latencyMs"`
+	Purpose    DetectAuthStepPurpose `json:"purpose"`
+	Result     DetectAuthStepResult  `json:"result"`
+	Url        string                `json:"url"`
+}
+
+// DetectAuthStepPurpose defines model for DetectAuthStep.Purpose.
+type DetectAuthStepPurpose string
+
+// DetectAuthStepResult defines model for DetectAuthStep.Result.
+type DetectAuthStepResult string
 
 // DevAccount defines model for DevAccount.
 type DevAccount struct {
@@ -2297,12 +2669,15 @@ type McpHealthCheck struct {
 	CheckedAt time.Time `json:"checkedAt"`
 
 	// ErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
-	ErrorClass *McpErrorClass        `json:"errorClass,omitempty"`
-	HttpStatus *int32                `json:"httpStatus,omitempty"`
-	LatencyMs  int32                 `json:"latencyMs"`
-	Message    *string               `json:"message,omitempty"`
-	Ok         bool                  `json:"ok"`
-	Trigger    McpHealthCheckTrigger `json:"trigger"`
+	ErrorClass *McpErrorClass `json:"errorClass,omitempty"`
+	HttpStatus *int32         `json:"httpStatus,omitempty"`
+	LatencyMs  int32          `json:"latencyMs"`
+	Message    *string        `json:"message,omitempty"`
+	Ok         bool           `json:"ok"`
+
+	// SignInRequired A scheduled check of an oauth server, which uses nobody's token; the server answered the expected 401 sign-in challenge for its resource, so it is reachable (ok true). It says nothing about whether calls work
+	SignInRequired *bool                 `json:"signInRequired,omitempty"`
+	Trigger        McpHealthCheckTrigger `json:"trigger"`
 }
 
 // McpHealthCheckTrigger defines model for McpHealthCheck.Trigger.
@@ -2343,6 +2718,9 @@ type McpServer struct {
 	// AuthHeaderName The static header sent with every request (absent: none)
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
+	// AuthMode How the gateway authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
+	AuthMode *McpServerAuthMode `json:"authMode,omitempty"`
+
 	// AuthValueHint Last 4 characters of the header value, or empty
 	AuthValueHint string `json:"authValueHint"`
 
@@ -2365,6 +2743,9 @@ type McpServer struct {
 	// Name Example: Service status
 	Name string `json:"name"`
 
+	// Oauth The sign-in configuration when authMode is oauth, else null. Absent (like authMode) from servers before Phase 7
+	Oauth *McpServerOAuth `json:"oauth,omitempty"`
+
 	// PendingChanges Capabilities of a published server whose definition changed since approval (hidden from the catalog until approved)
 	PendingChanges        int64        `json:"pendingChanges"`
 	PublishRequestNote    *string      `json:"publishRequestNote,omitempty"`
@@ -2382,6 +2763,9 @@ type McpServer struct {
 
 	// Revision Increases on every change. Send it back in If-Match.
 	Revision Revision `json:"revision"`
+
+	// SendIdentity Send the identity token (decision 45). true (the default) keeps decision 7: every forwarded call carries the signed identity JWT (Authorization: Bearer, or MCP-Gateway-Identity when the server has a static Authorization header or is in oauth mode). false: the JWT is not sent to this server at all (no header), recommended for servers run outside the company such as GitHub's hosted MCP server, so names, emails and teams are not sent to a third party. Absent from servers before Phase 7 (true)
+	SendIdentity *bool `json:"sendIdentity,omitempty"`
 
 	// Slug Immutable; prefixes the server's tool names in gateways (slug__tool)
 	//
@@ -2401,22 +2785,32 @@ type McpServer struct {
 // McpServerTransport defines model for McpServer.Transport.
 type McpServerTransport string
 
+// McpServerAuthMode How the gateway authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
+type McpServerAuthMode string
+
 // McpServerCreate defines model for McpServerCreate.
 type McpServerCreate struct {
 	// AuthHeaderName A header such as Authorization or X-API-Key; send it with authValue, or neither
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
+	// AuthMode Default: static_header when authHeaderName is sent, else none. oauth needs oauth
+	AuthMode *McpServerAuthMode `json:"authMode,omitempty"`
+
 	// AuthValue Stored encrypted, never returned
 	AuthValue *string `json:"authValue,omitempty"`
 
 	// CapturePayloads Only team owners and admins may set it to true (403 capture_role)
-	CapturePayloads *bool   `json:"capturePayloads,omitempty"`
-	Description     *string `json:"description,omitempty"`
-	Enabled         *bool   `json:"enabled,omitempty"`
-	Name            string  `json:"name"`
+	CapturePayloads *bool                `json:"capturePayloads,omitempty"`
+	Description     *string              `json:"description,omitempty"`
+	Enabled         *bool                `json:"enabled,omitempty"`
+	Name            string               `json:"name"`
+	Oauth           *McpServerOAuthInput `json:"oauth,omitempty"`
 
 	// Requirement Absent or null; no user authorization
 	Requirement *McpServerRequirementInput `json:"requirement,omitempty"`
+
+	// SendIdentity Send the signed identity token with forwarded calls (McpServer.sendIdentity)
+	SendIdentity *bool `json:"sendIdentity,omitempty"`
 
 	// Slug Unique across the platform, immutable
 	Slug           string `json:"slug"`
@@ -2436,12 +2830,143 @@ type McpServerCreated struct {
 
 	// Server A remote MCP server a team registered. The auth header value is never returned.
 	Server McpServer `json:"server"`
+
+	// SetupRequired true for a server created in oauth mode; nobody has signed in yet, so capabilities weren't read. Call authorizeTeamMcpServerSetup next
+	SetupRequired *bool `json:"setupRequired,omitempty"`
 }
+
+// McpServerOAuth An oauth server's sign-in configuration, as discovered and chosen. The client secret is never returned
+type McpServerOAuth struct {
+	// AuthorizationEndpoint Example: https://github.com/login/oauth/authorize
+	AuthorizationEndpoint string `json:"authorizationEndpoint"`
+
+	// AuthorizationServer The authorization server as the resource metadata lists it
+	//
+	// Example: https://github.com/login/oauth
+	AuthorizationServer string `json:"authorizationServer"`
+
+	// ClientIdHint Last 6 characters of the client ID (the CIMD URL in full for cimd)
+	ClientIdHint string `json:"clientIdHint"`
+
+	// ClientSecretExpiresAt dcr only, when the authorization server gave an expiry
+	ClientSecretExpiresAt *time.Time `json:"clientSecretExpiresAt"`
+
+	// ConnectionCount People signed in to this server
+	ConnectionCount int64 `json:"connectionCount"`
+
+	// DiscoveredAt When the metadata was last read (on save)
+	DiscoveredAt    time.Time `json:"discoveredAt"`
+	HasClientSecret bool      `json:"hasClientSecret"`
+
+	// IssParameterSupported The authorization server sends iss in its authorization responses (RFC 9207); then a response without it is refused
+	IssParameterSupported bool `json:"issParameterSupported"`
+
+	// Issuer issuer from the authorization server's metadata (equal to authorizationServer); checked against the iss parameter of every authorization response
+	//
+	// Example: https://github.com/login/oauth
+	Issuer string `json:"issuer"`
+
+	// PlatformProvider The linked platform provider (registration platform_provider)
+	PlatformProvider *ProviderRef `json:"platformProvider"`
+
+	// ProviderId The server-bound provider (kind mcp_server); people's connections to this server name it
+	ProviderId openapi_types.UUID `json:"providerId"`
+
+	// ProviderSlug Generated (mcp-...); used in consent links (/connect/{slug}) and call records
+	ProviderSlug string `json:"providerSlug"`
+
+	// RedirectUri The callback the server's OAuth client uses (<APP_URL>/connect/callback); register it with a manual client. Absent before this field was added
+	//
+	// Example: https://mcp.example.com/connect/callback
+	RedirectUri *string `json:"redirectUri,omitempty"`
+
+	// Registration How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+	Registration McpServerOAuthRegistration `json:"registration"`
+
+	// Resource The server's canonical URI from its protected-resource metadata; sent as the resource parameter and the only URL its tokens are ever sent to
+	//
+	// Example: https://api.githubcopilot.com/mcp/
+	Resource string `json:"resource"`
+
+	// ResourceMetadataUrl Example: https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/
+	ResourceMetadataUrl string  `json:"resourceMetadataUrl"`
+	RevocationEndpoint  *string `json:"revocationEndpoint"`
+
+	// Scopes Asked for on every sign-in (empty; no scope parameter). Widening sends a published server back to review
+	Scopes ScopeList `json:"scopes"`
+
+	// ScopesSupported scopes_supported from the resource metadata
+	ScopesSupported ScopeList `json:"scopesSupported"`
+
+	// SendResource Send the resource parameter (RFC 8707) on authorization and token requests, as the MCP spec requires; turn off only for an authorization server that rejects it
+	SendResource bool `json:"sendResource"`
+
+	// SetupConnection The sign-in the gateway uses to read the server's capabilities and for manual tests (decision 42)
+	SetupConnection McpServerOAuthSetupConnection `json:"setupConnection"`
+
+	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	TokenAuthMethod AuthProviderTokenAuthMethod `json:"tokenAuthMethod"`
+
+	// TokenEndpoint Example: https://github.com/login/oauth/access_token
+	TokenEndpoint string `json:"tokenEndpoint"`
+}
+
+// McpServerOAuthInput defines model for McpServerOAuthInput.
+type McpServerOAuthInput struct {
+	// AuthorizationServer One of the resource metadata's authorization_servers (default; the first)
+	AuthorizationServer *string `json:"authorizationServer,omitempty"`
+
+	// ClientId manual only
+	ClientId *string `json:"clientId,omitempty"`
+
+	// ClientSecret manual only. Sealed with ENCRYPTION_KEY, never returned. Replace-only; omit to keep the stored one. Required unless tokenAuthMethod is none
+	ClientSecret *string `json:"clientSecret,omitempty"`
+
+	// PlatformProviderId platform_provider only; one of DetectAuthRegistration.matchingProviders
+	PlatformProviderId *openapi_types.UUID               `json:"platformProviderId,omitempty"`
+	Registration       *McpServerOAuthRegistrationChoice `json:"registration,omitempty"`
+
+	// Scopes Default: the challenge's scope, else the resource metadata's scopes_supported (the MCP spec's scope selection)
+	Scopes       *ScopeList `json:"scopes,omitempty"`
+	SendResource *bool      `json:"sendResource,omitempty"`
+
+	// TokenAuthMethod manual only (default client_secret_post, or the first the authorization server lists). dcr picks from the metadata; cimd is always none; platform_provider uses the provider's
+	TokenAuthMethod *AuthProviderTokenAuthMethod `json:"tokenAuthMethod,omitempty"`
+}
+
+// McpServerOAuthRegistration How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+type McpServerOAuthRegistration string
+
+// McpServerOAuthRegistrationChoice auto: cimd when offered, else dcr (the MCP spec's order); 422 registration_unavailable when neither is. Stored as the McpServerOAuthRegistration it resolved to
+type McpServerOAuthRegistrationChoice string
+
+// McpServerOAuthSetupConnection The sign-in the gateway uses to read the server's capabilities and for manual tests (decision 42)
+type McpServerOAuthSetupConnection struct {
+	AuthorizedAt *time.Time          `json:"authorizedAt"`
+	PersonId     *openapi_types.UUID `json:"personId"`
+
+	// PersonName Shown as "Capabilities read as <name>"
+	PersonName *string `json:"personName"`
+
+	// Status missing: nobody has signed in yet, or the person disconnected or was deleted. needs_reconsent: the sign-in lapsed (refresh refused, token revoked); refresh answers 409 setup_reconsent_required until an editor signs in again
+	Status McpServerOAuthSetupConnectionStatus `json:"status"`
+}
+
+// McpServerOAuthSetupConnectionStatus missing: nobody has signed in yet, or the person disconnected or was deleted. needs_reconsent: the sign-in lapsed (refresh refused, token revoked); refresh answers 409 setup_reconsent_required until an editor signs in again
+type McpServerOAuthSetupConnectionStatus string
 
 // McpServerPage defines model for McpServerPage.
 type McpServerPage struct {
 	Items      []McpServer `json:"items"`
 	NextCursor *string     `json:"nextCursor,omitempty"`
+}
+
+// McpServerRef defines model for McpServerRef.
+type McpServerRef struct {
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+	Slug     string             `json:"slug"`
+	TeamSlug string             `json:"teamSlug"`
 }
 
 // McpServerRequirement defines model for McpServerRequirement.
@@ -2469,6 +2994,9 @@ type McpServerUpdate struct {
 	// AuthHeaderName Omit to keep; an empty string removes the header and its value
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
+	// AuthMode Omit to keep. none removes the static header and the oauth configuration; leaving oauth deletes the server's connections
+	AuthMode *McpServerAuthMode `json:"authMode,omitempty"`
+
 	// AuthValue Omit to keep the stored value
 	AuthValue *string `json:"authValue,omitempty"`
 
@@ -2478,10 +3006,16 @@ type McpServerUpdate struct {
 	Enabled         *bool   `json:"enabled,omitempty"`
 	Name            *string `json:"name,omitempty"`
 
+	// Oauth Only with authMode oauth (sent now or stored). Omitted fields keep their stored values
+	Oauth *McpServerOAuthInput `json:"oauth,omitempty"`
+
 	// Requirement Omit to keep; null removes it. A widening change sends a published server back to review under approval_required
-	Requirement    *McpServerRequirementInput `json:"requirement,omitempty"`
-	TimeoutSeconds *int32                     `json:"timeoutSeconds,omitempty"`
-	Url            *string                    `json:"url,omitempty"`
+	Requirement *McpServerRequirementInput `json:"requirement,omitempty"`
+
+	// SendIdentity Omit to keep. Not a review trigger (turning it off sends less). Audited in mcp_server.update
+	SendIdentity   *bool   `json:"sendIdentity,omitempty"`
+	TimeoutSeconds *int32  `json:"timeoutSeconds,omitempty"`
+	Url            *string `json:"url,omitempty"`
 }
 
 // McpTestResult defines model for McpTestResult.
@@ -2498,9 +3032,15 @@ type McpTestResult struct {
 	Ok              bool    `json:"ok"`
 	ProtocolVersion *string `json:"protocolVersion,omitempty"`
 
+	// ReadAs oauth servers; the display name of the person whose sign-in (the setup connection) was used
+	ReadAs *string `json:"readAs,omitempty"`
+
 	// ServerName serverInfo.name the server reported
 	ServerName    *string `json:"serverName,omitempty"`
 	ServerVersion *string `json:"serverVersion,omitempty"`
+
+	// SetupRequired oauth servers; there is no usable setup connection, so the test couldn't sign in
+	SetupRequired *bool `json:"setupRequired,omitempty"`
 }
 
 // Me defines model for Me.
@@ -2712,6 +3252,12 @@ type OAuthGrant struct {
 	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
 }
 
+// OAuthSetupStart defines model for OAuthSetupStart.
+type OAuthSetupStart struct {
+	// ReturnTo A path on this site (default /teams/{team}/servers/{serverId}?setup=connected)
+	ReturnTo *string `json:"returnTo,omitempty"`
+}
+
 // Ok defines model for Ok.
 type Ok struct {
 	Ok bool `json:"ok"`
@@ -2798,11 +3344,17 @@ type ProviderConnectionStatus string
 
 // ProviderRef defines model for ProviderRef.
 type ProviderRef struct {
-	Id      openapi_types.UUID      `json:"id"`
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind mcp_server for an MCP server's own sign-in (then name is the server's name and server is set). Absent before Phase 7 (oauth2)
+	Kind    *AuthProviderKind       `json:"kind,omitempty"`
 	LogoUrl *string                 `json:"logoUrl"`
 	Name    string                  `json:"name"`
 	Preset  *AuthProviderPresetName `json:"preset"`
-	Slug    string                  `json:"slug"`
+
+	// Server The MCP server a kind mcp_server provider belongs to (null for platform providers)
+	Server *McpServerRef `json:"server,omitempty"`
+	Slug   string        `json:"slug"`
 }
 
 // PublishPolicy approval_required: a platform admin approves each server, and each changed capability, before it reaches the catalog. self_publish: the team's owners and admins do.
@@ -2937,10 +3489,13 @@ type ServerHealth struct {
 	CheckedAt *time.Time `json:"checkedAt,omitempty"`
 
 	// ErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
-	ErrorClass *McpErrorClass     `json:"errorClass,omitempty"`
-	LatencyMs  *int32             `json:"latencyMs,omitempty"`
-	Message    *string            `json:"message,omitempty"`
-	Status     ServerHealthStatus `json:"status"`
+	ErrorClass *McpErrorClass `json:"errorClass,omitempty"`
+	LatencyMs  *int32         `json:"latencyMs,omitempty"`
+	Message    *string        `json:"message,omitempty"`
+
+	// SignInRequired The latest check was an oauth server's unauthenticated probe that got the expected sign-in challenge (status healthy, shown as "requires sign-in")
+	SignInRequired *bool              `json:"signInRequired,omitempty"`
+	Status         ServerHealthStatus `json:"status"`
 
 	// StatusSince When the current status began
 	StatusSince *time.Time `json:"statusSince,omitempty"`
@@ -3657,8 +4212,11 @@ type AdminListMcpServersParams struct {
 	// Team Team slug or ID
 	Team *string `form:"team,omitempty" json:"team,omitempty"`
 
-	// Provider Auth provider ID; only servers that require it (as their requirement or in a capability override)
+	// Provider Auth provider ID; only servers that require it (as their requirement or in a capability override) or, for a platform provider, servers in oauth mode that link it
 	Provider *openapi_types.UUID `form:"provider,omitempty" json:"provider,omitempty"`
+
+	// AuthMode Only servers with this upstream auth mode
+	AuthMode *McpServerAuthMode `form:"authMode,omitempty" json:"authMode,omitempty"`
 
 	// Cursor nextCursor from the previous page
 	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -4083,11 +4641,17 @@ type SetTeamGatewayCapabilitiesJSONRequestBody = GatewayCapabilitiesUpdate
 // CreateTeamMcpServerJSONRequestBody defines body for CreateTeamMcpServer for application/json ContentType.
 type CreateTeamMcpServerJSONRequestBody = McpServerCreate
 
+// DetectTeamMcpServerAuthJSONRequestBody defines body for DetectTeamMcpServerAuth for application/json ContentType.
+type DetectTeamMcpServerAuthJSONRequestBody = DetectAuthRequest
+
 // UpdateTeamMcpServerJSONRequestBody defines body for UpdateTeamMcpServer for application/json ContentType.
 type UpdateTeamMcpServerJSONRequestBody = McpServerUpdate
 
 // SetTeamMcpCapabilityRequirementJSONRequestBody defines body for SetTeamMcpCapabilityRequirement for application/json ContentType.
 type SetTeamMcpCapabilityRequirementJSONRequestBody = CapabilityRequirementOverride
+
+// AuthorizeTeamMcpServerSetupJSONRequestBody defines body for AuthorizeTeamMcpServerSetup for application/json ContentType.
+type AuthorizeTeamMcpServerSetupJSONRequestBody = OAuthSetupStart
 
 // PublishTeamMcpServerJSONRequestBody defines body for PublishTeamMcpServer for application/json ContentType.
 type PublishTeamMcpServerJSONRequestBody = McpPublishRequest

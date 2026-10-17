@@ -80,7 +80,7 @@ func presetName(p *string) *apitypes.AuthProviderPresetName {
 }
 
 func toAPIProviderSummary(p registry.Provider) apitypes.AuthProviderSummary {
-	return apitypes.AuthProviderSummary{Id: p.ID, Slug: p.Slug, Name: p.Name, Kind: apitypes.Oauth2, Preset: presetName(p.Preset),
+	return apitypes.AuthProviderSummary{Id: p.ID, Slug: p.Slug, Name: p.Name, Kind: apitypes.AuthProviderKindOauth2, Preset: presetName(p.Preset),
 		DefaultScopes: p.DefaultScopes, LogoUrl: p.LogoURL}
 }
 
@@ -123,7 +123,21 @@ func toAPIPreset(p providers.Preset) apitypes.AuthProviderPreset {
 }
 
 func toAPIProviderRef(p providers.ProviderRef) apitypes.ProviderRef {
-	return apitypes.ProviderRef{Id: p.ID, Slug: p.Slug, Name: p.Name, Preset: presetName(p.Preset), LogoUrl: p.LogoURL}
+	kind := apitypes.AuthProviderKind(p.Kind)
+	if kind == "" {
+		kind = apitypes.AuthProviderKindOauth2
+	}
+	out := apitypes.ProviderRef{Id: p.ID, Slug: p.Slug, Name: p.Name, Preset: presetName(p.Preset), LogoUrl: p.LogoURL, Kind: &kind}
+	if p.Server != nil {
+		out.Server = &apitypes.McpServerRef{Id: p.Server.ID, Slug: p.Server.Slug, Name: p.Server.Name, TeamSlug: p.Server.TeamSlug}
+	}
+	return out
+}
+
+// toAPIRegistryProviderRef is a platform provider as a reference.
+func toAPIRegistryProviderRef(p registry.Provider) apitypes.ProviderRef {
+	kind := apitypes.AuthProviderKind(p.Kind)
+	return apitypes.ProviderRef{Id: p.ID, Slug: p.Slug, Name: p.Name, Preset: presetName(p.Preset), LogoUrl: p.LogoURL, Kind: &kind}
 }
 
 func toAPIConnection(c providers.Connection) apitypes.ProviderConnection {
@@ -141,8 +155,13 @@ func toAPIRequirement(r *registry.Requirement, connected *bool) *apitypes.Capabi
 	if r == nil {
 		return nil
 	}
-	return &apitypes.CapabilityRequirement{ProviderId: r.Provider.ID, ProviderSlug: r.Provider.Slug, ProviderName: r.Provider.Name,
+	out := &apitypes.CapabilityRequirement{ProviderId: r.Provider.ID, ProviderSlug: r.Provider.Slug, ProviderName: r.Provider.Name,
 		Scopes: nonNilStrings(r.Scopes), Connected: connected}
+	if r.Provider.ServerBound() {
+		k := apitypes.AuthProviderKindMcpServer
+		out.ProviderKind = &k
+	}
+	return out
 }
 
 func toAPIServerRequirement(r *registry.ServerRequirement) *apitypes.McpServerRequirement {
@@ -305,8 +324,19 @@ func (a *api) startMyConnection(w http.ResponseWriter, r *http.Request) {
 	if !httpx.Decode(w, r, &in) {
 		return
 	}
+	// An oauth server's own sign-in without a consent link: only for people
+	// who can use one of the server's capabilities through a gateway now.
+	allowed := false
+	if in.RequestId == nil {
+		if p, err := a.q.GetAuthProvider(r.Context(), in.ProviderId); err == nil && p.ServerID.Valid {
+			if allowed, err = a.Gateways.UsesServer(r.Context(), id.User, p.ServerID.UUID); failed(w, r, err) {
+				return
+			}
+		}
+	}
 	st, err := a.Providers.Start(r.Context(), a.actor(r), providers.StartInput{
 		ProviderID: in.ProviderId, RequestID: in.RequestId, ReturnTo: in.ReturnTo, Scopes: in.Scopes, SessionID: id.SessionID,
+		ServerBoundAllowed: allowed,
 	})
 	if failed(w, r, err) {
 		return
@@ -326,7 +356,7 @@ func (a *api) getConnectRequest(w http.ResponseWriter, r *http.Request) {
 		AccountLabel: v.AccountLabel, Gateway: apitypes.CallRef{Id: req.GatewayID, Slug: v.GatewaySlug, Name: v.GatewayName, Exists: v.GatewayExists},
 		Capability: apitypes.ConnectRequestCapability{Kind: apitypes.GatewayCapabilityKind(req.CapabilityKind), ExposedName: req.ExposedName,
 			Title: req.CapabilityTitle},
-		CreatedAt: req.CreatedAt, ExpiresAt: req.ExpiresAt,
+		CreatedAt: req.CreatedAt, ExpiresAt: req.ExpiresAt, AuthorizationServerHost: optStr(v.AuthorizationServerHost),
 	})
 }
 
@@ -363,7 +393,7 @@ func (a *api) connectCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	in := providers.CallbackInput{State: q.Get("state"), Code: q.Get("code"), Error: q.Get("error"),
+	in := providers.CallbackInput{State: q.Get("state"), Code: q.Get("code"), Error: q.Get("error"), Iss: q.Get("iss"),
 		RequestID: httpx.RequestID(r.Context()), ClientIP: httpx.ClientIP(r, a.Config.TrustedProxies)}
 	id, ok, err := a.Auth.SessionIdentity(r)
 	if err != nil {

@@ -226,7 +226,8 @@ func options(ctx context.Context, q *dbgen.Queries, teamID uuid.UUID, p OptionPa
 			src = SourceTeam
 		}
 		out[i] = Option{ListGatewayOptionsRow: r, Source: src, ExposedName: Exposed(r.Kind, r.ServerSlug, r.Name),
-			Requires: registry.Effective(r.ServerAuthProviderID, r.ServerAuthScopes, r.RequirementMode, r.RequirementScopes, ps)}
+			Requires: registry.Effective(registry.ServerOf{ID: r.ServerID, AuthMode: r.ServerAuthMode, Provider: r.ServerAuthProviderID,
+				Scopes: r.ServerAuthScopes}, r.RequirementMode, r.RequirementScopes, ps)}
 	}
 	return out, nil
 }

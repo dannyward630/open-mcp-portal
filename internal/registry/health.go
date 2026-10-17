@@ -57,7 +57,7 @@ func (s *Service) RunHealthChecks(ctx context.Context, interval time.Duration) (
 		go func(sv dbgen.McpServer) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			res, _, _ := s.probe(ctx, sv)
+			res, _, _ := s.probe(ctx, sv, TriggerScheduled)
 			if err := recordCheck(ctx, s.q, sv.ID, res, TriggerScheduled, uuid.NullUUID{}); err != nil {
 				// The server may have been deleted meanwhile.
 				s.log.DebugContext(ctx, "could not store a scheduled MCP health check", "server", sv.ID, "err", err)

@@ -3,7 +3,8 @@
  * teams published, with the owning team, what each offers (approved
  * capabilities only) and its health. Search in ?q=, filtered by the server.
  * On a phone, what a server offers moves under its name. A server whose team records call contents carries the
- * "Records call contents" badge, as on its page.
+ * "Records call contents" badge, as on its page, and one whose people each
+ * sign in to its own service (authMode oauth) the "Sign-in per person" badge.
  */
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -11,7 +12,7 @@ import { Library } from "lucide-react";
 import { api, type Schemas, unwrap } from "../../api/client";
 import { catalogKey } from "../../api/queries";
 import { CaptureBadge } from "../../components/capture";
-import { HealthBadge } from "../../components/servers/badges";
+import { HealthBadge, SignInBadge } from "../../components/servers/badges";
 import { countsText, healthLabels } from "../../components/servers/labels";
 import { CountsCell } from "../../components/servers/server-columns";
 import { ListPage, timeColumn, useListFilters } from "../../components/templates/list-page";
@@ -46,6 +47,12 @@ const columns = (narrow: boolean): DataTableColumn<Server>[] => [
               <>
                 {" "}
                 <CaptureBadge />
+              </>
+            )}
+            {x.authMode === "oauth" && (
+              <>
+                {" "}
+                <SignInBadge authMode={x.authMode} />
               </>
             )}
           </>

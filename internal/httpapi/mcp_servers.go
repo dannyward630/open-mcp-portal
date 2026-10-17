@@ -97,14 +97,14 @@ func serverPage(rows []registry.ServerView, limit int32) ([]registry.ServerView,
 	return rows, encodeCursor(last.Name, last.ID.String())
 }
 
-func writeServerPage(w http.ResponseWriter, r *http.Request, rows []registry.ServerView, err error, limit int32) {
+func (a *api) writeServerPage(w http.ResponseWriter, r *http.Request, rows []registry.ServerView, err error, limit int32) {
 	if failed(w, r, err) {
 		return
 	}
 	rows, next := serverPage(rows, limit)
 	page := apitypes.McpServerPage{Items: make([]apitypes.McpServer, len(rows)), NextCursor: next}
 	for i, v := range rows {
-		page.Items[i] = toAPIServer(v)
+		page.Items[i] = a.toAPIServer(v)
 	}
 	httpx.JSON(w, http.StatusOK, page)
 }
@@ -154,7 +154,7 @@ func (a *api) listTeamMcpServers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.Registry.ListTeam(r.Context(), a.actor(r), r.PathValue("team"), p)
-	writeServerPage(w, r, rows, err, limit)
+	a.writeServerPage(w, r, rows, err, limit)
 }
 
 func (a *api) createTeamMcpServer(w http.ResponseWriter, r *http.Request) {
@@ -170,11 +170,19 @@ func (a *api) createTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	setIf(&ci.Enabled, in.Enabled)
 	setIf(&ci.CapturePayloads, in.CapturePayloads)
 	ci.Requirement = fromAPIRequirement(in.Requirement)
+	if in.AuthMode != nil {
+		ci.AuthMode = string(*in.AuthMode)
+	}
+	ci.OAuth, ci.SendIdentity = fromAPIOAuthInput(in.Oauth), in.SendIdentity
 	res, err := a.Registry.Create(r.Context(), a.actor(r), r.PathValue("team"), ci)
 	if failed(w, r, err) {
 		return
 	}
-	out := apitypes.McpServerCreated{Server: toAPIServer(res.View)}
+	out := apitypes.McpServerCreated{Server: a.toAPIServer(res.View)}
+	if res.SetupRequired {
+		yes := true
+		out.SetupRequired = &yes
+	}
 	if res.Refresh != nil {
 		rr := toAPIRefresh(*res.Refresh)
 		out.Refresh = &rr
@@ -201,7 +209,7 @@ func (a *api) getTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	if failed(w, r, err) {
 		return
 	}
-	writeRevised(w, http.StatusOK, v.Server.Revision, toAPIServer(v))
+	writeRevised(w, http.StatusOK, v.Server.Revision, a.toAPIServer(v))
 }
 
 func (a *api) updateTeamMcpServer(w http.ResponseWriter, r *http.Request) {
@@ -221,12 +229,12 @@ func (a *api) updateTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	v, err := a.Registry.Update(r.Context(), a.actor(r), r.PathValue("team"), id, registry.UpdateInput{
 		Name: in.Name, Description: in.Description, URL: in.Url, AuthHeaderName: in.AuthHeaderName, AuthValue: in.AuthValue,
 		TimeoutSeconds: in.TimeoutSeconds, Enabled: in.Enabled, SetRequirement: setRequirement, Requirement: fromAPIRequirement(in.Requirement),
-		CapturePayloads: in.CapturePayloads,
+		CapturePayloads: in.CapturePayloads, AuthMode: strPtr(in.AuthMode), OAuth: fromAPIOAuthInput(in.Oauth), SendIdentity: in.SendIdentity,
 	}, rev)
 	if failed(w, r, err) {
 		return
 	}
-	writeRevised(w, http.StatusOK, v.Server.Revision, toAPIServer(v))
+	writeRevised(w, http.StatusOK, v.Server.Revision, a.toAPIServer(v))
 }
 
 func (a *api) deleteTeamMcpServer(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +316,7 @@ func (a *api) publishTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	if failed(w, r, err) {
 		return
 	}
-	httpx.JSON(w, http.StatusOK, toAPIServer(v))
+	httpx.JSON(w, http.StatusOK, a.toAPIServer(v))
 }
 
 func (a *api) unpublishTeamMcpServer(w http.ResponseWriter, r *http.Request) {
@@ -320,7 +328,7 @@ func (a *api) unpublishTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	if failed(w, r, err) {
 		return
 	}
-	httpx.JSON(w, http.StatusOK, toAPIServer(v))
+	httpx.JSON(w, http.StatusOK, a.toAPIServer(v))
 }
 
 func (a *api) getTeamPublishing(w http.ResponseWriter, r *http.Request) {
@@ -397,6 +405,13 @@ func (a *api) adminListMcpServers(w http.ResponseWriter, r *http.Request) {
 		}
 		p.ProviderID = &pid
 	}
+	if v := q.Get("authMode"); v != "" {
+		if v != registry.AuthNone && v != registry.AuthStaticHeader && v != registry.AuthOAuth {
+			httpx.Error(w, http.StatusBadRequest, "invalid_auth_mode", "authMode must be none, static_header or oauth")
+			return
+		}
+		p.AuthMode = &v
+	}
 	if v := q.Get("team"); v != "" {
 		if len(v) > 100 {
 			httpx.Error(w, http.StatusBadRequest, "invalid_team", "team must be a team slug or ID")
@@ -405,7 +420,7 @@ func (a *api) adminListMcpServers(w http.ResponseWriter, r *http.Request) {
 		p.Team = v
 	}
 	rows, err := a.Registry.AdminList(r.Context(), a.actor(r), p)
-	writeServerPage(w, r, rows, err, limit)
+	a.writeServerPage(w, r, rows, err, limit)
 }
 
 func (a *api) adminGetMcpServer(w http.ResponseWriter, r *http.Request) {
@@ -417,7 +432,7 @@ func (a *api) adminGetMcpServer(w http.ResponseWriter, r *http.Request) {
 	if failed(w, r, err) {
 		return
 	}
-	writeRevised(w, http.StatusOK, v.Server.Revision, toAPIServer(v))
+	writeRevised(w, http.StatusOK, v.Server.Revision, a.toAPIServer(v))
 }
 
 func (a *api) adminListMcpCapabilities(w http.ResponseWriter, r *http.Request) {
@@ -451,7 +466,7 @@ func (a *api) adminReviewMcpServer(w http.ResponseWriter, r *http.Request) {
 	if failed(w, r, err) {
 		return
 	}
-	httpx.JSON(w, http.StatusOK, toAPIServer(v))
+	httpx.JSON(w, http.StatusOK, a.toAPIServer(v))
 }
 
 func (a *api) adminApproveMcpCapability(w http.ResponseWriter, r *http.Request) {

@@ -17,6 +17,7 @@ import { Field } from "@/components/ui/field/field";
 import { RadioGroup } from "@/components/ui/radio-group/radio-group";
 import { TagInput } from "@/components/ui/tag-input/tag-input";
 import { toast } from "@/components/ui/toast/toast";
+import { describeAuthError } from "./auth-errors";
 import type { McpCapability, McpServer } from "./labels";
 import { effectiveScopes, overrideEffective, reviewedAgain, widens } from "./requirement";
 import { capabilitiesQuery, invalidateServer, type ServerScope } from "./scope";
@@ -114,7 +115,7 @@ export function OverrideDialog({ cap, server, scope, onClose }: Props) {
         describe={(e) =>
           e instanceof ApiError && e.code === "no_server_requirement"
             ? { message: "The server no longer requires a connection, so a capability can't ask for its own scopes. Set the server's requirement in Settings first." }
-            : undefined
+            : describeAuthError(e)
         }
       />
     </FormDialog>

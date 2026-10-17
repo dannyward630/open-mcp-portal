@@ -14,7 +14,7 @@ import type { ActionItem } from "../templates/action-menu";
 import { TextLink } from "@/components/ui/text-link/text-link";
 import s from "../../pages/shared.module.css";
 import { CaptureBadge } from "../capture";
-import { EnabledBadge, PendingChangesBadge, PublishStateBadge } from "./badges";
+import { EnabledBadge, PendingChangesBadge, PublishStateBadge, SignInBadge } from "./badges";
 import { CapabilitiesTab } from "./capabilities-tab";
 import { ServerNotices } from "./catalog-card";
 import { HealthTab } from "./health-tab";
@@ -22,6 +22,7 @@ import { countsText, type McpServer, totalCount, urlHost } from "./labels";
 import { OverviewTab } from "./overview-tab";
 import { type ServerAbilities, type ServerScope } from "./scope";
 import { ServerSettingsTab } from "./settings-tab";
+import { readAsText } from "./upstream-auth";
 import m from "./servers.module.css";
 
 type Props = {
@@ -43,6 +44,7 @@ export function ServerRecord({ server, scope, abilities, notices, links = [] }: 
         <span className={s.badges}>
           <PublishStateBadge state={server.publishState} />
           <PendingChangesBadge count={server.pendingChanges} />
+          <SignInBadge authMode={server.authMode} />
           {!server.enabled && <EnabledBadge enabled={false} />}
           {server.capturePayloads && <CaptureBadge />}
         </span>
@@ -56,6 +58,7 @@ export function ServerRecord({ server, scope, abilities, notices, links = [] }: 
           : []),
         { label: "Capabilities", value: server.refreshedAt ? countsText(server.counts) : "Not read yet" },
         { label: "User authorization", value: server.requirement ? needsText(server.requirement) : undefined },
+        { label: "Sign-in", value: server.authMode === "oauth" && server.oauth ? `At ${urlHost(server.oauth.authorizationServer)} · read as ${readAsText(server.oauth.setupConnection)}` : undefined },
       ]}
       menuLabel="More server actions"
       menuActions={links}

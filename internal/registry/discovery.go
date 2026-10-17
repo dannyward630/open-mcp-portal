@@ -42,35 +42,90 @@ type TestResult struct {
 	Counts                                     upstream.Counts
 	ServerName, ServerVersion, ProtocolVersion string
 	Err                                        *upstream.Error // nil when OK
+	// ReadAs names the person whose sign-in (the setup connection) an
+	// oauth server was read with; SetupRequired says there was none usable
+	// (SetupStatus is missing or needs_reconsent).
+	ReadAs        *string
+	SetupRequired bool
+	SetupStatus   string
+	// SignInRequired: a scheduled check of an oauth server got the expected
+	// 401 challenge (healthy). Note is stored as the message of a healthy
+	// check.
+	SignInRequired bool
+	Note           string
 }
 
 // probe discovers a server's capabilities (no storing). headerValue is
-// returned so messages can be scrubbed of it.
-func (s *Service) probe(ctx context.Context, sv dbgen.McpServer) (TestResult, upstream.Discovery, string) {
+// returned so messages can be scrubbed of it. A server in oauth mode is read
+// with the setup connection, except by scheduled checks, which use nobody's
+// token (probeSignIn).
+func (s *Service) probe(ctx context.Context, sv dbgen.McpServer, trigger string) (TestResult, upstream.Discovery, string) {
 	t, err := s.target(ctx, sv)
 	if err != nil {
 		var e *upstream.Error
 		errors.As(err, &e)
 		return TestResult{Err: e}, upstream.Discovery{}, ""
 	}
+	var res TestResult
+	if AuthModeOf(sv) == AuthOAuth {
+		p, err := s.q.GetServerProvider(ctx, uuid.NullUUID{UUID: sv.ID, Valid: true})
+		if err != nil {
+			return TestResult{Err: &upstream.Error{Class: upstream.ClassConfig, Message: "The server's sign-in isn't configured."}},
+				upstream.Discovery{}, ""
+		}
+		if trigger == TriggerScheduled {
+			return s.probeSignIn(ctx, sv, p), upstream.Discovery{}, ""
+		}
+		if deref(p.Resource) != sv.URL {
+			return TestResult{Err: &upstream.Error{Class: upstream.ClassConfig,
+				Message: "The server's URL differs from its OAuth resource; save its sign-in again."}}, upstream.Discovery{}, ""
+		}
+		token, person, err := s.setupToken(ctx, sv, p)
+		var se *SetupError
+		switch {
+		case errors.As(err, &se):
+			return TestResult{SetupRequired: true, SetupStatus: se.Status, Err: &upstream.Error{Class: upstream.ClassAuth,
+					Message: "No usable sign-in to read this server with: an editor signs in again (Sign in to read capabilities)."}},
+				upstream.Discovery{}, ""
+		case err != nil:
+			return TestResult{Err: &upstream.Error{Class: upstream.ClassUnavailable, Message: upstream.SafeMessage(err.Error(), "")}},
+				upstream.Discovery{}, ""
+		}
+		t.BearerToken, res.ReadAs = token, &person
+	}
 	d, err := s.client.Discover(ctx, t)
-	res := TestResult{Latency: d.Latency, ServerName: d.ServerName, ServerVersion: d.ServerVersion, ProtocolVersion: d.ProtocolVersion}
+	res.Latency, res.ServerName, res.ServerVersion, res.ProtocolVersion = d.Latency, d.ServerName, d.ServerVersion, d.ProtocolVersion
 	if err != nil {
 		e, ok := err.(*upstream.Error)
 		if !ok {
 			e = &upstream.Error{Class: upstream.ClassUnavailable, Message: "The test failed."}
 		}
-		res.Err = &upstream.Error{Class: e.Class, HTTPStatus: e.HTTPStatus, Message: upstream.SafeMessage(e.Message, t.HeaderValue)}
+		msg := upstream.SafeMessage(e.Message, t.HeaderValue)
+		if t.BearerToken != "" {
+			msg = upstream.SafeMessage(msg, t.BearerToken)
+		}
+		res.Err = &upstream.Error{Class: e.Class, HTTPStatus: e.HTTPStatus, Message: msg}
 		return res, d, t.HeaderValue
 	}
 	res.OK, res.Counts = true, upstream.CountKinds(d.Capabilities)
 	return res, d, t.HeaderValue
 }
 
+// setupToken is the setup connection's token (internal/providers).
+func (s *Service) setupToken(ctx context.Context, sv dbgen.McpServer, p dbgen.AuthProvider) (string, string, error) {
+	if s.oauth.Hooks == nil {
+		return "", "", &SetupError{Status: SetupMissing}
+	}
+	return s.oauth.Hooks.SetupToken(ctx, sv, p)
+}
+
 // recordCheck stores a health check and prunes the server's history.
 func recordCheck(ctx context.Context, q *dbgen.Queries, serverID uuid.UUID, res TestResult, trigger string, actor uuid.NullUUID) error {
 	p := dbgen.InsertMCPHealthCheckParams{ServerID: serverID, Ok: res.OK, Trigger: trigger,
-		LatencyMs: int32(min(max(res.Latency.Milliseconds(), 0), 1<<31-1))}
+		LatencyMs: int32(min(max(res.Latency.Milliseconds(), 0), 1<<31-1)), SignInRequired: res.SignInRequired && res.OK}
+	if res.OK {
+		p.Message = res.Note
+	}
 	if trigger == TriggerManual {
 		p.TriggeredBy = actor
 	}
@@ -104,7 +159,7 @@ func (s *Service) Test(ctx context.Context, a authz.Actor, ref string, id uuid.U
 	if err != nil {
 		return TestResult{}, err
 	}
-	res, _, _ := s.probe(ctx, sv)
+	res, _, _ := s.probe(ctx, sv, TriggerManual)
 	if err := recordCheck(context.WithoutCancel(ctx), s.q, id, res, TriggerManual, by(a)); err != nil {
 		s.log.WarnContext(ctx, "could not store an MCP server test", "server", id, "err", err)
 	}
@@ -138,6 +193,11 @@ func (s *Service) Refresh(ctx context.Context, a authz.Actor, ref string, id uui
 		return RefreshResult{}, err
 	}
 	if fail != nil {
+		if fail.SetupRequired {
+			e := apperr.Conflict("setup_reconsent_required", "The sign-in used to read this server's capabilities can't be used: an editor signs in again")
+			e.Details = map[string]any{"status": fail.SetupStatus}
+			return RefreshResult{}, e
+		}
 		return RefreshResult{}, &DiscoveryError{Result: *fail}
 	}
 	return *res, nil
@@ -160,7 +220,7 @@ func (e *DiscoveryError) AsAppError(details any) *apperr.Error {
 // refresh discovers and stores a server's capabilities (authorization
 // done). A discovery failure is returned as fail (and stored), not err.
 func (s *Service) refresh(ctx context.Context, a authz.Actor, sv dbgen.McpServer) (*RefreshResult, *TestResult, error) {
-	res, d, _ := s.probe(ctx, sv)
+	res, d, _ := s.probe(ctx, sv, TriggerManual)
 	if !res.OK {
 		err := store.InTx(context.WithoutCancel(ctx), s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 			if _, err := anyServer(ctx, q, sv.ID, true); err != nil {

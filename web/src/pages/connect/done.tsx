@@ -10,14 +10,16 @@
  * never starts anything, and works whether or not the person is signed in.
  * The address is untrusted (anyone can link here): the provider is named
  * only when ?provider= is a provider the person can see in GET
- * /v1/auth-providers, and the left-out scopes are listed only when every
+ * /v1/auth-providers (or, for an MCP server's own sign-in, one of the
+ * person's connections in GET /v1/me/connections), and the left-out scopes are listed only when every
  * one looks like a scope (safeMissingScopes); otherwise the words are generic.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
 import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { useEffect, useId } from "react";
-import { authProvidersQuery } from "../../api/queries";
+import { authProvidersQuery, myConnectionsQuery } from "../../api/queries";
+import { connectionName } from "../../components/providers/labels";
 import { useInstance, useMe } from "../../session";
 import { Card, CardBody } from "@/components/ui/card/card";
 import { Stack } from "@/components/ui/layout/layout";
@@ -85,7 +87,13 @@ export function ConnectDonePage() {
   const signedIn = Boolean(me.data);
   // The provider's name only when it is a provider this person can see; never the address's words.
   const providers = useQuery({ ...authProvidersQuery(), enabled: signedIn && Boolean(slug) });
-  const name = providers.data?.find((p) => p.slug === slug)?.name ?? "the provider";
+  // Server sign-ins aren't platform providers: they're named by the person's own connection to them.
+  const own = useQuery({
+    ...myConnectionsQuery(),
+    enabled: signedIn && Boolean(slug) && providers.isFetched && !providers.data?.some((p) => p.slug === slug),
+  });
+  const mine = own.data?.find((c) => c.provider.slug === slug)?.provider;
+  const name = providers.data?.find((p) => p.slug === slug)?.name ?? (mine ? connectionName(mine) : "the provider");
   const { title, text, tone } = resultText(result, name);
   const Icon = icons[tone];
   const titleId = useId();

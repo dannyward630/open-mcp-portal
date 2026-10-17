@@ -244,6 +244,11 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	// Provider endpoints are dialled behind the same address guard as MCP
 	// servers.
 	provs := providers.New(pool, box, client, cfg.AppURL, log)
+	// Upstream OAuth (Phase 7): the registry reads oauth servers with the
+	// setup connection and deletes their connections through providers,
+	// which reads capabilities after a setup sign-in.
+	reg.SetOAuth(registry.OAuthSettings{AppURL: cfg.AppURL, InstanceName: cfg.Instance.Name, Hooks: provs})
+	provs.Registry = reg
 	callSvc := calls.New(pool)
 	ret := retention.New(pool, retention.Config{Interval: cfg.RetentionInterval, BatchSize: int32(cfg.RetentionBatchSize)}, log)
 	ret.Hooks = []retention.Hook{provs.Cleanup, rates.Cleanup}

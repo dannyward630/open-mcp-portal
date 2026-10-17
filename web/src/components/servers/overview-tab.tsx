@@ -23,6 +23,9 @@ import s from "../../pages/shared.module.css";
 import { EnabledBadge, HealthBadge } from "./badges";
 import { CatalogCard } from "./catalog-card";
 import { RequirementCard } from "./requirement-card";
+import { SetupConnectedNotice, SetupNotice } from "./setup";
+import { SignInCard } from "./sign-in-card";
+import { authModeLabels, authModeOf } from "./upstream-auth";
 import { type CapabilityKind, countOf, kindTitle, type McpServer } from "./labels";
 import { FailureLine, FirstDiscovery, RefreshError, refreshChanges, RefreshSummary, TestResultAlert } from "./results";
 import { capabilitiesQuery, firstDiscoveryKey, invalidateServer, type ServerAbilities, type ServerScope } from "./scope";
@@ -43,6 +46,8 @@ export function OverviewTab({ server, scope, abilities }: Props) {
   };
   return (
     <>
+      <SetupConnectedNotice server={server} />
+      <SetupNotice server={server} scope={scope} abilities={abilities} justCreated={Boolean(created?.setupRequired)} />
       {created && <FirstDiscovery created={created} onDismiss={dismiss} />}
       <div className={s.stats} role="group" aria-label="What the server offers">
         {(Object.keys(kindIcons) as CapabilityKind[]).map((kind) => {
@@ -59,7 +64,8 @@ export function OverviewTab({ server, scope, abilities }: Props) {
         })}
       </div>
       <ConnectionCard server={server} scope={scope} abilities={abilities} onRun={dismiss} />
-      <RequirementCard server={server} scope={scope} />
+      <SignInCard server={server} scope={scope} abilities={abilities} />
+      {authModeOf(server) !== "oauth" && <RequirementCard server={server} scope={scope} />}
       <CatalogCard server={server} scope={scope} abilities={abilities} />
     </>
   );
@@ -90,13 +96,15 @@ function ConnectionCard({ server, scope, abilities, onRun }: Props & { onRun: ()
     (which === "test" ? test : refresh).mutate();
   };
   const h = server.health;
-  const auth = server.hasAuth ? (
-    <code className={s.mono}>
-      {server.authHeaderName}: ••••{server.authValueHint}
-    </code>
-  ) : (
-    "None"
-  );
+  const mode = authModeOf(server);
+  const auth =
+    mode === "static_header" && server.hasAuth ? (
+      <code className={s.mono}>
+        {server.authHeaderName}: ••••{server.authValueHint}
+      </code>
+    ) : (
+      authModeLabels[mode]
+    );
   return (
     <Card
       title="Connection"
@@ -124,7 +132,7 @@ function ConnectionCard({ server, scope, abilities, onRun }: Props & { onRun: ()
           items={[
             { label: "URL", value: <code className={m.url}>{server.url}</code> },
             { label: "Transport", value: "Streamable HTTP" },
-            { label: "Header", value: auth },
+            { label: mode === "static_header" ? "Header" : "Authentication", value: auth },
             { label: "Timeout", value: `${server.timeoutSeconds} s` },
             { label: "Status", value: <EnabledBadge enabled={server.enabled} /> },
             { label: "Health", value: <HealthBadge health={h} /> },

@@ -22,6 +22,7 @@ import (
 	"github.com/ncecere/open-mcp-gateway/internal/registry"
 	"github.com/ncecere/open-mcp-gateway/internal/store"
 	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-gateway/internal/teams"
 )
 
 // Connecting an account: consent links (connect requests) that calls answer
@@ -141,6 +142,9 @@ type RequestView struct {
 	// The gateway as it is now (or as it was, when deleted).
 	GatewaySlug, GatewayName string
 	GatewayExists            bool
+	// AuthorizationServerHost is an oauth server's authorization server
+	// host ("": a platform provider), for "act as you at github.com".
+	AuthorizationServerHost string
 }
 
 // loadRequest finds a request of a person: 404 for an unknown ID or another
@@ -171,8 +175,21 @@ func (s *Service) GetRequest(ctx context.Context, a authz.Actor, id string) (Req
 	if err != nil {
 		return RequestView{}, err
 	}
-	v := RequestView{Request: r, ID: id, Provider: refOf(p), Granted: []string{}, GatewaySlug: r.GatewaySlug, GatewayName: r.GatewayName,
+	ref, err := s.refOf(ctx, s.q, p)
+	if err != nil {
+		return RequestView{}, err
+	}
+	v := RequestView{Request: r, ID: id, Provider: ref, Granted: []string{}, GatewaySlug: r.GatewaySlug, GatewayName: r.GatewayName,
 		Reason: ReasonNotConnected}
+	if p.Kind == KindMCPServer {
+		as := deref(p.AuthorizationServer)
+		if as == "" {
+			as = p.AuthorizationUrl
+		}
+		if u, err := url.Parse(as); err == nil {
+			v.AuthorizationServerHost = u.Hostname()
+		}
+	}
 	if c, err := s.q.GetProviderConnection(ctx, dbgen.GetProviderConnectionParams{UserID: a.UserID, ProviderID: p.ID}); err == nil {
 		v.AccountLabel = c.AccountLabel
 		switch {
@@ -196,8 +213,16 @@ func (s *Service) GetRequest(ctx context.Context, a authz.Actor, id string) (Req
 	return v, nil
 }
 
-func refOf(p dbgen.AuthProvider) ProviderRef {
-	return ProviderRef{ID: p.ID, Slug: p.Slug, Name: p.Name, Preset: p.Preset, LogoURL: p.LogoUrl}
+func (s *Service) refOf(ctx context.Context, q *dbgen.Queries, p dbgen.AuthProvider) (ProviderRef, error) {
+	out := ProviderRef{ID: p.ID, Slug: p.Slug, Name: p.Name, Preset: p.Preset, LogoURL: p.LogoUrl, Kind: p.Kind}
+	if p.ServerID.Valid {
+		r, err := q.GetServerRef(ctx, p.ServerID.UUID)
+		if err != nil {
+			return out, err
+		}
+		out.Server = &ServerRef{ID: r.ID, Slug: r.Slug, Name: r.Name, TeamSlug: r.TeamSlug}
+	}
+	return out, nil
 }
 
 // StartInput begins connecting. SessionID is the caller's browser session.
@@ -207,6 +232,10 @@ type StartInput struct {
 	ReturnTo   *string
 	Scopes     *[]string
 	SessionID  string
+	// ServerBoundAllowed: the caller may start a sign-in to an oauth
+	// server's own provider without a consent link (they can use one of the
+	// server's capabilities through a gateway now; checked by the caller).
+	ServerBoundAllowed bool
 }
 
 // Started says where to send the browser.
@@ -250,6 +279,14 @@ func (s *Service) Start(ctx context.Context, a authz.Actor, in StartInput) (Star
 	if !p.Enabled {
 		return Started{}, errNoProvider
 	}
+	if p.Kind == KindMCPServer {
+		if in.RequestID == nil && !in.ServerBoundAllowed {
+			return Started{}, errNoProvider
+		}
+		if err := s.linkUsable(ctx, p); err != nil {
+			return Started{}, errNoProvider
+		}
+	}
 	var requestDig *string
 	var required []string
 	if in.RequestID != nil {
@@ -280,12 +317,25 @@ func (s *Service) Start(ctx context.Context, a authz.Actor, in StartInput) (Star
 	if in.Scopes == nil && in.RequestID == nil {
 		mustHave = asked
 	}
+	return s.begin(ctx, a, p, in.SessionID, scopes, mustHave, requestDig, in.ReturnTo, uuid.NullUUID{})
+}
+
+// begin stores a single-use state bound to the session, person, provider,
+// request (or the server being set up) and resource, and returns the
+// authorization URL.
+func (s *Service) begin(ctx context.Context, a authz.Actor, p dbgen.AuthProvider, sessionID string, scopes, mustHave []string,
+	requestDig, returnTo *string, setupServer uuid.NullUUID) (Started, error) {
+	client, err := s.clientOf(ctx, p)
+	if err != nil {
+		return Started{}, err
+	}
 	state := randomID()
 	digest := auth.Digest(state)
 	expires := s.now().Add(StateTTL)
 	var verifier, challenge string
 	var verifierCT []byte
-	if p.Pkce {
+	// PKCE S256 is required by the MCP spec for oauth servers.
+	if p.Pkce || p.Kind == KindMCPServer {
 		verifier, challenge = pkcePair()
 		if verifierCT, err = s.box.Seal([]byte(verifier), stateAAD(digest)); err != nil {
 			return Started{}, err
@@ -296,35 +346,91 @@ func (s *Service) Start(ctx context.Context, a authz.Actor, in StartInput) (Star
 			return err
 		}
 		return q.InsertProviderAuthState(ctx, dbgen.InsertProviderAuthStateParams{
-			StateDigest: digest, UserID: a.UserID, SessionDigest: auth.Digest(in.SessionID), ProviderID: p.ID, Scopes: scopes,
-			RequiredScopes: mustHave, CodeVerifierCipher: verifierCT, RequestDigest: requestDig, ReturnTo: in.ReturnTo, ExpiresAt: expires,
+			StateDigest: digest, UserID: a.UserID, SessionDigest: auth.Digest(sessionID), ProviderID: p.ID, Scopes: scopes,
+			RequiredScopes: mustHave, CodeVerifierCipher: verifierCT, RequestDigest: requestDig, ReturnTo: returnTo, ExpiresAt: expires,
+			SetupServerID: setupServer, Resource: p.Resource,
 		})
 	})
 	if err != nil {
 		return Started{}, err
 	}
-	return Started{AuthorizeURL: s.authorizeURL(p, state, challenge, scopes), Scopes: scopes, ExpiresAt: expires}, nil
+	return Started{AuthorizeURL: s.authorizeURL(p, client, state, challenge, scopes), Scopes: scopes, ExpiresAt: expires}, nil
+}
+
+// linkUsable: an oauth server registered with platform_provider can sign in
+// only while the platform provider is on and its endpoints still match.
+func (s *Service) linkUsable(ctx context.Context, p dbgen.AuthProvider) error {
+	if !p.LinkProviderID.Valid {
+		return nil
+	}
+	l, err := s.q.GetAuthProvider(ctx, p.LinkProviderID.UUID)
+	if err != nil {
+		return err
+	}
+	if !l.Enabled || l.AuthorizationUrl != p.AuthorizationUrl || l.TokenUrl != p.TokenUrl {
+		return errLinkMismatch
+	}
+	return nil
+}
+
+var errLinkMismatch = apperr.New(http.StatusUnprocessableEntity, "provider_mismatch",
+	"The platform provider this server signs in with is turned off or no longer matches its authorization server")
+
+// SetupStart begins the setup sign-in of an oauth server
+// (authorizeTeamMcpServerSetup): the caller's own connection to the
+// server's provider, with the server's scopes. After the callback it
+// becomes the server's setup connection and capabilities are read with it.
+// The caller checked the server (editors and above, oauth mode).
+func (s *Service) SetupStart(ctx context.Context, a authz.Actor, sv dbgen.McpServer, p dbgen.AuthProvider, teamSlug string,
+	returnTo *string, sessionID string) (Started, error) {
+	if sessionID == "" {
+		return Started{}, apperr.New(http.StatusForbidden, "session_required", "Sign in from the web app")
+	}
+	if returnTo != nil && !SafeReturnPath(*returnTo) {
+		return Started{}, apperr.Invalid("invalid_return_to", "returnTo must be a path on this site")
+	}
+	if returnTo == nil {
+		def := "/teams/" + teamSlug + "/servers/" + sv.ID.String() + "?setup=connected"
+		returnTo = &def
+	}
+	if err := s.linkUsable(ctx, p); err != nil {
+		return Started{}, err
+	}
+	granted := []string{}
+	if c, err := s.q.GetProviderConnection(ctx, dbgen.GetProviderConnectionParams{UserID: a.UserID, ProviderID: p.ID}); err == nil {
+		if c.Status == StatusActive {
+			granted = nonNil(c.Scopes)
+		}
+	} else if !errors.Is(store.NotFound(err), store.ErrNotFound) {
+		return Started{}, err
+	}
+	want := nonNil(p.DefaultScopes)
+	return s.begin(ctx, a, p, sessionID, union(granted, want), want, nil, returnTo, uuid.NullUUID{UUID: sv.ID, Valid: true})
 }
 
 func normalizeScopes(in []string) ([]string, error) { return registry.NormalizeScopes(in) }
 
 // authorizeURL builds the provider's authorization request from its stored
-// settings.
-func (s *Service) authorizeURL(p dbgen.AuthProvider, state, challenge string, scopes []string) string {
+// settings; client is the provider whose client is used (clientOf).
+func (s *Service) authorizeURL(p, client dbgen.AuthProvider, state, challenge string, scopes []string) string {
 	q := url.Values{}
-	for k, v := range extraParams(p.ExtraAuthorizeParams) {
+	for k, v := range extraParams(client.ExtraAuthorizeParams) {
 		q.Set(k, v)
 	}
 	q.Set("response_type", "code")
-	q.Set("client_id", p.ClientID)
+	q.Set("client_id", client.ClientID)
 	q.Set("redirect_uri", s.RedirectURI())
 	q.Set("state", state)
 	if len(scopes) > 0 {
-		q.Set(p.ScopeParam, strings.Join(scopes, p.ScopeSeparator))
+		q.Set(client.ScopeParam, strings.Join(scopes, client.ScopeSeparator))
 	}
 	if challenge != "" {
 		q.Set("code_challenge", challenge)
 		q.Set("code_challenge_method", "S256")
+	}
+	if p.Kind == KindMCPServer && p.SendResource && p.Resource != nil {
+		// RFC 8707: the token is for this MCP server only (the MCP spec).
+		q.Set("resource", *p.Resource)
 	}
 	return p.AuthorizationUrl + "?" + q.Encode()
 }
@@ -332,7 +438,10 @@ func (s *Service) authorizeURL(p dbgen.AuthProvider, state, challenge string, sc
 // CallbackInput is the provider's redirect back, with the browser's
 // session (SessionID "" when signed out) and its person.
 type CallbackInput struct {
-	State, Code, Error  string
+	State, Code, Error string
+	// Iss is the authorization response's iss parameter (RFC 9207; "":
+	// absent).
+	Iss                 string
 	SessionID           string
 	User                dbgen.User
 	RequestID, ClientIP string
@@ -378,6 +487,21 @@ func (s *Service) Callback(ctx context.Context, in CallbackInput) (string, error
 	if in.SessionID == "" || auth.Digest(in.SessionID) != st.SessionDigest || in.User.ID != st.UserID || in.User.Status != auth.StatusActive {
 		return done(p.Slug, ResultWrongPerson, nil), nil
 	}
+	if p.Kind == KindMCPServer {
+		// Mix-up (RFC 9207): the response must come from the server's own
+		// issuer; and the server's resource must not have changed meanwhile.
+		switch {
+		case deref(st.Resource) != deref(p.Resource):
+			return done(p.Slug, ResultError, nil), nil
+		case in.Iss != "" && in.Iss != deref(p.Issuer):
+			return done(p.Slug, ResultError, nil), nil
+		case in.Iss == "" && p.IssParamSupported && in.Error == "":
+			return done(p.Slug, ResultError, nil), nil
+		}
+		if s.linkUsable(ctx, p) != nil {
+			return done(p.Slug, ResultError, nil), nil
+		}
+	}
 	if in.Error != "" {
 		return done(p.Slug, ResultDenied, nil), nil
 	}
@@ -408,11 +532,38 @@ func (s *Service) Callback(ctx context.Context, in CallbackInput) (string, error
 		expires = &t
 	}
 	actor := authz.Actor{UserID: in.User.ID, PlatformRole: in.User.PlatformRole, RequestID: in.RequestID, ClientIP: in.ClientIP}
+	setup := false
 	err = store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
-		return s.store(ctx, q, actor, in.User, p, st, tok, granted, label, expires)
+		if err := s.store(ctx, q, actor, in.User, p, st, tok, granted, label, expires); err != nil {
+			return err
+		}
+		if !st.SetupServerID.Valid {
+			return nil
+		}
+		// The setup sign-in counts only for an editor (or above) of the
+		// server's team, checked again now.
+		sv, err := q.GetMCPServer(ctx, st.SetupServerID.UUID)
+		if err != nil {
+			return err
+		}
+		role, err := teams.MemberRole(ctx, q, sv.TeamID, in.User.ID)
+		if err != nil || authz.CheckServerEdit(role) != nil {
+			return err
+		}
+		if _, err := registry.SetSetupConnection(ctx, q, actor, sv.ID, displayName(in.User)); err != nil {
+			return err
+		}
+		setup = true
+		return nil
 	})
 	if err != nil {
 		return "", err
+	}
+	if setup && s.Registry != nil {
+		// Capabilities are read at once with the new setup connection.
+		if err := s.Registry.RefreshAsSetup(context.WithoutCancel(ctx), actor, st.SetupServerID.UUID); err != nil {
+			s.Log.WarnContext(ctx, "reading capabilities after the setup sign-in failed", "server", st.SetupServerID.UUID, "err", err)
+		}
 	}
 	var missing []string
 	for _, m := range st.RequiredScopes {

@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-10-17 (Phase 7 upstream OAuth designed: [phase7-upstream-oauth.md](phase7-upstream-oauth.md); Phase 6 backend and UI built, browser QA findings fixed:
+Last updated: 2026-10-17 (Phase 7 upstream OAuth backend built: [phase7-upstream-oauth.md](phase7-upstream-oauth.md) "As built"; Phase 6 backend and UI built, browser QA findings fixed:
 [phase6-operations.md](phase6-operations.md) "As built"; Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built").
 
 ## Where things stand
@@ -158,6 +158,18 @@ Last updated: 2026-10-17 (Phase 7 upstream OAuth designed: [phase7-upstream-oaut
   `migrate` + `serve` in production mode (https APP_URL, OIDC, fresh keys) against a scratch database, `/healthz`,
   `/readyz`, `doctor`, SIGTERM drain; demo discovered the fake server's capabilities; `k8s-validate` passes.
 
+- **Phase 7 (upstream OAuth): backend built; UI built in parallel from the same contract.** Servers in `oauth` mode
+  (GitHub's hosted MCP server): detect (RFC 9728/8414/OIDC discovery through the guard), save with DCR, CIMD, a manual
+  client or a linked platform provider, setup sign-in that reads capabilities, each person's own token as the bearer
+  (identity in `MCP-Gateway-Identity`, or none with `sendIdentity: false`), 401 refresh-and-retry, 403 step-up, health
+  "requires sign-in", review triggers. See [phase7-upstream-oauth.md](phase7-upstream-oauth.md) "As built".
+  - Migration `00012_upstream_oauth`; new package `internal/upstream/oauthmeta`; `fakeoauth`/`fakemcp` protected modes.
+  - Contract additions: `sendIdentity` (McpServer, create, update; decision 45), `McpServerOAuth.redirectUri`,
+    `ConnectRequest.authorizationServerHost`.
+  - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration`, `make k8s-validate`; a live
+    detect against `https://api.githubcopilot.com/mcp/` (oauth, github.com/login/oauth, S256, manual, ten scopes).
+  - Gaps: the manual GitHub sign-in (needs an OAuth app) not run; CIMD only tested as unavailable on loopback.
+
 ## Differences from Grounded (deliberate)
 
 - OIDC login state lives in PostgreSQL (`login_states`), not Valkey.
@@ -194,13 +206,9 @@ make test && make web-test
 4. Push to a remote and let `.github/workflows/ci.yml` run once; fix what only GitHub's runners show.
 5. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow; see [deploy.md](deploy.md) "Not
    covered yet".
-6. **Phase 7 (upstream OAuth): designed** (decisions 39–44, [phase7-upstream-oauth.md](phase7-upstream-oauth.md); contract
-   additions `detectTeamMcpServerAuth`, `authorizeTeamMcpServerSetup`, `McpServer.authMode`/`oauth`,
-   `ProviderRef.kind`/`server`, `signInRequired` on health). Build order: migration `00012_upstream_oauth`, discovery
-   package and fakes (`fakemcp -protect`, `fakeoauth -issuer-path/-dcr/-cimd/-no-dcr`), save/registration, setup sign-in,
-   runtime (401/403), health probe, UI, then `make generate`. Until the backend serves the two new routes,
-   `TestRoutesMatchOpenAPI` fails. Then the manual GitHub test in the design. Open question for the user: whether to keep
-   sending the identity JWT to third-party `oauth` servers.
+6. Phase 7: the manual GitHub test in [phase7-upstream-oauth.md](phase7-upstream-oauth.md) (create a GitHub OAuth app,
+   Detect, Enter a client, setup sign-in, a second person's `get_me`, revoke on GitHub), and a browser QA pass of the
+   new screens.
 
 ## Phase 1 UI
 

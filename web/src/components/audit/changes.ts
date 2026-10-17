@@ -40,6 +40,17 @@ const params: Format = (v) => (v && typeof v === "object" && !Array.isArray(v) ?
 /** Whether a disconnected account was revoked at the provider too. */
 const revoked: Format = (v) => (v === true ? "Yes" : v === false ? "No (failed)" : v === "not_supported" ? "Not supported by the provider" : v);
 
+const authModeWords: Record<string, string> = { none: "None", static_header: "Static header", oauth: "OAuth sign-in per person" };
+const registrationWords: Record<string, string> = {
+  dcr: "Automatic (dynamic registration)",
+  cimd: "Automatic (client metadata document)",
+  manual: "Client entered by the team",
+  platform_provider: "Platform provider's client",
+};
+const yesNo: Format = (v) => (typeof v === "boolean" ? (v ? "Yes" : "No") : v);
+/** A person recorded as an object ({ id, name }) or a name. */
+const personName: Format = (v) => (v && typeof v === "object" && "name" in v && typeof v.name === "string" ? v.name : v);
+
 const overrideModeLabels: Record<string, string> = { inherit: "Same as the server", none: "No account", scopes: "Other scopes" };
 
 const limitKeyLabels: Record<string, string> = {
@@ -97,7 +108,22 @@ function fieldsFor(action: string): Fields | undefined {
       return { capturePayloads: ["Record call contents", onOff], rateLimitPerMinute: ["Rate limit per minute"] };
     case "mcp_server.create":
     case "mcp_server.update":
-      return { capturePayloads: ["Record call contents", onOff] };
+      return { capturePayloads: ["Record call contents", onOff], sendIdentity: ["Send identity token", onOff], authMode: ["Authentication", label(authModeWords)] };
+    case "mcp_server.auth_update":
+      return {
+        mode: ["Authentication", label(authModeWords)],
+        authMode: ["Authentication", label(authModeWords)],
+        authorizationServer: ["Authorization server"],
+        registration: ["Registration", label(registrationWords)],
+        scopes: ["Scopes"],
+        sendResource: ["Resource indicator", onOff],
+        clientIdChanged: ["New client ID", yesNo],
+        clientSecretChanged: ["New client secret", yesNo],
+        registered: ["Registered a client", yesNo],
+        connectionsReset: ["Sign-ins reset", (v) => (typeof v === "number" ? v.toLocaleString() : yesNo(v))],
+        setupBy: ["Capabilities read as", personName],
+        providerId: null,
+      };
     case "service_account.create":
     case "service_account.update":
     case "service_account.delete":

@@ -18,20 +18,45 @@ import { Textarea } from "@/components/ui/input/input";
 import { toast } from "@/components/ui/toast/toast";
 import { type McpServer, totalCount } from "./labels";
 import { RequirementSummary } from "./requirement-card";
-import { invalidateServer, storeServer } from "./scope";
+import { invalidateServer, type ServerScope, storeServer } from "./scope";
+import { SignInSummary } from "./sign-in-card";
+import { authModeOf } from "./upstream-auth";
 
 const maxNote = 2000;
+
+/** What the server receives with each call: how the gateway authenticates (sign-in, identity) and, without OAuth, the callers' accounts. */
+function ServerReceives({ server, scope }: { server: McpServer; scope: ServerScope }) {
+  return (
+    <section aria-label="What the server receives">
+      <p>
+        <strong>What the server receives</strong>
+      </p>
+      <SignInSummary server={server} />
+      {authModeOf(server) !== "oauth" && (
+        <>
+          <p>
+            <strong>On behalf of callers</strong>
+          </p>
+          <RequirementSummary server={server} scope={scope} />
+        </>
+      )}
+    </section>
+  );
+}
 
 /** Why Publish can't run yet (the server answers 409 for these), or undefined. */
 export function publishBlocked(server: McpServer) {
   if (!server.enabled) return "Enable the server first.";
-  if (!server.refreshedAt) return "Refresh its capabilities first.";
+  if (!server.refreshedAt) return authModeOf(server) === "oauth" ? "Authorize to read its tools first." : "Refresh its capabilities first.";
   return undefined;
 }
 
 /** Why a platform admin can't approve yet: the capabilities weren't read from the current URL. */
 export function approveBlocked(server: McpServer) {
-  return server.refreshedAt ? undefined : "Its capabilities haven't been read from its current URL yet. The team refreshes the server first.";
+  if (server.refreshedAt) return undefined;
+  return authModeOf(server) === "oauth"
+    ? "Its capabilities haven't been read yet: someone on the team signs in to read them first."
+    : "Its capabilities haven't been read from its current URL yet. The team refreshes the server first.";
 }
 
 /** Publish (self_publish) or request a review (approval_required), with an optional note. */
@@ -67,12 +92,7 @@ export function PublishDialog({ server, onClose }: { server: McpServer; onClose:
       submitLabel={self ? "Publish" : "Request review"}
       busy={publish.isPending}
     >
-      <section aria-label="What the server receives">
-        <p>
-          <strong>What the server receives on behalf of callers</strong>
-        </p>
-        <RequirementSummary server={server} scope={{ kind: "team", team: server.teamSlug }} />
-      </section>
+      <ServerReceives server={server} scope={{ kind: "team", team: server.teamSlug }} />
       <Field label={self ? "Note" : "Note for the reviewer"} labelHint="Optional" description={self ? "Kept with the server's publishing record." : "What the server is for, who should use it, anything they should check."}>
         <Textarea rows={3} maxLength={maxNote} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
@@ -193,14 +213,7 @@ export function ReviewDialog({ server, decision, onClose }: { server: McpServer;
       busy={review.isPending}
     >
       {decision === "approve" && <ApproveChecks server={server} />}
-      {decision === "approve" && (
-        <section aria-label="What the server receives">
-          <p>
-            <strong>What the server receives on behalf of callers</strong>
-          </p>
-          <RequirementSummary server={server} scope={{ kind: "admin" }} />
-        </section>
-      )}
+      {decision === "approve" && <ServerReceives server={server} scope={{ kind: "admin" }} />}
       {server.publishRequestNote && decision !== "remove" && (
         <p>
           <strong>The team's note:</strong> <span>{server.publishRequestNote}</span>

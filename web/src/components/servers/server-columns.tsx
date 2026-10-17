@@ -1,11 +1,11 @@
-/* The columns of a list of MCP servers (the team's and Admin's): name, host, health, catalog state, what it offers. */
+/* The columns of a list of MCP servers (the team's and Admin's): name (with Sign-in per person for oauth servers), host, health, catalog state, what it offers. */
 import type { ReactElement } from "react";
 import { plural } from "../../lib/format";
 import { timeColumn } from "../templates/list-page";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
 import { TextLink } from "@/components/ui/text-link/text-link";
 import s from "../../pages/shared.module.css";
-import { EnabledBadge, HealthBadge, PendingChangesBadge, PublishStateBadge } from "./badges";
+import { EnabledBadge, HealthBadge, PendingChangesBadge, PublishStateBadge, SignInBadge } from "./badges";
 import { type CapabilityCounts, countOf, countsText, healthLabels, kindLabels, kindOrder, type McpServer, publishStateLabels, urlHost } from "./labels";
 import m from "./servers.module.css";
 
@@ -48,7 +48,17 @@ export function serverColumns(link: (x: McpServer) => ReactElement, opts: { team
       rowHeader: true,
       hideable: false,
       sortable: true,
-      cell: (x) => <CellText primary={<TextLink render={link(x)}>{x.name}</TextLink>} secondary={<span className={s.mono}>{x.slug}</span>} />,
+      cell: (x) => (
+        <CellText
+          primary={
+            <span className={s.badges}>
+              <TextLink render={link(x)}>{x.name}</TextLink>
+              <SignInBadge authMode={x.authMode} />
+            </span>
+          }
+          secondary={<span className={s.mono}>{x.slug}</span>}
+        />
+      ),
     },
     ...(opts.team
       ? [{ id: "team", header: "Team", accessor: (x: McpServer) => x.teamName, sortable: true, cell: (x: McpServer) => <CellText primary={x.teamName} secondary={<span className={s.mono}>{x.teamSlug}</span>} /> }]

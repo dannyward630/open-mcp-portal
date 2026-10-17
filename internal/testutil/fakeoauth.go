@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -62,20 +63,59 @@ type FakeOAuth struct {
 	// Login is what /userinfo calls the account.
 	Login string
 
-	codes    map[string]fakeCode
-	access   map[string][]string // token -> scopes
-	refresh  map[string][]string
-	revoked  []string
-	issued   []string
-	issuedRT []string
-	lastAuth url.Values
-	tokens   int
-	refreshs int
+	// Authorization server metadata (Phase 7, an MCP server's own
+	// authorization server). IssuerPath is the issuer's path ("": the
+	// root; "/login/oauth" imitates GitHub, whose metadata is served only at
+	// the RFC 8414 path-insertion URL). MetadataAt serves it elsewhere
+	// instead: "oidc-insert" (/.well-known/openid-configuration{path}),
+	// "oidc-append" ({issuer}/.well-known/openid-configuration) or "none".
+	IssuerPath, MetadataAt string
+	// MetadataIssuer overrides the metadata's issuer (issuer_mismatch).
+	MetadataIssuer string
+	// DCR serves /register (RFC 7591) and lists it; CIMD says client ID
+	// metadata documents are supported (any URL client ID is accepted).
+	DCR, CIMD bool
+	// NoPKCE leaves S256 out of the metadata.
+	NoPKCE bool
+	// ScopesSupported are listed in the metadata.
+	ScopesSupported []string
+	// IssParam sends iss with authorization responses and says so in the
+	// metadata (RFC 9207); WrongIss sends another issuer, OmitIss none.
+	IssParam, WrongIss, OmitIss bool
+	// RejectResource refuses requests with a resource parameter
+	// (invalid_target), as authorization servers without RFC 8707 do.
+	RejectResource bool
+
+	codes     map[string]fakeCode
+	access    map[string]fakeGrant // token -> grant
+	refresh   map[string]fakeGrant
+	clients   map[string]string // registered client ID -> secret
+	revoked   []string
+	issued    []string
+	issuedRT  []string
+	lastAuth  url.Values
+	resources []string
+	tokens    int
+	refreshs  int
 }
 
 type fakeCode struct {
-	redirectURI, challenge string
-	scopes                 []string
+	redirectURI, challenge, resource, clientID string
+	scopes                                     []string
+}
+
+// fakeGrant is what a token was issued for.
+type fakeGrant struct {
+	scopes             []string
+	resource, clientID string
+}
+
+// Introspection is what the fake says about a token (its /introspect).
+type Introspection struct {
+	Active   bool     `json:"active"`
+	Scopes   []string `json:"scopes,omitempty"`
+	Resource string   `json:"resource,omitempty"`
+	ClientID string   `json:"client_id,omitempty"`
 }
 
 // NewFakeOAuth starts a fake provider on a loopback address (closed with the
@@ -92,13 +132,179 @@ func NewFakeOAuth(t testing.TB) *FakeOAuth {
 // NewFakeOAuthHandler builds a fake provider without starting a server.
 func NewFakeOAuthHandler(clientID, clientSecret string) (*FakeOAuth, http.Handler) {
 	f := &FakeOAuth{ClientID: clientID, ClientSecret: clientSecret, AccessTTL: time.Hour, IssueRefresh: true, RotateRefresh: true,
-		Login: "octocat", codes: map[string]fakeCode{}, access: map[string][]string{}, refresh: map[string][]string{}}
+		Login: "octocat", codes: map[string]fakeCode{}, access: map[string]fakeGrant{}, refresh: map[string]fakeGrant{},
+		clients: map[string]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /authorize", f.authorize)
 	mux.HandleFunc("POST /token", f.token)
 	mux.HandleFunc("POST /revoke", f.revoke)
 	mux.HandleFunc("GET /userinfo", f.userinfo)
+	mux.HandleFunc("POST /register", f.register)
+	mux.HandleFunc("POST /introspect", f.introspectHTTP)
+	mux.HandleFunc("GET /.well-known/", f.metadata)
+	mux.HandleFunc("GET /{path...}", f.metadata)
 	return f, mux
+}
+
+// base is the fake's own URL as a request reached it.
+func base(r *http.Request) string { return "http://" + r.Host }
+
+// Issuer is the authorization server's identifier (the fake's URL and
+// IssuerPath).
+func (f *FakeOAuth) Issuer() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.URL + f.IssuerPath
+}
+
+// metadata serves RFC 8414 / OpenID Connect metadata where MetadataAt says.
+func (f *FakeOAuth) metadata(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	path, at, iss := f.IssuerPath, f.MetadataAt, f.MetadataIssuer
+	dcr, cimd, noPKCE, issParam := f.DCR, f.CIMD, f.NoPKCE, f.IssParam
+	scopes := append([]string{}, f.ScopesSupported...)
+	f.mu.Unlock()
+	want := "/.well-known/oauth-authorization-server" + path
+	switch at {
+	case "oidc-insert":
+		want = "/.well-known/openid-configuration" + path
+	case "oidc-append":
+		want = path + "/.well-known/openid-configuration"
+	case "none":
+		want = ""
+	}
+	if r.URL.Path != want || want == "" {
+		http.NotFound(w, r)
+		return
+	}
+	b := base(r)
+	if iss == "" {
+		iss = b + path
+	}
+	methods := []string{"S256"}
+	if noPKCE {
+		methods = []string{"plain"}
+	}
+	md := map[string]any{"issuer": iss, "authorization_endpoint": b + "/authorize", "token_endpoint": b + "/token",
+		"revocation_endpoint": b + "/revoke", "response_types_supported": []string{"code"}, "code_challenge_methods_supported": methods,
+		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
+		"token_endpoint_auth_methods_supported": []string{"client_secret_post", "client_secret_basic", "none"},
+		"scopes_supported":                      scopes, "authorization_response_iss_parameter_supported": issParam}
+	if dcr {
+		md["registration_endpoint"] = b + "/register"
+	}
+	if cimd {
+		md["client_id_metadata_document_supported"] = true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(md)
+}
+
+// register is RFC 7591 dynamic client registration.
+func (f *FakeOAuth) register(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	on := f.DCR
+	f.mu.Unlock()
+	if !on {
+		http.NotFound(w, r)
+		return
+	}
+	var in struct {
+		RedirectURIs []string `json:"redirect_uris"`
+		Method       string   `json:"token_endpoint_auth_method"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil || len(in.RedirectURIs) == 0 {
+		f.fail(w, http.StatusBadRequest, "invalid_client_metadata")
+		return
+	}
+	id, secret := fakeToken("dcr_"), ""
+	if in.Method != "none" {
+		secret = fakeToken("dcrs_")
+	} else {
+		in.Method = "none"
+	}
+	f.mu.Lock()
+	f.clients[id] = secret
+	f.mu.Unlock()
+	out := map[string]any{"client_id": id, "token_endpoint_auth_method": in.Method, "redirect_uris": in.RedirectURIs,
+		"client_id_issued_at": time.Now().Unix()}
+	if secret != "" {
+		out["client_secret"], out["client_secret_expires_at"] = secret, 0
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// RegisteredClients are the client IDs registered through /register.
+func (f *FakeOAuth) RegisteredClients() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []string{}
+	for id := range f.clients {
+		out = append(out, id)
+	}
+	return out
+}
+
+// RegisteredSecrets are the client secrets issued through /register.
+func (f *FakeOAuth) RegisteredSecrets() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []string{}
+	for _, s := range f.clients {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Introspect says whether a token is current, and for what.
+func (f *FakeOAuth) Introspect(token string) Introspection {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	g, ok := f.access[token]
+	if !ok {
+		return Introspection{}
+	}
+	return Introspection{Active: true, Scopes: append([]string{}, g.scopes...), Resource: g.resource, ClientID: g.clientID}
+}
+
+func (f *FakeOAuth) introspectHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		f.fail(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(f.Introspect(r.PostForm.Get("token")))
+}
+
+// Invalidate ends an access token without the client knowing (a person
+// revoking the app at the provider).
+func (f *FakeOAuth) Invalidate(token string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.access, token)
+}
+
+// InvalidateAll ends every access token (and, with refreshToo, refresh
+// token).
+func (f *FakeOAuth) InvalidateAll(refreshToo bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.access = map[string]fakeGrant{}
+	if refreshToo {
+		f.refresh = map[string]fakeGrant{}
+	}
+}
+
+// Resources are the resource parameters of token requests, in order ("":
+// absent).
+func (f *FakeOAuth) Resources() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.resources...)
 }
 
 // Set changes knobs under the fake's lock.
@@ -165,6 +371,18 @@ func (f *FakeOAuth) Valid(token string) bool {
 	return ok
 }
 
+// knownClient reports whether a client ID may authorize: the configured
+// one, a registered one, or (with CIMD) a URL.
+func (f *FakeOAuth) knownClient(id string) bool {
+	if id == f.ClientID {
+		return true
+	}
+	if _, ok := f.clients[id]; ok {
+		return true
+	}
+	return f.CIMD && (strings.HasPrefix(id, "https://") || strings.HasPrefix(id, "http://"))
+}
+
 var fakeConsentPage = template.Must(template.New("consent").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>Fake OAuth provider</title><style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;line-height:1.5}
 a{display:inline-block;margin-right:1rem;padding:.5rem 1rem;border:1px solid #888;border-radius:.4rem;text-decoration:none}</style></head>
@@ -174,7 +392,10 @@ a{display:inline-block;margin-right:1rem;padding:.5rem 1rem;border:1px solid #88
 func (f *FakeOAuth) authorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	redirect, state := q.Get("redirect_uri"), q.Get("state")
-	if q.Get("response_type") != "code" || q.Get("client_id") != f.ClientID || redirect == "" || state == "" {
+	f.mu.Lock()
+	known := f.knownClient(q.Get("client_id"))
+	f.mu.Unlock()
+	if q.Get("response_type") != "code" || !known || redirect == "" || state == "" {
 		http.Error(w, "invalid authorization request", http.StatusBadRequest)
 		return
 	}
@@ -189,6 +410,7 @@ func (f *FakeOAuth) authorize(w http.ResponseWriter, r *http.Request) {
 	if f.GrantScopes != nil {
 		scopes = append([]string(nil), f.GrantScopes...)
 	}
+	issParam, wrongIss, omitIss, rejectResource, issuer := f.IssParam, f.WrongIss, f.OmitIss, f.RejectResource, base(r)+f.IssuerPath
 	f.mu.Unlock()
 	back, err := url.Parse(redirect)
 	if err != nil {
@@ -196,11 +418,21 @@ func (f *FakeOAuth) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answer := func(v url.Values) string {
+		if issParam && !omitIss {
+			v.Set("iss", issuer)
+			if wrongIss {
+				v.Set("iss", "https://evil.example/login/oauth")
+			}
+		}
 		u := *back
 		u.RawQuery = v.Encode()
 		return u.String()
 	}
 	denied := answer(url.Values{"error": {"access_denied"}, "state": {state}})
+	if rejectResource && q.Get("resource") != "" {
+		http.Redirect(w, r, answer(url.Values{"error": {"invalid_target"}, "state": {state}}), http.StatusFound)
+		return
+	}
 	if deny || q.Get("decision") == "deny" {
 		http.Redirect(w, r, denied, http.StatusFound)
 		return
@@ -216,12 +448,15 @@ func (f *FakeOAuth) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	code := fakeToken("fcode_")
 	f.mu.Lock()
-	f.codes[code] = fakeCode{redirectURI: redirect, challenge: q.Get("code_challenge"), scopes: scopes}
+	f.codes[code] = fakeCode{redirectURI: redirect, challenge: q.Get("code_challenge"), scopes: scopes, resource: q.Get("resource"),
+		clientID: q.Get("client_id")}
 	f.mu.Unlock()
 	http.Redirect(w, r, answer(url.Values{"code": {code}, "state": {state}}), http.StatusFound)
 }
 
-func (f *FakeOAuth) clientOK(r *http.Request) bool {
+// clientOK authenticates the client of a token or revocation request and
+// returns its ID.
+func (f *FakeOAuth) clientOK(r *http.Request) (string, bool) {
 	id, secret, basic := r.BasicAuth()
 	if basic {
 		id, _ = url.QueryUnescape(id)
@@ -229,7 +464,15 @@ func (f *FakeOAuth) clientOK(r *http.Request) bool {
 	} else {
 		id, secret = r.PostForm.Get("client_id"), r.PostForm.Get("client_secret")
 	}
-	return id == f.ClientID && (f.ClientSecret == "" || secret == f.ClientSecret)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if want, ok := f.clients[id]; ok {
+		return id, want == "" || secret == want
+	}
+	if f.CIMD && id != f.ClientID && (strings.HasPrefix(id, "https://") || strings.HasPrefix(id, "http://")) {
+		return id, true // a public client identified by its metadata document
+	}
+	return id, id == f.ClientID && (f.ClientSecret == "" || secret == f.ClientSecret)
 }
 
 func (f *FakeOAuth) fail(w http.ResponseWriter, status int, code string) {
@@ -245,21 +488,33 @@ func (f *FakeOAuth) token(w http.ResponseWriter, r *http.Request) {
 	}
 	f.mu.Lock()
 	f.tokens++
+	f.resources = append(f.resources, r.PostForm.Get("resource"))
+	rejectResource := f.RejectResource
 	f.mu.Unlock()
-	if !f.clientOK(r) {
+	clientID, ok := f.clientOK(r)
+	if !ok {
 		f.fail(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
+	if rejectResource && r.PostForm.Get("resource") != "" {
+		f.fail(w, http.StatusBadRequest, "invalid_target")
+		return
+	}
 	var scopes []string
+	resource := r.PostForm.Get("resource")
 	switch r.PostForm.Get("grant_type") {
 	case "authorization_code":
 		f.mu.Lock()
 		c, ok := f.codes[r.PostForm.Get("code")]
 		delete(f.codes, r.PostForm.Get("code"))
 		f.mu.Unlock()
-		if !ok || c.redirectURI != r.PostForm.Get("redirect_uri") {
+		if !ok || c.redirectURI != r.PostForm.Get("redirect_uri") || c.clientID != clientID ||
+			(c.resource != "" && resource != "" && c.resource != resource) {
 			f.fail(w, http.StatusBadRequest, "invalid_grant")
 			return
+		}
+		if resource == "" {
+			resource = c.resource
 		}
 		if c.challenge != "" {
 			sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
@@ -285,28 +540,32 @@ func (f *FakeOAuth) token(w http.ResponseWriter, r *http.Request) {
 		}
 		f.mu.Lock()
 		rt := r.PostForm.Get("refresh_token")
-		s, ok := f.refresh[rt]
+		g, ok := f.refresh[rt]
 		if ok && f.RotateRefresh {
 			delete(f.refresh, rt)
 		}
 		f.mu.Unlock()
-		if !ok {
+		if !ok || g.clientID != clientID {
 			f.fail(w, http.StatusBadRequest, "invalid_grant")
 			return
 		}
-		scopes = s
+		scopes = g.scopes
+		if resource == "" {
+			resource = g.resource
+		}
 	default:
 		f.fail(w, http.StatusBadRequest, "unsupported_grant_type")
 		return
 	}
-	f.issue(w, r, scopes)
+	f.issue(w, r, fakeGrant{scopes: scopes, resource: resource, clientID: clientID})
 }
 
 // issue answers with a new access token (and a refresh token).
-func (f *FakeOAuth) issue(w http.ResponseWriter, r *http.Request, scopes []string) {
+func (f *FakeOAuth) issue(w http.ResponseWriter, r *http.Request, g fakeGrant) {
+	scopes := g.scopes
 	f.mu.Lock()
 	access := fakeToken("fat_")
-	f.access[access] = scopes
+	f.access[access] = g
 	f.issued = append(f.issued, access)
 	out := map[string]any{"access_token": access, "token_type": "bearer"}
 	if f.AccessTTL > 0 {
@@ -318,7 +577,7 @@ func (f *FakeOAuth) issue(w http.ResponseWriter, r *http.Request, scopes []strin
 		if refresh == "" || f.RotateRefresh {
 			refresh = fakeToken("frt_")
 		}
-		f.refresh[refresh] = scopes
+		f.refresh[refresh] = g
 		f.issuedRT = append(f.issuedRT, refresh)
 		out["refresh_token"] = refresh
 	}
@@ -350,7 +609,11 @@ func (f *FakeOAuth) issue(w http.ResponseWriter, r *http.Request, scopes []strin
 }
 
 func (f *FakeOAuth) revoke(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil || !f.clientOK(r) {
+	if err := r.ParseForm(); err != nil {
+		f.fail(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
+	if _, ok := f.clientOK(r); !ok {
 		f.fail(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}

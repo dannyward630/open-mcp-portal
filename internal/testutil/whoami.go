@@ -24,6 +24,9 @@ type WhoamiResult struct {
 	// matched and the token is current.
 	Verified bool   `json:"verified"`
 	Error    string `json:"error,omitempty"`
+	// BearerSHA256 is TokenDigest of the bearer token a protected fake
+	// received (an oauth server's person token; never the token).
+	BearerSHA256 string `json:"bearerSha256,omitempty"`
 }
 
 // IdentityToken finds the gateway's identity token in a request's headers:

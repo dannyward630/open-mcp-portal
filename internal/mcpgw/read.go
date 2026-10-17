@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/ncecere/open-mcp-gateway/internal/calls"
 	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/identity"
 	"github.com/ncecere/open-mcp-gateway/internal/upstream"
 )
 
@@ -107,19 +108,22 @@ func (rc *request) forwardRead(exposed string, t readTarget) {
 		rc.upstreamFailed(rec, err)
 		return
 	}
-	token, err := rc.identityToken(identityFor{resource: exposed}, o, cred)
-	if err != nil {
-		rc.internal(err)
+	token, ok := rc.prepareTarget(&target, identityFor{resource: exposed}, o, cred, &rec)
+	if !ok {
 		return
 	}
-	target.IdentityHeader, target.IdentityValue = identity.Header(target.HeaderName, token)
-	withCredential(&target, cred)
 	rc.captureCall(o, readArguments(exposed), target, token, cred)
-	res, _, err := rc.h.Registry.Client().ReadResource(ctx, target, t.original)
-	if err != nil {
-		rc.upstreamFailed(rec, err)
+	out, _, ok := rc.exchange(o, &rec, cred, target, func(tg upstream.Target) (any, bool, error) {
+		res, _, err := rc.h.Registry.Client().ReadResource(ctx, tg, t.original)
+		if err != nil {
+			return nil, false, err
+		}
+		return res, false, nil
+	})
+	if !ok {
 		return
 	}
+	res := out.(*mcp.ReadResourceResult)
 	for _, c := range res.Contents {
 		if c != nil {
 			c.URI = gateways.ExposedURI(o.Server.Slug, c.URI)

@@ -1,19 +1,20 @@
 /* Health, publish state, enabled and capability state badges of MCP servers. */
+import type { Schemas } from "../../api/client";
 import { Badge, StatusBadge } from "@/components/ui/badge/badge";
 import { RelativeTime } from "../templates/list-page";
 import s from "../../pages/shared.module.css";
-import { healthLabels, type McpCapability, type PublishState, publishStateLabels, type ServerHealth } from "./labels";
+import { healthText, type McpCapability, type PublishState, publishStateLabels, type ServerHealth } from "./labels";
 import m from "./servers.module.css";
 
 const healthTone = { healthy: "success", failing: "danger", unknown: "neutral" } as const;
 
-/** "● Healthy since 3 hours ago", "● Failing since yesterday" or "● Not checked yet". */
+/** "● Healthy since 3 hours ago", "● Reachable — requires sign-in", "● Failing since yesterday" or "● Not checked yet". */
 /** `stacked`: the time under the badge, in small type (table cells: the column stays narrow on a phone). */
 export function HealthBadge({ health, since = true, stacked = false }: { health: ServerHealth; since?: boolean; stacked?: boolean }) {
   const when = health.statusSince ?? health.checkedAt;
   return (
     <span className={stacked ? m.stacked : m.inline}>
-      <StatusBadge tone={healthTone[health.status]}>{healthLabels[health.status]}</StatusBadge>
+      <StatusBadge tone={healthTone[health.status]}>{healthText(health)}</StatusBadge>
       {since && health.status !== "unknown" && when && (
         <span className={stacked ? m.since : s.muted}>
           since <RelativeTime value={when} />
@@ -35,6 +36,16 @@ export function PendingChangesBadge({ count }: { count: number }) {
   return (
     <Badge tone="warning" size="sm">
       {count === 1 ? "1 change waiting" : `${count} changes waiting`}
+    </Badge>
+  );
+}
+
+/** "Sign-in per person" for a server in oauth mode (each person signs in to its own service); nothing otherwise. */
+export function SignInBadge({ authMode }: { authMode?: Schemas["McpServerAuthMode"] }) {
+  if (authMode !== "oauth") return null;
+  return (
+    <Badge size="sm" tone="info" title="Each person signs in to the server's own service (OAuth) before calling it.">
+      Sign-in per person
     </Badge>
   );
 }

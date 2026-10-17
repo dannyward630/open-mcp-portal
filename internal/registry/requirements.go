@@ -61,28 +61,72 @@ func NormalizeScopes(in []string) ([]string, error) {
 	return out, nil
 }
 
-// Provider is what requirements need to know about an auth provider.
+// Provider kinds (auth_providers.kind).
+const (
+	KindOAuth2    = "oauth2"
+	KindMCPServer = "mcp_server"
+)
+
+// Provider is what requirements need to know about an auth provider: a
+// platform provider (kind oauth2), or the server-bound provider of an MCP
+// server in oauth mode (kind mcp_server, docs/phase7-upstream-oauth.md),
+// whose name is the server's and whose default scopes are the server's.
 type Provider struct {
 	ID            uuid.UUID
 	Slug, Name    string
+	Kind          string
 	Enabled       bool
 	DefaultScopes []string
 	Preset        *string
 	LogoURL       *string
+	// ServerID is the server of a kind mcp_server provider.
+	ServerID uuid.NullUUID
 }
 
-// Providers are the auth providers by ID.
-type Providers map[uuid.UUID]Provider
+// ServerBound reports whether the provider is an MCP server's own sign-in.
+func (p Provider) ServerBound() bool { return p.Kind == KindMCPServer }
 
-// LoadProviders reads every auth provider (there are at most 100).
+// Providers are the auth providers by ID, and the server-bound ones by
+// server.
+type Providers struct {
+	byID     map[uuid.UUID]Provider
+	byServer map[uuid.UUID]Provider
+}
+
+// Get returns a provider by ID.
+func (ps Providers) Get(id uuid.UUID) (Provider, bool) {
+	p, ok := ps.byID[id]
+	return p, ok
+}
+
+// ForServer returns the server-bound provider of a server in oauth mode.
+func (ps Providers) ForServer(serverID uuid.UUID) (Provider, bool) {
+	p, ok := ps.byServer[serverID]
+	return p, ok
+}
+
+// LoadProviders reads every auth provider: the platform's (at most 100) and
+// the server-bound ones. A server-bound provider linked to a platform
+// provider is enabled only while that one is.
 func LoadProviders(ctx context.Context, q *dbgen.Queries) (Providers, error) {
 	rows, err := q.ListAllAuthProviders(ctx)
 	if err != nil {
-		return nil, err
+		return Providers{}, err
 	}
-	out := make(Providers, len(rows))
+	out := Providers{byID: make(map[uuid.UUID]Provider, len(rows)), byServer: map[uuid.UUID]Provider{}}
+	enabled := make(map[uuid.UUID]bool, len(rows))
 	for _, p := range rows {
-		out[p.ID] = ProviderOf(p)
+		enabled[p.ID] = p.Enabled
+	}
+	for _, p := range rows {
+		v := ProviderOf(p)
+		if p.LinkProviderID.Valid {
+			v.Enabled = v.Enabled && enabled[p.LinkProviderID.UUID]
+		}
+		out.byID[p.ID] = v
+		if p.ServerID.Valid {
+			out.byServer[p.ServerID.UUID] = v
+		}
 	}
 	return out, nil
 }
@@ -93,7 +137,12 @@ func ProviderOf(p dbgen.AuthProvider) Provider {
 	if scopes == nil {
 		scopes = []string{}
 	}
-	return Provider{ID: p.ID, Slug: p.Slug, Name: p.Name, Enabled: p.Enabled, DefaultScopes: scopes, Preset: p.Preset, LogoURL: p.LogoUrl}
+	kind := p.Kind
+	if kind == "" {
+		kind = KindOAuth2
+	}
+	return Provider{ID: p.ID, Slug: p.Slug, Name: p.Name, Kind: kind, Enabled: p.Enabled, DefaultScopes: scopes, Preset: p.Preset,
+		LogoURL: p.LogoUrl, ServerID: p.ServerID}
 }
 
 // ServerRequirement is a server's requirement as stored: Scopes empty
@@ -148,22 +197,40 @@ func RequirementOf(sv dbgen.McpServer, ps Providers) *ServerRequirement {
 	if !sv.AuthProviderID.Valid {
 		return nil
 	}
-	p, ok := ps[sv.AuthProviderID.UUID]
+	p, ok := ps.Get(sv.AuthProviderID.UUID)
 	if !ok {
 		return nil
 	}
 	return &ServerRequirement{Provider: p, Scopes: nonNil(sv.AuthScopes)}
 }
 
-// Effective is the requirement of a capability of a server: none when the
-// capability opts out or the server has none; otherwise the server's
+// ServerOf is what Effective needs to know about a capability's server.
+type ServerOf struct {
+	ID       uuid.UUID
+	AuthMode string
+	Provider uuid.NullUUID
+	Scopes   []string
+}
+
+// Effective is the requirement of a capability of a server. For a server
+// in oauth mode it is the server's own sign-in (its server-bound provider
+// and scopes) for every capability: overrides don't apply. Otherwise: none
+// when the capability opts out or the server has none; else the server's
 // provider with the override's scopes, the server's, or the provider's
 // default scopes.
-func Effective(serverProvider uuid.NullUUID, serverScopes []string, mode string, capScopes []string, ps Providers) *Requirement {
+func Effective(sv ServerOf, mode string, capScopes []string, ps Providers) *Requirement {
+	if sv.AuthMode == AuthOAuth {
+		p, ok := ps.ForServer(sv.ID)
+		if !ok {
+			return nil
+		}
+		return &Requirement{Provider: p, Scopes: nonNil(slices.Clone(p.DefaultScopes))}
+	}
+	serverProvider, serverScopes := sv.Provider, sv.Scopes
 	if mode == ModeNone || !serverProvider.Valid {
 		return nil
 	}
-	p, ok := ps[serverProvider.UUID]
+	p, ok := ps.Get(serverProvider.UUID)
 	if !ok {
 		return nil
 	}
@@ -179,7 +246,8 @@ func Effective(serverProvider uuid.NullUUID, serverScopes []string, mode string,
 
 // EffectiveFor is Effective for a capability row of a server row.
 func EffectiveFor(sv dbgen.McpServer, c dbgen.McpCapability, ps Providers) *Requirement {
-	return Effective(sv.AuthProviderID, sv.AuthScopes, c.RequirementMode, c.RequirementScopes, ps)
+	return Effective(ServerOf{ID: sv.ID, AuthMode: sv.AuthMode, Provider: sv.AuthProviderID, Scopes: sv.AuthScopes},
+		c.RequirementMode, c.RequirementScopes, ps)
 }
 
 func nonNil(s []string) []string {
@@ -330,6 +398,9 @@ func (s *Service) SetCapabilityRequirement(ctx context.Context, a authz.Actor, r
 		}
 		if sv.Revision != expectedRevision {
 			return apperr.Stale()
+		}
+		if AuthModeOf(sv) == AuthOAuth {
+			return apperr.Conflict("upstream_oauth", "Every call to this server carries the person's own sign-in; its scopes come from the server")
 		}
 		cur, err := q.LockMCPCapability(ctx, dbgen.LockMCPCapabilityParams{ID: capID, ServerID: sv.ID})
 		if errors.Is(store.NotFound(err), store.ErrNotFound) {

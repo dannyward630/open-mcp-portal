@@ -1,7 +1,8 @@
 /*
  * Admin → MCP servers: every team's servers as a ListPage, filtered by the
  * server (publish state, changes waiting for approval, team, the auth
- * provider they require, search; all in the URL). How many wait for review
+ * provider they require, how the gateway authenticates (OAuth sign-in per
+ * person, a static header or none), search; all in the URL). How many wait for review
  * shows above the list, with a link to them. Platform admins review;
  * auditors read.
  */
@@ -21,6 +22,13 @@ import { terms } from "@/lib/terms";
 import { one, useDebounced, useIsPlatformAdmin } from "../hooks";
 
 type PublishState = Schemas["PublishState"];
+type AuthMode = Schemas["McpServerAuthMode"];
+
+const authModeOptions: { value: AuthMode; label: string }[] = [
+  { value: "oauth", label: "OAuth sign-in" },
+  { value: "static_header", label: "Static header" },
+  { value: "none", label: "None" },
+];
 
 function useTeamOptions() {
   return useQuery({
@@ -55,6 +63,7 @@ export function AdminServersPage() {
     { id: "changes", label: "Changes", type: "toggle", allLabel: "Any", options: [{ value: "true", label: "Waiting for approval" }] },
     { id: "team", label: "Team", type: "select", placeholder: "Any team", options: teams.data ?? [] },
     { id: "provider", label: "Auth provider", type: "select", placeholder: "Any or none", options: providers.data ?? [] },
+    { id: "authMode", label: "Authentication", type: "toggle", allLabel: "Any", options: authModeOptions },
   ];
   const { values, setValues, query } = useListFilters(facets);
   const q = useDebounced(query.trim());
@@ -62,12 +71,13 @@ export function AdminServersPage() {
   const changes = one(values, "changes") === "true";
   const team = one(values, "team");
   const provider = one(values, "provider");
+  const authMode = one(values, "authMode") as AuthMode | "";
   const servers = useInfiniteQuery({
-    queryKey: [...adminServersKey, "list", q, publishState, changes, team, provider],
+    queryKey: [...adminServersKey, "list", q, publishState, changes, team, provider, authMode],
     queryFn: async ({ pageParam }) =>
       unwrap(
         await api.GET("/v1/admin/mcp-servers", {
-          params: { query: { q: q || undefined, publishState: publishState || undefined, changes: changes || undefined, team: team || undefined, provider: provider || undefined, cursor: pageParam, limit: 50 } },
+          params: { query: { q: q || undefined, publishState: publishState || undefined, changes: changes || undefined, team: team || undefined, provider: provider || undefined, authMode: authMode || undefined, cursor: pageParam, limit: 50 } },
         }),
       ),
     initialPageParam: undefined as string | undefined,
@@ -76,7 +86,7 @@ export function AdminServersPage() {
   const items = servers.data?.pages.flatMap((p) => p.items) ?? [];
   const link = (x: McpServer) => <Link to="/admin/servers/$serverId" params={{ serverId: x.id }} />;
   const waiting = pending.data?.count ?? 0;
-  const filtered = Boolean(q || publishState || changes || team || provider);
+  const filtered = Boolean(q || publishState || changes || team || provider || authMode);
   return (
     <ListPage<McpServer>
       id="admin-servers"

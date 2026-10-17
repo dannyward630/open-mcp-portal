@@ -40,6 +40,7 @@ const actionLabels: Record<string, string> = {
   "mcp_server.publish": "Published MCP server",
   "mcp_server.reject": "Rejected MCP server",
   "mcp_server.unpublish": "Unpublished MCP server",
+  "mcp_server.auth_update": "Changed MCP server sign-in",
   "mcp_capability.approve": "Approved capability",
   "mcp_capability.requirement_set": "Changed capability's account requirement",
   "settings.publishing_update": "Changed default publishing policy",
@@ -90,6 +91,15 @@ export const connectionRevokeReasons: Record<string, string> = {
   user: "by its person",
   admin: "by a platform admin",
   provider_deleted: "when its provider was deleted",
+  server_auth_changed: "when its MCP server's sign-in changed",
+  server_deleted: "when its MCP server was deleted",
+};
+
+/** Why a published server went back to review (mcp_server.publish_request, metadata.reason). */
+export const publishRequestReasons: Record<string, string> = {
+  url_changed: "after its URL changed",
+  requirement_changed: "after what it receives changed",
+  upstream_auth_changed: "after its sign-in changed",
 };
 
 /** Why a connected app's sign-in ended (oauth.revoke, metadata.reason). */
@@ -104,8 +114,8 @@ export const oauthRevokeReasons: Record<string, string> = {
 export function actionLabel(action: string, entry?: Partial<Pick<AuditEntry, "after" | "metadata">>) {
   const known = actionLabels[action];
   // A disconnection says why, when the reason is one we know ("Disconnected app after the person was suspended").
-  const reason = action === "oauth.revoke" || action === "provider_connection.revoke" ? entry?.metadata?.reason : undefined;
-  const reasons = action === "oauth.revoke" ? oauthRevokeReasons : connectionRevokeReasons;
+  const reason = action === "oauth.revoke" || action === "provider_connection.revoke" || action === "mcp_server.publish_request" ? entry?.metadata?.reason : undefined;
+  const reasons = action === "oauth.revoke" ? oauthRevokeReasons : action === "mcp_server.publish_request" ? publishRequestReasons : connectionRevokeReasons;
   if (known && typeof reason === "string" && reasons[reason]) return `${known} ${reasons[reason]}`;
   const via = action === "mcp_call.payload_view" ? entry?.metadata?.via : undefined;
   if (known && typeof via === "string" && payloadViewVia[via]) return `${known} ${payloadViewVia[via]}`;

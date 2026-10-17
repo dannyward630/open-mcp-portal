@@ -66,8 +66,11 @@ func (rc *request) delegated(o gateways.Offer, rec *calls.Call) (cred *providers
 	rec.ProviderSlug = req.Provider.Slug
 	noun := kindNoun(o.Capability.Kind)
 	if rc.principal.account != nil {
-		n := rc.failData(codeDenied, fmt.Sprintf("This %s needs a person's %s account; service accounts can't use it", noun, req.Provider.Name),
-			map[string]any{"reason": DeniedServiceAccount, "provider": req.Provider.Slug})
+		msg := fmt.Sprintf("This %s needs a person's %s account; service accounts can't use it", noun, req.Provider.Name)
+		if req.Provider.ServerBound() {
+			msg = fmt.Sprintf("This %s needs a person to sign in to %s; service accounts can't use it", noun, req.Provider.Name)
+		}
+		n := rc.failData(codeDenied, msg, map[string]any{"reason": DeniedServiceAccount, "provider": req.Provider.Slug})
 		rec.Outcome, rec.ErrorClass = calls.OutcomeDenied, DeniedServiceAccount
 		rc.record(*rec, n)
 		return nil, false
@@ -76,10 +79,7 @@ func (rc *request) delegated(o gateways.Offer, rec *calls.Call) (cred *providers
 		rc.providerDisabled(req, rec)
 		return nil, false
 	}
-	c, err := rc.h.Providers.Credential(rc.r.Context(), req, providers.CallContext{
-		User: rc.principal.user, Gateway: rc.gateway, CapabilityID: o.Capability.ID, Kind: o.Capability.Kind,
-		ExposedName: o.ExposedName, Title: o.Capability.Title,
-	})
+	c, err := rc.h.Providers.Credential(rc.r.Context(), req, rc.callContext(o))
 	var consent *providers.ConsentNeeded
 	var down *providers.UnavailableError
 	switch {
@@ -88,20 +88,29 @@ func (rc *request) delegated(o gateways.Offer, rec *calls.Call) (cred *providers
 	case errors.Is(err, providers.ErrProviderDisabled):
 		rc.providerDisabled(req, rec)
 	case errors.As(err, &consent):
-		rc.needsAuthorization(o, consent, rec)
+		rc.needsAuthorization(o, consent, rec, "")
 	case errors.As(err, &down):
-		n := rc.failData(codeDenied, fmt.Sprintf("%s couldn't be reached to renew your access. Try again shortly.", req.Provider.Name),
-			map[string]any{"reason": ProviderUnavailable, "provider": req.Provider.Slug})
-		rec.Outcome, rec.ErrorClass = calls.OutcomeUpstreamError, ProviderUnavailable
-		rc.record(*rec, n)
+		rc.providerUnavailable(o, rec)
 	default:
 		rc.internal(err)
 	}
 	return nil, false
 }
 
+func (rc *request) providerUnavailable(o gateways.Offer, rec *calls.Call) {
+	req := o.Requires
+	n := rc.failData(codeDenied, fmt.Sprintf("%s couldn't be reached to renew your access. Try again shortly.", req.Provider.Name),
+		map[string]any{"reason": ProviderUnavailable, "provider": req.Provider.Slug})
+	rec.Outcome, rec.ErrorClass = calls.OutcomeUpstreamError, ProviderUnavailable
+	rc.record(*rec, n)
+}
+
 func (rc *request) providerDisabled(req *registry.Requirement, rec *calls.Call) {
-	n := rc.failData(codeDenied, fmt.Sprintf("%s accounts are turned off on this gateway; ask a platform admin", req.Provider.Name),
+	msg := fmt.Sprintf("%s accounts are turned off on this gateway; ask a platform admin", req.Provider.Name)
+	if req.Provider.ServerBound() {
+		msg = fmt.Sprintf("Signing in to %s is turned off on this gateway; ask a platform admin", req.Provider.Name)
+	}
+	n := rc.failData(codeDenied, msg,
 		map[string]any{"reason": DeniedProviderDisabled, "provider": req.Provider.Slug})
 	rec.Outcome, rec.ErrorClass = calls.OutcomeDenied, DeniedProviderDisabled
 	rc.record(*rec, n)
@@ -113,29 +122,37 @@ func (rc *request) providerDisabled(req *registry.Requirement, rec *calls.Call) 
 // message carries the link too for clients that only show errors. The URL
 // holds an opaque ID only: it signs nobody in, and works only in the
 // person's own browser session.
-func (rc *request) needsAuthorization(o gateways.Offer, c *providers.ConsentNeeded, rec *calls.Call) {
+func (rc *request) needsAuthorization(o gateways.Offer, c *providers.ConsentNeeded, rec *calls.Call, class string) {
 	name, scopes := c.Provider.Name, scopeNote(c.Scopes)
-	var msg string
-	switch c.Reason {
-	case providers.ReasonMissingScopes:
+	var msg, elicit string
+	switch {
+	case c.Provider.ServerBound():
+		// An oauth server's own sign-in, labelled with the server's name.
+		verb := "sign in to"
+		if c.Reason == providers.ReasonMissingScopes {
+			verb = "grant more access to"
+		} else if c.Reason == providers.ReasonNeedsReconsent {
+			verb = "sign in again to"
+		}
+		msg = fmt.Sprintf("%s needs you to %s %s%s. Open %s, then try again.", o.ExposedName, verb, name, scopes, c.URL)
+		elicit = fmt.Sprintf("Sign in to %s%s to use %s in the %s gateway.", name, scopes, o.ExposedName, rc.gateway.Name)
+	case c.Reason == providers.ReasonMissingScopes:
 		msg = fmt.Sprintf("%s needs more access to your %s account%s. Open %s to grant it, then try again.", o.ExposedName, name, scopes, c.URL)
-	case providers.ReasonNeedsReconsent:
+	case c.Reason == providers.ReasonNeedsReconsent:
 		msg = fmt.Sprintf("%s needs you to reconnect your %s account%s. Open %s to reconnect it, then try again.", o.ExposedName, name, scopes, c.URL)
 	default:
 		msg = fmt.Sprintf("%s needs your %s account%s. Open %s to connect it, then try again.", o.ExposedName, name, scopes, c.URL)
 	}
+	if elicit == "" {
+		elicit = fmt.Sprintf("Connect your %s account%s to use %s in the %s gateway.", name, scopes, o.ExposedName, rc.gateway.Name)
+	}
 	data := map[string]any{"elicitations": []map[string]any{{
-		"mode": "url", "elicitationId": c.RequestID, "url": c.URL,
-		"message": fmt.Sprintf("Connect your %s account%s to use %s in the %s gateway.", name, scopes, o.ExposedName, rc.gateway.Name),
+		"mode": "url", "elicitationId": c.RequestID, "url": c.URL, "message": elicit,
 	}}}
 	n := rc.failData(codeURLElicitationRequired, msg, data)
-	rec.Outcome, rec.ErrorClass = calls.OutcomeNeedsAuthorization, c.Reason
-	rc.record(*rec, n)
-}
-
-// withCredential adds the person's provider token to a forwarded call.
-func withCredential(t *upstream.Target, cred *providers.Credential) {
-	if cred != nil {
-		t.Provider, t.ProviderToken = cred.Provider.Slug, cred.AccessToken
+	if class == "" {
+		class = c.Reason
 	}
+	rec.Outcome, rec.ErrorClass = calls.OutcomeNeedsAuthorization, class
+	rc.record(*rec, n)
 }

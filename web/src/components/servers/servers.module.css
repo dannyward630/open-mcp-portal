@@ -164,3 +164,24 @@
   align-self: end;
   padding-bottom: var(--space-2);
 }
+
+/* ---------------- sign-in (docs/phase7-upstream-oauth.md) ---------------- */
+
+/* Detect sign-in and what it does, side by side (wrapping on a phone). */
+.detectRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The requests a detection made. */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}

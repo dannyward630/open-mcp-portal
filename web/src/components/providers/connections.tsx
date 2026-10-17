@@ -6,7 +6,9 @@
  * first; the tokens are erased at once and revoked at the provider where it
  * can). Account › My connections shows the person's own, with Connect again;
  * Admin › Users › person shows anyone's, where platform admins disconnect
- * and auditors read. Tokens are never shown anywhere.
+ * and auditors read. Tokens are never shown anywhere. A sign-in to an MCP
+ * server in oauth mode (provider.kind mcp_server) is named after the server,
+ * with an "MCP server" badge and its team.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, RefreshCw, Unplug } from "lucide-react";
@@ -16,11 +18,11 @@ import { myConnectionsKey } from "../../api/queries";
 import { formatDate, toDate } from "../../lib/bitop-format";
 import { ConfirmMutationDialog } from "../confirm-dialog";
 import { ListPage, RelativeTime, timeColumn } from "../templates/list-page";
-import { StatusBadge } from "@/components/ui/badge/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge/badge";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
 import { toast } from "@/components/ui/toast/toast";
 import s from "../../pages/shared.module.css";
-import { connectionStatusLabels, connectionStatusTone, type ProviderConnection, scopesText } from "./labels";
+import { connectionName, connectionStatusLabels, connectionStatusTone, isServerSignIn, type ProviderConnection, scopesText } from "./labels";
 import { useStartConnection } from "./requires";
 
 /** Whose accounts: the signed-in person's, or a person's on their admin page. */
@@ -50,7 +52,7 @@ function useDisconnect(owner: ConnectionsOwner, onDone: () => void) {
         : unwrap(await api.DELETE("/v1/admin/users/{userId}/connections/{connectionId}", { params: { path: { userId: owner.userId, connectionId: c.id } } })),
     onSuccess: (_, c) => {
       onDone();
-      toast.success(`${c.provider.name} was disconnected`, owner.self ? "Its tokens were erased." : undefined);
+      toast.success(`${connectionName(c.provider)} was disconnected`, owner.self ? "Its tokens were erased." : undefined);
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: connectionsKey(owner) });
@@ -78,11 +80,26 @@ function columns(): DataTableColumn<ProviderConnection>[] {
     {
       id: "provider",
       header: "Provider",
-      accessor: (c) => c.provider.name,
+      accessor: (c) => connectionName(c.provider),
       rowHeader: true,
       hideable: false,
       sortable: true,
-      cell: (c) => <CellText wrap="anywhere" primary={c.provider.name} secondary={c.accountLabel ? `Account: ${c.accountLabel}` : undefined} />,
+      cell: (c) => (
+        <CellText
+          wrap="anywhere"
+          primary={
+            <span className={s.badges}>
+              {connectionName(c.provider)}
+              {isServerSignIn(c.provider) && (
+                <Badge size="sm" variant="outline">
+                  MCP server
+                </Badge>
+              )}
+            </span>
+          }
+          secondary={[c.provider.server ? `Team: ${c.provider.server.teamSlug}` : "", c.accountLabel ? `Account: ${c.accountLabel}` : ""].filter(Boolean).join(" · ") || undefined}
+        />
+      ),
     },
     // On a phone the provider (with its account) and status stay in view; the Columns menu still offers the rest.
     { id: "scopes", header: "Scopes", accessor: (c) => scopesText(c.scopes), defaultHiddenNarrow: true, cell: (c) => <span className={s.mono}>{scopesText(c.scopes, "—")}</span> },
@@ -123,7 +140,7 @@ export function ProviderConnections({ owner, canDisconnect, title, description, 
   const reconnect = (c: ProviderConnection) =>
     start.mutate(
       { providerId: c.provider.id, ...(c.scopes.length ? { scopes: c.scopes } : {}), returnTo: connectedReturnTo(c.provider.slug) },
-      { onError: (err) => toast.error(`Couldn't start connecting ${c.provider.name}`, errorMessage(err)) },
+      { onError: (err) => toast.error(`Couldn't start connecting ${connectionName(c.provider)}`, errorMessage(err)) },
     );
   const who = owner.self ? "you" : owner.name;
   return (
@@ -138,7 +155,7 @@ export function ProviderConnections({ owner, canDisconnect, title, description, 
         columns={columns()}
         data={connections.data ?? []}
         getRowId={(c) => c.id}
-        rowLabel={(c) => c.provider.name}
+        rowLabel={(c) => connectionName(c.provider)}
         loading={connections.isLoading}
         error={connections.error}
         onRetry={() => void connections.refetch()}
@@ -167,10 +184,10 @@ export function ProviderConnections({ owner, canDisconnect, title, description, 
         onClose={() => setTarget(null)}
         mutation={disconnect}
         onConfirm={(c) => disconnect.mutate(c)}
-        title={`Disconnect ${target?.provider.name ?? "this account"}${owner.self ? "" : ` for ${owner.name}`}?`}
+        title={`Disconnect ${target ? connectionName(target.provider) : "this account"}${owner.self ? "" : ` for ${owner.name}`}?`}
         description={`Its tokens are erased now${target ? " and revoked at the provider where it allows it" : ""}. Tools that need ${owner.self ? "your" : `${owner.name}'s`} ${
-          target?.provider.name ?? ""
-        } account ask ${owner.self ? "you" : "them"} to connect it again the next time.`}
+          target ? connectionName(target.provider) : ""
+        } ${target && isServerSignIn(target.provider) ? "sign-in" : "account"} ask ${owner.self ? "you" : "them"} to connect it again the next time.`}
         confirmLabel="Disconnect"
       />
     </>

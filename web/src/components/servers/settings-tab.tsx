@@ -10,11 +10,13 @@
  * its URL changes or its requirement widens what a capability receives: the
  * form says so before the save, and the saved message after it. "Record
  * call contents" is for the team's owners and admins (editors read it; it's
- * only sent when changed) and asks first when turned on.
+ * only sent when changed) and asks first when turned on. Authentication
+ * (auth-mode-fields.tsx, settings-auth.tsx) switches between None, a static
+ * header and each person's OAuth sign-in, with the same review warnings.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api, ApiError, ifMatch, unwrap } from "../../api/client";
 import { authProvidersQuery } from "../../api/queries";
 import { invalidScopeText, scopesProblem } from "../providers/labels";
@@ -30,13 +32,17 @@ import { CopyField } from "@/components/ui/copy-field/copy-field";
 import { Field } from "@/components/ui/field/field";
 import { Input, Textarea } from "@/components/ui/input/input";
 import { toast } from "@/components/ui/toast/toast";
+import { describeAuthError } from "./auth-errors";
+import { AuthModeFields } from "./auth-mode-fields";
 import type { McpServer } from "./labels";
 import { type RequirementForm, requirementBody, requirementFormOf, reviewedAgain, serverChangeWidens } from "./requirement";
 import { RequirementFields } from "./requirement-section";
 import { capabilitiesQuery, invalidateServer, type ServerAbilities, type ServerScope, storeServer } from "./scope";
-import { type AuthEdit, AuthFields, EnabledSwitch, type ServerForm, serverFieldErrors, serverProblems, TimeoutField, UrlField } from "./server-fields";
+import { type AuthEdit, AuthFields, EnabledSwitch, type ServerForm, serverFieldErrors, serverProblems, TimeoutField, UrlField, urlProblem } from "./server-fields";
+import { AuthChangeNotes, settingsAuthBody } from "./settings-auth";
+import { applyDetection, authChange, authModeOf, type DetectResult, oauthProblems, upstreamFormOf, type UpstreamForm } from "./upstream-auth";
 
-type SettingsForm = ServerForm & { requirement: RequirementForm; capturePayloads: boolean };
+type SettingsForm = ServerForm & { requirement: RequirementForm; capturePayloads: boolean; upstream: UpstreamForm };
 
 const formOf = (x: McpServer): SettingsForm => ({
   name: x.name,
@@ -47,6 +53,7 @@ const formOf = (x: McpServer): SettingsForm => ({
   enabled: x.enabled,
   requirement: requirementFormOf(x),
   capturePayloads: x.capturePayloads ?? false,
+  upstream: upstreamFormOf(x),
 });
 const labels = {
   name: "Name",
@@ -57,6 +64,7 @@ const labels = {
   enabled: "Enabled",
   requirement: "User authorization",
   capturePayloads: "Record call contents",
+  upstream: "Authentication",
 };
 const noAuthEdit: AuthEdit = { value: "", remove: false };
 
@@ -92,15 +100,16 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
   const providers = useQuery(authProvidersQuery());
   const caps = useQuery(capabilitiesQuery(scope, server.id));
   const [auth, setAuth] = useState<AuthEdit>(noAuthEdit);
+  const [secret, setSecret] = useState("");
+  const [detected, setDetected] = useState<DetectResult>();
   const [submitted, setSubmitted] = useState(false);
   const [confirmingCapture, setConfirmingCapture] = useState<true | null>(null);
   const kept = useCaptureRetention(server.teamSlug, false);
   const save = useMutation({
     mutationFn: async (_: { before: McpServer; urlChanged: boolean }) => {
-      const name = form.authHeaderName.trim();
-      const headerChanged = name !== (server.authHeaderName ?? "");
-      const authBody = auth.remove ? { authHeaderName: "" } : { ...(headerChanged || auth.value ? { authHeaderName: name } : {}), ...(auth.value ? { authValue: auth.value } : {}) };
-      const requirement = requirementBody(form.requirement, server);
+      const authBody = settingsAuthBody(server, form, auth, secret, detected);
+      // OAuth replaces a requirement (one credential per call): switching removes it.
+      const requirement = form.upstream.mode === "oauth" ? (server.requirement ? null : undefined) : requirementBody(form.requirement, server);
       return unwrap(
         await api.PATCH("/v1/teams/{team}/mcp-servers/{serverId}", {
           params: { path: { team: server.teamSlug, serverId: server.id }, header: ifMatch(server.revision) },
@@ -120,6 +129,7 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
     onSuccess: (updated, { before, urlChanged }) => {
       setConfirmingCapture(null);
       setAuth(noAuthEdit);
+      setSecret("");
       setSubmitted(false);
       storeServer(qc, updated);
       // Overrides may have gone back to inherit, and every capability's requirement may differ.
@@ -130,9 +140,15 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
   const canEdit = abilities.canEdit && scope.kind === "team";
   // Turned off, the provider and scopes left in the fields don't count.
   const requirement = form.requirement.on ? form.requirement : saved.requirement.on ? { on: false, providerId: "", scopes: [] } : saved.requirement;
+  // Only the chosen mode's fields count.
+  const upstream = form.upstream.mode === "oauth" ? form.upstream : { ...form.upstream, oauth: saved.upstream.oauth };
   const dirty =
-    JSON.stringify({ ...form, name: form.name.trim(), url: form.url.trim(), requirement }) !== JSON.stringify(saved) || Boolean(auth.value) || auth.remove;
-  const problems = serverProblems(form, auth, { dev, hasAuth: server.hasAuth });
+    JSON.stringify({ ...form, name: form.name.trim(), url: form.url.trim(), requirement, upstream }) !== JSON.stringify(saved) || Boolean(auth.value) || auth.remove || Boolean(secret);
+  const staticMode = form.upstream.mode === "static_header";
+  const problems = {
+    ...serverProblems(staticMode ? form : { ...form, authHeaderName: "" }, staticMode ? auth : noAuthEdit, { dev, hasAuth: server.hasAuth }),
+    ...oauthProblems(form.upstream, { server, detected, secret }),
+  };
   const reqErrors = requirementErrors(form.requirement, save.error, submitted);
   const invalid = Object.keys(problems).length > 0 || Object.keys(requirementErrors(form.requirement, null, true)).length > 0;
   const shown = submitted ? problems : {};
@@ -147,7 +163,14 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
   const fields = { form, set, errors, dev, disabled: !canEdit };
   const urlChanged = form.url.trim() !== server.url;
   const requirementWidens = requirementBody(form.requirement, server) !== undefined && serverChangeWidens(server, form.requirement, caps.data, providers.data);
-  const leavesCatalog = canEdit && reviewedAgain(server) && (urlChanged || requirementWidens);
+  // A refused save about the sign-in, in words (the save bar shows the error).
+  const authError = useMemo(() => {
+    const d = describeAuthError(save.error);
+    return d ? new Error(d.title ? `${d.title}. ${d.message}` : d.message) : undefined;
+  }, [save.error]);
+  const change = authChange(server, form.upstream, { urlChanged, detected });
+  const oauthMode = form.upstream.mode === "oauth";
+  const leavesCatalog = canEdit && reviewedAgain(server) && (urlChanged || (!oauthMode && requirementWidens) || Boolean(change.review));
   const providerChanges = Boolean(server.requirement) && (!form.requirement.on || form.requirement.providerId !== server.requirement?.providerId);
   const resetsOverrides = providerChanges ? (caps.data ?? []).filter((c) => !c.goneAt && c.requirementOverride.mode === "scopes").length : 0;
 
@@ -162,7 +185,7 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       }
       dirty={dirty}
       saving={save.isPending}
-      error={errors.url || reqRefused ? undefined : save.error}
+      error={errors.url || reqRefused ? undefined : (authError ?? save.error)}
       onSave={() => {
         setSubmitted(true);
         if (invalid) return;
@@ -172,6 +195,8 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
       onDiscard={() => {
         setForm(saved);
         setAuth(noAuthEdit);
+        setSecret("");
+        setDetected(undefined);
         setSubmitted(false);
       }}
       message={submitted && invalid ? "Not saved: fix the highlighted fields" : leavesCatalog ? "Saving takes the server out of the catalog until it's reviewed again" : undefined}
@@ -195,25 +220,54 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
         <TimeoutField {...fields} />
         <EnabledSwitch {...fields} />
       </SettingsSection>
-      <SettingsSection title="Authentication" description="One static header sent with every request. Its value is stored encrypted; only its last four characters are ever shown.">
-        <AuthFields {...fields} auth={auth} setAuth={setAuth} hasAuth={server.hasAuth} hint={server.authValueHint} />
+      <SettingsSection title="Authentication" description="How the gateway proves itself to the server: nothing, one static header (stored encrypted), or each person's own OAuth sign-in.">
+        <AuthModeFields
+          team={server.teamSlug}
+          url={form.url}
+          urlError={urlProblem(form.url, dev)}
+          value={form.upstream}
+          onChange={(upstream) => {
+            if (describeAuthError(save.error)) save.reset();
+            set({ upstream });
+          }}
+          detected={detected}
+          onDetected={(r) => {
+            setDetected(r);
+            setForm((f) => ({ ...f, upstream: applyDetection(f.upstream, r, server.oauth) }));
+          }}
+          onUseUrl={(url) => set({ url })}
+          server={server}
+          secret={secret}
+          setSecret={setSecret}
+          errors={submitted ? problems : {}}
+          disabled={!canEdit}
+          headerFields={<AuthFields {...fields} auth={auth} setAuth={setAuth} hasAuth={server.hasAuth} hint={server.authValueHint} />}
+          notes={canEdit && <AuthChangeNotes server={server} change={change} leavesCatalog={leavesCatalog} />}
+        />
       </SettingsSection>
       <SettingsSection
         title="User authorization"
         description="Whether calls to this server carry each caller's own token for another service, such as GitHub. Each capability can override it on the Capabilities tab."
       >
-        <RequirementFields
-          server={server}
-          value={form.requirement}
-          onChange={(requirement) => {
-            if (reqRefused) save.reset();
-            set({ requirement });
-          }}
-          errors={reqErrors}
-          disabled={!canEdit}
-          resetsOverrides={resetsOverrides}
-        />
-        {leavesCatalog && requirementWidens && (
+        {oauthMode ? (
+          <Alert tone="info" title="Not with OAuth sign-in">
+            Each call already carries the person&apos;s own token for this server, so it can&apos;t carry another account too.
+            {server.requirement && authModeOf(server) !== "oauth" ? ` Saving removes the requirement (${server.requirement.providerName}).` : ""}
+          </Alert>
+        ) : (
+          <RequirementFields
+            server={server}
+            value={form.requirement}
+            onChange={(requirement) => {
+              if (reqRefused) save.reset();
+              set({ requirement });
+            }}
+            errors={reqErrors}
+            disabled={!canEdit}
+            resetsOverrides={resetsOverrides}
+          />
+        )}
+        {leavesCatalog && !oauthMode && requirementWidens && (
           <Alert tone="warning" title="The server will leave the catalog">
             Your team needs approval to publish, and this sends more to the server than before (a provider, another provider or a new scope), so it&apos;s reviewed
             again: once you save, {server.name} is out of the company catalog until a platform admin approves it. Removing or narrowing a requirement never needs a

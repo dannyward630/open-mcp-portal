@@ -76,8 +76,8 @@ answers, and the user may change them. Design: [phase7-upstream-oauth.md](phase7
 beyond the wording above: a linked platform provider shares only its client, not its connections (every server keeps its
 own connections and `resource`); a platform provider "matches" when its authorization and token URLs equal the
 discovered ones (platform providers have no issuer field); step-up is limited to the reviewed scopes and
-`scopes_supported`; the setup connection counts only while its person is an editor or above. Open question: whether the
-identity JWT should still go to third-party `oauth` servers (decision 7).
+`scopes_supported`; the setup connection counts only while its person is an editor or above. The identity JWT question is settled
+by decision 45 (`sendIdentity`, default on). Built: see the design's "As built".
 
 ## Proposed build order
 

@@ -20,6 +20,13 @@ export type CapabilityRequirement = Schemas["CapabilityRequirement"];
 export type ServerRequirement = Schemas["McpServerRequirement"];
 export type RequirementOverride = Schemas["CapabilityRequirementOverride"];
 export type ConnectRequest = Schemas["ConnectRequest"];
+export type ProviderRef = Schemas["ProviderRef"];
+
+/** An MCP server's own sign-in (docs/phase7-upstream-oauth.md): a server-bound provider, named after its server. */
+export const isServerSignIn = (p: Pick<ProviderRef, "kind">) => p.kind === "mcp_server";
+
+/** What a connection is to: the server's name for a server sign-in, else the provider's. */
+export const connectionName = (p: Pick<ProviderRef, "kind" | "name" | "server">) => (isServerSignIn(p) ? (p.server?.name ?? p.name) : p.name);
 
 export const presetLabels: Record<PresetName, string> = {
   github: "GitHub",
@@ -47,8 +54,9 @@ export const connectionStatusTone = { active: "success", needs_reconsent: "warni
 /** "repo, read:org", or the fallback when there are none. */
 export const scopesText = (scopes: string[], none = "None") => (scopes.length ? scopes.join(", ") : none);
 
-/** "Needs GitHub (repo)": the account a capability needs, with its scopes. */
-export function needsText(r: Pick<CapabilityRequirement, "providerName" | "scopes">) {
+/** "Needs GitHub (repo)": the account a capability needs, with its scopes; "Needs sign-in to GitHub MCP" for a server's own sign-in. */
+export function needsText(r: Pick<CapabilityRequirement, "providerName" | "scopes" | "providerKind">) {
+  if (r.providerKind === "mcp_server") return `Needs sign-in to ${r.providerName}`;
   return r.scopes.length ? `Needs ${r.providerName} (${r.scopes.join(", ")})` : `Needs ${r.providerName}`;
 }
 

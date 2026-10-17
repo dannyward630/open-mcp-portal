@@ -1,6 +1,6 @@
 # Phase 7: Per-user OAuth to OAuth-protected MCP servers (design)
 
-Status: **designed, not built.** Decisions 39–44 in [decisions.md](decisions.md) are defaults the assistant chose because
+Status: **backend built** (see "As built" at the end; the web UI is built separately from the same contract). Decisions 39–45 in [decisions.md](decisions.md) are defaults the assistant chose because
 the user asked to implement now. The contract is in [`../api/openapi.yaml`](../api/openapi.yaml): `McpServer.authMode`/`oauth`,
 `detectTeamMcpServerAuth`, `authorizeTeamMcpServerSetup`, and `ProviderRef.kind`/`server`. Client-side reference:
 [MCP authorization 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) (RFC 9728,
@@ -240,9 +240,8 @@ revoke reasons `server_auth_changed` and `server_deleted`. A token never appears
 Not in this phase: manual endpoints for servers without metadata; RFC 7592 client management; token exchange; client
 credentials for service accounts; per-capability scopes on `oauth` servers; per-person tool lists; background refresh.
 
-**Open question for the user:** in `oauth` mode the identity JWT (email, name, teams) still goes to the server
-(decision 7). For a third party such as GitHub that is personal data leaving the company. A per-server switch to omit
-it would change decision 7, so it is not designed here.
+The open question about the identity JWT going to third parties is settled by decision 45: a per-server `sendIdentity`
+switch (default on).
 
 ## Build notes
 
@@ -250,3 +249,71 @@ Until the backend serves `detectTeamMcpServerAuth` and `authorizeTeamMcpServerSe
 authz-matrix classification fail; build the backend first, then run `make generate`. The new response fields are
 optional (absent before Phase 7), so web fixtures stay valid. When this is built, update [registry.md](registry.md) and
 the "Where the token arrives" table in [upstream-identity.md](upstream-identity.md).
+
+## As built (backend)
+
+Code: `internal/upstream/oauthmeta` (challenge parsing, protected-resource and authorization server metadata, DCR, the
+health probe; every request through `upstream.Client`'s guard), `internal/registry/oauth.go` (detect, save, setup
+status, review triggers, health probe, `mcp_server.auth_update`), `internal/providers` (server-bound providers in the
+connect flow, `resource`, `iss`, linked clients, `UpstreamRejected`, `StepUp`, `SetupToken`, connection revocation and
+deletion as `registry.OAuthHooks`), `internal/mcpgw/upstreamoauth.go` (runtime), `internal/httpapi/upstream_oauth.go`,
+migration `00012_upstream_oauth.sql`.
+
+- **Contract changes (additive):** `sendIdentity` on `McpServer`, `McpServerCreate` (default true) and `McpServerUpdate`
+  (decision 45: false sends no identity token at all, in every auth mode; not a review trigger; audited as
+  `mcp_server.update` and `mcp_server.auth_update`); `McpServerOAuth.redirectUri`; `ConnectRequest.authorizationServerHost`
+  (for "act as you at github.com"). Everything else was already in the contract.
+- **Data:** as designed, except `auth_providers.client_id` stays NOT NULL: a `platform_provider` row records the linked
+  client's ID at link time for display, and every request uses the linked provider's current client (ID, secret, token
+  method, extra parameters). `mcp_servers.send_identity` (default true) and `mcp_health_checks.sign_in_required` are new.
+  Server-bound providers are left out of platform lists, the 100-provider limit and `/v1/admin/auth-providers/{id}`
+  (404); `mcp-` slugs are reserved for them (`422 invalid_slug`, reason `reserved`).
+- **Detect:** as designed (8 requests, 5 s each, 64 KiB, no redirects, guard). A `403` or a non-Bearer `401` is
+  `other_auth`; a Bearer `401` whose metadata can't be found is `other_auth` with `metadata_not_found`. A resource that
+  differs only by a trailing slash or case gives `resource_mismatch` (blocking) with `suggestedUrl`; any other difference
+  stops discovery there. 10 a minute per person (`429 slow_down`), counted before authorization.
+- **Save:** discovery always runs again. Re-sending the stored registration (`dcr`, `cimd`, `auto`, `manual` without a
+  secret, `platform_provider`) with the same issuer keeps the client: nothing is registered again and, when nothing else
+  changed, nothing is written (tested). An `oauth` input with another `authMode` is ignored, since clients send its
+  defaults. DCR asks for `client_secret_basic` when listed (or no list), else `client_secret_post`, else `none`.
+- **Setup and callback:** authorize-setup shares the 20/min connect-start limit. The callback checks the state's resource
+  snapshot, `iss` (must match when present; required when the issuer advertises it), and a linked provider still on and
+  matching, before exchanging. The setup connection is set only if the person is still an editor or above; capabilities
+  are then read at once. `startMyConnection` without a request accepts a server-bound provider only when the caller can
+  use one of the server's capabilities through a gateway now.
+- **Runtime:** as designed. Any `401` with a Bearer challenge other than `insufficient_scope` counts as rejection
+  (GitHub answers `invalid_request`). Call records: `needs_authorization` with class `upstream_unauthorized` or
+  `insufficient_scope`; `denied` `insufficient_scope` (scopes outside the reviewed ones or already held) and
+  `resource_mismatch` (stored URL ≠ resource; nothing sent). A token echoed back by the server is replaced by
+  `[REDACTED]` before the result reaches the client, and captured payloads redact it too.
+- **Audit:** `mcp_server.auth_update` before/after are `{authMode, oauth: {registration, scopes, sendResource, issuer,
+  authorizationServer, resource, platformProviderId?} | null, sendIdentity}`, metadata `registered`, `clientIdChanged`,
+  `clientSecretChanged`, `connectionsReset`; setup sign-ins record `setupBy`. Never a secret.
+
+**Fakes:** `cmd/fakeoauth` gains `-issuer-path`, `-dcr`, `-no-dcr`, `-cimd`, `-reject-resource`, `-iss`, `-scopes`,
+`/introspect`; `cmd/fakemcp -protect <issuer>` (`-introspect`, `-scopes`) answers 401 with `resource_metadata`, serves
+the metadata, checks tokens' resource, adds `write` (403 `insufficient_scope`) and makes `whoami` report a bearer digest.
+
+**Tests:** `internal/upstream/oauthmeta` (challenges, URL orders incl. GitHub's path insertion, every outcome, fallback,
+mismatches, no PKCE, guard: loopback, redirect, size, request cap; DCR; probe) and
+`internal/httpapi/upstream_oauth_integration_test.go` (detect with DCR, no DCR, platform link, CIMD on loopback,
+mismatch refused on save, rate limit, no side effects, private/blocked addresses refused without the allowance; save
+conflicts, idempotent re-sends, setup with PKCE/resource/iss, capability read as the editor, test `readAs`; two people's
+different tokens reaching the server as bearer with the identity in `MCP-Gateway-Identity`, `-32042` before connecting,
+wrong and missing `iss`, refresh on 401 then `needs_reconsent`, step-up and refusal, `sendIdentity: false`, service
+account, payload capture, health `signInRequired`, revocation, role loss → `setup_reconsent_required`, delete; manual,
+review triggers, switch to oauth, platform-provider link with `in_use`, provider off, resource change mid-flow,
+`sendResource: false`, leaving oauth; a sentinel over audit, calls, health, logs and responses). The authz matrix covers
+both new operations.
+
+**Live probe (2026-10-17, no credentials):** detect against `https://api.githubcopilot.com/mcp/` returns `oauth`:
+401 `Bearer error="invalid_request"` with `resource_metadata` `…/.well-known/oauth-protected-resource/mcp/`; resource
+`https://api.githubcopilot.com/mcp/` (exact match), authorization server `https://github.com/login/oauth` read at
+`https://github.com/.well-known/oauth-authorization-server/login/oauth` (issuer matches), authorize
+`https://github.com/login/oauth/authorize`, token `…/access_token`, S256, `iss` supported, no registration or revocation
+endpoint (registration `manual`), refresh supported, ten scopes (`repo read:org read:user user:email read:packages
+write:packages read:project project gist notifications`).
+
+**Not built / gaps:** the manual GitHub sign-in (needs a GitHub OAuth app) wasn't run; CIMD was only tested as "not
+offered on a loopback APP_URL"; a server challenging for scopes already held is refused by logic not exercised by the
+fake; detect counts toward its limit before authorization.

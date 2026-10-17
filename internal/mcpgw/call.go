@@ -88,25 +88,27 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 	if kind == upstream.KindPrompt {
 		who = identityFor{prompt: o.ExposedName}
 	}
-	token, err := rc.identityToken(who, o, cred)
-	if err != nil {
-		rc.internal(err)
+	token, ok := rc.prepareTarget(&target, who, o, cred, &rec)
+	if !ok {
 		return
 	}
-	target.IdentityHeader, target.IdentityValue = identity.Header(target.HeaderName, token)
-	withCredential(&target, cred)
 	client := rc.h.Registry.Client()
 	var result any
 	isError := false
 	switch kind {
 	case upstream.KindTool:
 		rc.captureCall(o, args, target, token, cred)
-		res, _, err := client.CallTool(ctx, target, o.Capability.Name, args)
-		if err != nil {
-			rc.upstreamFailed(rec, err)
+		res, isErr, ok := rc.exchange(o, &rec, cred, target, func(t upstream.Target) (any, bool, error) {
+			res, _, err := client.CallTool(ctx, t, o.Capability.Name, args)
+			if err != nil {
+				return nil, false, err
+			}
+			return res, res.IsError, nil
+		})
+		if !ok {
 			return
 		}
-		result, isError = res, res.IsError
+		result, isError = res, isErr
 	default:
 		var sargs map[string]string
 		if len(args) > 0 && !bytes.Equal(args, []byte("null")) {
@@ -118,9 +120,14 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 			}
 		}
 		rc.captureCall(o, args, target, token, cred)
-		res, _, err := client.GetPrompt(ctx, target, o.Capability.Name, sargs)
-		if err != nil {
-			rc.upstreamFailed(rec, err)
+		res, _, ok := rc.exchange(o, &rec, cred, target, func(t upstream.Target) (any, bool, error) {
+			res, _, err := client.GetPrompt(ctx, t, o.Capability.Name, sargs)
+			if err != nil {
+				return nil, false, err
+			}
+			return res, false, nil
+		})
+		if !ok {
 			return
 		}
 		result = res
@@ -134,6 +141,11 @@ func (rc *request) relay(rec calls.Call, result any, isError bool) {
 	encoded, err := json.Marshal(result)
 	if err == nil {
 		encoded, err = scrubMeta(encoded)
+	}
+	for _, tok := range rc.scrub {
+		if err == nil && tok != "" {
+			encoded = bytes.ReplaceAll(encoded, []byte(tok), []byte("[REDACTED]"))
+		}
 	}
 	if err != nil || len(encoded) > MaxResponseBytes {
 		n := rc.fail(codeInternal, "The server's response is too large")
@@ -232,8 +244,9 @@ type identityFor struct {
 func (rc *request) identityToken(what identityFor, o gateways.Offer, cred *providers.Credential) (string, error) {
 	p := rc.principal
 	c := identity.Claims{Audience: o.Server.URL, Gateway: rc.gateway.Slug, Tool: what.tool, Prompt: what.prompt, Resource: what.resource}
-	if cred != nil {
-		// Only calls that carry a provider token name the provider.
+	if cred != nil && !serverBound(cred) {
+		// Only calls that carry a platform provider's token name the
+		// provider (an oauth server's own token is its bearer).
 		c.Provider = cred.Provider.Slug
 	}
 	if sa := p.account; sa != nil {

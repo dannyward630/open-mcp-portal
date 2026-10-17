@@ -13,10 +13,14 @@ import { Button, type ButtonProps } from "@/components/ui/button/button";
 import { toast } from "@/components/ui/toast/toast";
 import { type CapabilityRequirement, needsText, redirectTo, safeAuthorizeUrl } from "./labels";
 
-/** "Needs GitHub (repo)". `note` adds a sentence to its tooltip (such as "Service accounts can't use this."). */
-export function RequiresBadge({ req, note }: { req: Pick<CapabilityRequirement, "providerName" | "scopes">; note?: string }) {
+/**
+ * "Needs GitHub (repo)", or "Needs sign-in to GitHub MCP" when the capability's server is in oauth mode (each
+ * person signs in to the server itself). `note` adds a sentence to its tooltip (such as "Service accounts can't use this.").
+ */
+export function RequiresBadge({ req, note }: { req: Pick<CapabilityRequirement, "providerName" | "scopes" | "providerKind">; note?: string }) {
+  const scopes = req.providerKind === "mcp_server" && req.scopes.length ? `Each person signs in to ${req.providerName} and allows ${req.scopes.join(", ")}.` : undefined;
   return (
-    <Badge size="sm" tone="info" title={note}>
+    <Badge size="sm" tone="info" title={[scopes, note].filter(Boolean).join(" ") || undefined}>
       {needsText(req)}
     </Badge>
   );

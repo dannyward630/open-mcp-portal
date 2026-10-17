@@ -230,13 +230,19 @@ func (c *Client) GuardedDial() func(ctx context.Context, network, address string
 type exchange struct {
 	mu     sync.Mutex
 	status int // the last HTTP status >= 400 (0: none)
+	// challenge holds the WWW-Authenticate values of the last 401 or 403
+	// (an OAuth-protected server's error and scope).
+	challenge []string
 }
 
-func (e *exchange) setStatus(code int) {
+func (e *exchange) setStatus(code int, h http.Header) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if code >= 400 {
 		e.status = code
+	}
+	if code == http.StatusUnauthorized || code == http.StatusForbidden {
+		e.challenge = append([]string(nil), h.Values("WWW-Authenticate")...)
 	}
 }
 
@@ -244,6 +250,12 @@ func (e *exchange) lastStatus() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.status
+}
+
+func (e *exchange) lastChallenge() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.challenge
 }
 
 // ErrResponseTooLarge: a response body passed MaxResponseBytes.
@@ -259,16 +271,22 @@ type headerTransport struct {
 	identityValue string
 	provider      string
 	providerToken string
+	bearer        string
 	maxResponse   int64
 	ex            *exchange
 }
 
 func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.header != "" || t.identity != "" || t.providerToken != "" {
+	if t.header != "" || t.identity != "" || t.providerToken != "" || t.bearer != "" {
 		req = req.Clone(req.Context())
 	}
 	if t.header != "" {
 		req.Header.Set(t.header, t.value)
+	}
+	// An oauth server's own token for the person (the registry refuses a
+	// static Authorization header in oauth mode).
+	if t.bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+t.bearer)
 	}
 	// The identity never replaces the server's own header: the caller picks
 	// a different header name when the static one is Authorization.
@@ -284,7 +302,7 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.ex.setStatus(res.StatusCode)
+	t.ex.setStatus(res.StatusCode, res.Header)
 	res.Body = &cappedBody{ReadCloser: res.Body, left: t.maxResponse}
 	return res, nil
 }
@@ -326,7 +344,8 @@ func (c *Client) httpClient(t Target, ex *exchange) (client *http.Client, done f
 	}
 	return &http.Client{
 		Transport: &headerTransport{next: tr, header: t.HeaderName, value: t.HeaderValue, identity: t.IdentityHeader,
-			identityValue: t.IdentityValue, provider: t.Provider, providerToken: t.ProviderToken, maxResponse: c.maxResponse(), ex: ex},
+			identityValue: t.IdentityValue, provider: t.Provider, providerToken: t.ProviderToken, bearer: t.BearerToken,
+			maxResponse: c.maxResponse(), ex: ex},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return fmt.Errorf("%w: MCP servers may not redirect", ErrBlockedAddress)
 		},

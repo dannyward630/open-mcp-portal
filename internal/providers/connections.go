@@ -56,11 +56,20 @@ func (s *Service) open(id uuid.UUID, kind string, ct []byte) (string, error) {
 	return string(b), nil
 }
 
-// ProviderRef names a connection's provider.
+// ProviderRef names a connection's provider: a platform provider, or an
+// MCP server's own sign-in (Kind mcp_server, Server set).
 type ProviderRef struct {
 	ID              uuid.UUID
 	Slug, Name      string
 	Preset, LogoURL *string
+	Kind            string
+	Server          *ServerRef
+}
+
+// ServerRef names the MCP server of a server-bound provider.
+type ServerRef struct {
+	ID                   uuid.UUID
+	Slug, Name, TeamSlug string
 }
 
 // Connection is a person's connection as listed: never a token.
@@ -80,7 +89,11 @@ func (s *Service) list(ctx context.Context, userID uuid.UUID) ([]Connection, err
 	out := make([]Connection, len(rows))
 	for i, r := range rows {
 		out[i] = Connection{Connection: r.ProviderConnection, Provider: ProviderRef{ID: r.ProviderConnection.ProviderID,
-			Slug: r.ProviderSlug, Name: r.ProviderName, Preset: r.ProviderPreset, LogoURL: r.ProviderLogoUrl}}
+			Slug: r.ProviderSlug, Name: r.ProviderName, Preset: r.ProviderPreset, LogoURL: r.ProviderLogoUrl, Kind: r.ProviderKind}}
+		if r.ServerID.Valid {
+			out[i].Provider.Server = &ServerRef{ID: r.ServerID.UUID, Slug: deref(r.ServerSlug), Name: deref(r.ServerName),
+				TeamSlug: deref(r.ServerTeamSlug)}
+		}
 	}
 	return out, nil
 }
@@ -118,6 +131,13 @@ func (s *Service) ActiveScopes(ctx context.Context, userID uuid.UUID) (map[uuid.
 		}
 	}
 	return out, nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // Covers reports whether granted includes every required scope.

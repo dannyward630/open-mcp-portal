@@ -1,9 +1,11 @@
 /*
  * Add MCP server (?form=new over the team's server list): name and slug
  * (suggested from the name, never changed afterwards), description, the
- * address, the optional header, timeout and the switch. The gateway reads
- * the server's capabilities at once; its record page then shows what that
- * first read found, or why it couldn't.
+ * address, timeout and the switch, then how the gateway authenticates:
+ * Detect sign-in, and None, a static header, or each person's own OAuth
+ * sign-in (auth-mode-fields.tsx). The gateway reads the server's
+ * capabilities at once, except in OAuth mode: someone signs in first, so the
+ * record page opens on "Authorize to read its tools" (setup.tsx).
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -16,15 +18,26 @@ import { ErrorAlert } from "@/components/ui/alert/alert";
 import { Field } from "@/components/ui/field/field";
 import { Input, Textarea } from "@/components/ui/input/input";
 import { toast } from "@/components/ui/toast/toast";
+import { describeAuthError } from "./auth-errors";
+import { AuthModeFields } from "./auth-mode-fields";
 import { serverSlug, slugPattern } from "./labels";
 import { firstDiscoveryKey } from "./scope";
-import { type AuthEdit, AuthFields, EnabledSwitch, type ServerForm, serverFieldErrors, serverProblems, TimeoutField, UrlField } from "./server-fields";
+import { type AuthEdit, AuthFields, EnabledSwitch, type ServerForm, serverFieldErrors, serverProblems, TimeoutField, UrlField, urlProblem } from "./server-fields";
+import { applyDetection, type DetectResult, oauthInput, oauthProblems, upstreamFormOf, type UpstreamForm } from "./upstream-auth";
 import m from "./servers.module.css";
 
 const empty: ServerForm = { name: "", description: "", url: "", authHeaderName: "", timeoutSeconds: 30, enabled: true };
+const noHeader: AuthEdit = { value: "", remove: false };
 
 const slugProblem = (slug: string) =>
   !slug ? "Enter a slug." : slugPattern.test(slug) ? undefined : "Use 1 to 48 lowercase letters, digits and hyphens, starting and ending with a letter or digit.";
+
+/** The request body's authentication: the mode, its header or OAuth settings, and the identity switch. */
+function authBody(form: ServerForm, auth: AuthEdit, u: UpstreamForm, secret: string, detected?: DetectResult) {
+  const header = u.mode === "static_header" && form.authHeaderName.trim() ? { authHeaderName: form.authHeaderName.trim(), authValue: auth.value } : {};
+  const mode = u.mode === "static_header" && !form.authHeaderName.trim() ? "none" : u.mode;
+  return { authMode: mode, ...header, ...(mode === "oauth" ? { oauth: oauthInput(u.oauth, secret, detected) } : {}), sendIdentity: u.sendIdentity };
+}
 
 export function AddServerForm({ team, onClose }: { team: string; onClose: () => void }) {
   const qc = useQueryClient();
@@ -34,7 +47,10 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
   const [form, setForm] = useState(empty);
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
-  const [auth, setAuth] = useState<AuthEdit>({ value: "", remove: false });
+  const [auth, setAuth] = useState<AuthEdit>(noHeader);
+  const [upstream, setUpstream] = useState<UpstreamForm>(() => upstreamFormOf());
+  const [detected, setDetected] = useState<DetectResult>();
+  const [secret, setSecret] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [created, setCreated] = useState<Schemas["McpServerCreated"] | null>(null);
   const create = useMutation({
@@ -47,7 +63,7 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
             name: form.name.trim(),
             description: form.description.trim() || undefined,
             url: form.url.trim(),
-            ...(form.authHeaderName.trim() ? { authHeaderName: form.authHeaderName.trim(), authValue: auth.value } : {}),
+            ...authBody(form, auth, upstream, secret, detected),
             timeoutSeconds: form.timeoutSeconds,
             enabled: form.enabled,
             // Recording call contents starts off: owners and admins turn it on in Settings, after a confirmation.
@@ -59,7 +75,8 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
       const s = created.server;
       qc.setQueryData(firstDiscoveryKey(s.id), created);
       void qc.invalidateQueries({ queryKey: teamServersKey(team) });
-      if (created.refreshError) toast.warning(`${s.name} was added`, "Its capabilities couldn't be read yet.");
+      if (created.setupRequired) toast.success(`${s.name} was added`, "Authorize next, so the gateway can read its tools.");
+      else if (created.refreshError) toast.warning(`${s.name} was added`, "Its capabilities couldn't be read yet.");
       else toast.success(`${s.name} was added`);
       setCreated(created);
     },
@@ -71,7 +88,11 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
     // Replace the form's history entry: Back from the new server returns to the list.
     if (created) void navigate({ to: "/teams/$team/servers/$serverId", params: { team, serverId: created.server.id }, replace: true });
   }, [created, navigate, team]);
-  const problems = submitted ? serverProblems(form, auth, { dev, hasAuth: false }) : {};
+  // Only the chosen mode's fields count.
+  const headerForm = upstream.mode === "static_header" ? form : { ...form, authHeaderName: "" };
+  const headerAuth = upstream.mode === "static_header" ? auth : noHeader;
+  const allProblems = () => ({ ...serverProblems(headerForm, headerAuth, { dev, hasAuth: false }), ...oauthProblems(upstream, { detected, secret }) });
+  const problems = submitted ? allProblems() : {};
   const fromServer = serverFieldErrors(create.error);
   // A refusal belongs to the value that was sent: editing that field clears it, so the form can be sent again.
   const set = (patch: Partial<ServerForm>) => {
@@ -84,7 +105,7 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
 
   const submit = () => {
     setSubmitted(true);
-    if (Object.keys(serverProblems(form, auth, { dev, hasAuth: false })).length > 0 || slugProblem(slug)) {
+    if (Object.keys(allProblems()).length > 0 || slugProblem(slug)) {
       requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
@@ -141,9 +162,25 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
         </div>
       </FormSection>
       <FormSection title="Authentication">
-        <AuthFields {...fields} auth={auth} setAuth={setAuth} hasAuth={false} />
+        <AuthModeFields
+          team={team}
+          url={form.url}
+          urlError={urlProblem(form.url, dev)}
+          value={upstream}
+          onChange={setUpstream}
+          detected={detected}
+          onDetected={(r) => {
+            setDetected(r);
+            setUpstream((u) => applyDetection(u, r));
+          }}
+          onUseUrl={(url) => set({ url })}
+          secret={secret}
+          setSecret={setSecret}
+          errors={problems}
+          headerFields={<AuthFields {...fields} auth={auth} setAuth={setAuth} hasAuth={false} />}
+        />
       </FormSection>
-      <ErrorAlert error={shownError} title="Couldn't add the server" />
+      <ErrorAlert error={shownError} title={describeAuthError(shownError)?.title ?? "Couldn't add the server"} describe={describeAuthError} />
     </FormPage>
   );
 }

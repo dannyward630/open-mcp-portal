@@ -299,6 +299,32 @@ func (s *Service) ListMine(ctx context.Context, u dbgen.User) ([]Mine, error) {
 	return out, nil
 }
 
+// UsesServer reports whether a person may use any capability of a server
+// through one of their gateways now (signing in to an oauth server without
+// a consent link, docs/phase7-upstream-oauth.md).
+func (s *Service) UsesServer(ctx context.Context, u dbgen.User, serverID uuid.UUID) (bool, error) {
+	rows, err := s.q.ListGatewaysForUser(ctx, dbgen.ListGatewaysForUserParams{UserID: uuid.NullUUID{UUID: u.ID, Valid: true}, Groups: groupsOf(u)})
+	if err != nil {
+		return false, err
+	}
+	for _, r := range rows {
+		c := Caller{Role: r.MemberRole, Access: grantKinds(r.GrantKinds)}
+		if r.Gateway.OwnerKind == OwnerTeam {
+			c.Access = []string{AccessTeamMember}
+		}
+		offers, err := s.Offers(ctx, r.Gateway, c)
+		if err != nil {
+			return false, err
+		}
+		for _, o := range offers {
+			if o.Allowed && o.Server.ID == serverID {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // ListForServiceAccount lists the gateways a service account of a team with
 // a role may use now, by name (decision 23): its team's enabled gateways
 // while the team is active (AccessTeamMember, with the role applied to

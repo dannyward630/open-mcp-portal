@@ -93,6 +93,12 @@ export const errorClassLabels: Record<ErrorClass, string> = {
 
 export const healthLabels: Record<ServerHealth["status"], string> = { healthy: "Healthy", failing: "Failing", unknown: "Not checked yet" };
 
+/** An oauth server's scheduled check got the expected sign-in challenge: reachable, and calls need each person's sign-in. */
+export const signInRequiredLabel = "Reachable — requires sign-in";
+
+/** The health in words: "Healthy", or "Reachable — requires sign-in" for an oauth server's unauthenticated check. */
+export const healthText = (h: Pick<ServerHealth, "status" | "signInRequired">) => (h.status === "healthy" && h.signInRequired ? signInRequiredLabel : healthLabels[h.status]);
+
 /** A failure in one line: "Credentials refused (HTTP 401)". */
 export function failureText(r: { errorClass?: ErrorClass; httpStatus?: number }) {
   const what = r.errorClass ? errorClassLabels[r.errorClass] : "Failed";

@@ -34,10 +34,10 @@ RETURNING *;
 -- name: InsertMCPServer :one
 INSERT INTO mcp_servers (
     id, team_id, slug, name, description, url, auth_header_name, auth_value_cipher, auth_value_hint,
-    timeout_seconds, enabled, auth_provider_id, auth_scopes, created_by, updated_by
+    timeout_seconds, enabled, auth_provider_id, auth_scopes, auth_mode, send_identity, created_by, updated_by
 ) VALUES (
     @id, @team_id, @slug, @name, @description, @url, @auth_header_name, @auth_value_cipher, @auth_value_hint,
-    @timeout_seconds, @enabled, @auth_provider_id, @auth_scopes, @created_by, @created_by
+    @timeout_seconds, @enabled, @auth_provider_id, @auth_scopes, @auth_mode, @send_identity, @created_by, @created_by
 )
 RETURNING *;
 
@@ -52,8 +52,17 @@ UPDATE mcp_servers
 SET name = @name, description = @description, url = @url, auth_header_name = @auth_header_name,
     auth_value_cipher = @auth_value_cipher, auth_value_hint = @auth_value_hint,
     timeout_seconds = @timeout_seconds, enabled = @enabled, auth_provider_id = @auth_provider_id, auth_scopes = @auth_scopes,
+    auth_mode = @auth_mode, send_identity = @send_identity,
+    oauth_setup_user_id = CASE WHEN @auth_mode::text = 'oauth' THEN oauth_setup_user_id END,
+    oauth_setup_at = CASE WHEN @auth_mode::text = 'oauth' THEN oauth_setup_at END,
     revision = revision + 1, updated_by = @updated_by, updated_at = now()
 WHERE id = @id
+RETURNING *;
+
+-- name: SetMCPServerOAuthSetup :one
+-- The person whose sign-in reads the server's capabilities (decision 42).
+UPDATE mcp_servers SET oauth_setup_user_id = @user_id, oauth_setup_at = now(), revision = revision + 1, updated_at = now()
+WHERE id = @id AND auth_mode = 'oauth'
 RETURNING *;
 
 -- name: BumpMCPServerRevision :one
@@ -118,7 +127,10 @@ FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE (sqlc.narg(team_id)::uuid IS NULL OR s.team_id = sqlc.narg(team_id)::uuid)
   AND (sqlc.narg(publish_state)::text IS NULL OR s.publish_state = sqlc.narg(publish_state)::text)
-  AND (sqlc.narg(provider_id)::uuid IS NULL OR s.auth_provider_id = sqlc.narg(provider_id)::uuid)
+  AND (sqlc.narg(provider_id)::uuid IS NULL OR s.auth_provider_id = sqlc.narg(provider_id)::uuid
+       OR EXISTS (SELECT 1 FROM auth_providers b WHERE b.server_id = s.id AND b.link_provider_id = sqlc.narg(provider_id)::uuid))
+  AND (sqlc.narg(auth_mode)::text IS NULL OR s.auth_mode = sqlc.narg(auth_mode)::text
+       OR (sqlc.narg(auth_mode)::text = 'static_header' AND s.auth_mode = 'none' AND s.auth_header_name IS NOT NULL))
   AND (NOT @catalog::bool OR (s.publish_state = 'published' AND s.enabled AND t.status = 'active'))
   AND (NOT @changes_only::bool OR (s.publish_state = 'published' AND EXISTS (
         SELECT 1 FROM mcp_capabilities c
@@ -206,11 +218,13 @@ WHERE server_id = @server_id AND gone_at IS NULL AND approved_fingerprint IS DIS
 -- name: InsertMCPHealthCheck :one
 -- Stores a check. status_since is carried over from the server's previous
 -- check while the outcome stays the same.
-INSERT INTO mcp_health_checks (server_id, ok, latency_ms, trigger, triggered_by, error_class, http_status, message, status_since)
+INSERT INTO mcp_health_checks (server_id, ok, latency_ms, trigger, triggered_by, error_class, http_status, message, status_since,
+                               sign_in_required)
 SELECT @server_id, @ok::bool, @latency_ms, @trigger, @triggered_by, @error_class, @http_status, @message,
        COALESCE((SELECT CASE WHEN p.ok = @ok::bool THEN p.status_since END
                  FROM mcp_health_checks p WHERE p.server_id = @server_id
-                 ORDER BY p.checked_at DESC, p.id DESC LIMIT 1), now())
+                 ORDER BY p.checked_at DESC, p.id DESC LIMIT 1), now()),
+       @sign_in_required::bool
 RETURNING *;
 
 -- name: PruneMCPHealthChecks :execrows

@@ -19,6 +19,15 @@ gateway, the service and each permission (scope) asked for. Choose **Continue**,
 again. The link works only for you, only once and for 10 minutes. Your connected accounts, and **Disconnect**, are under
 Account › My connections; **My gateways** shows which tools are connected. Service accounts can't use these tools.
 
+**MCP servers that need you to sign in to them.** Some servers, such as GitHub's hosted MCP server, are OAuth-protected
+themselves: each person signs in to the server's own service (decisions 39–45, [phase7-upstream-oauth.md](phase7-upstream-oauth.md)).
+It works the same way: the first call answers `-32042` with a link ("github__get_me needs you to sign in to GitHub MCP
+(repo …)"), the confirm page names the server, its sign-in host (for example github.com) and each scope, and the
+connection appears under Account › My connections with an "MCP server" badge and its team. If the server later asks for
+more access (a 403 `insufficient_scope` within the scopes its team had reviewed) or stops accepting your token (401),
+the next call answers `-32042` again; otherwise it is refused with `-32010`. You can also sign in ahead of time from
+**My gateways**. The client never sees your token for that server.
+
 Building such a server? [`examples/mail-mcp`](../examples/mail-mcp/README.md) shows a Gmail server adapted from running
 its own OAuth to using the gateway's delegated Google token.
 

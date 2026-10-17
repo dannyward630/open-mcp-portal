@@ -70,6 +70,8 @@ type Service struct {
 	client *upstream.Client
 	nets   *Networks
 	log    *slog.Logger
+	// oauth configures upstream OAuth (SetOAuth).
+	oauth OAuthSettings
 }
 
 // New returns a Service. client reaches the servers (its AllowPrivate is the
@@ -199,6 +201,8 @@ type ServerView struct {
 	Health *dbgen.McpHealthCheck
 	// Requirement is the server's user-authorization requirement (nil: none).
 	Requirement *ServerRequirement
+	// OAuth is the sign-in of a server in oauth mode (nil otherwise).
+	OAuth *OAuthView
 }
 
 // HasAuth reports whether the server has a stored header.
@@ -247,6 +251,9 @@ func views(ctx context.Context, q *dbgen.Queries, rows []dbgen.ListMCPServersRow
 	for i := range health {
 		out[index[health[i].ServerID]].Health = &health[i]
 	}
+	if err := oauthViews(ctx, q, out, index, ps); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -271,15 +278,19 @@ type ListParams struct {
 	PublishState *string
 	ChangesOnly  bool
 	Team         string // admin list: a team slug or ID ("" for all)
-	// ProviderID narrows to servers that require that auth provider.
+	// ProviderID narrows to servers that require that auth provider (or,
+	// in oauth mode, link it).
 	ProviderID *uuid.UUID
-	AfterName  *string
-	AfterID    *uuid.UUID
-	Limit      int32
+	// AuthMode narrows to servers with that upstream auth mode.
+	AuthMode  *string
+	AfterName *string
+	AfterID   *uuid.UUID
+	Limit     int32
 }
 
 func (p ListParams) query() dbgen.ListMCPServersParams {
-	out := dbgen.ListMCPServersParams{PublishState: p.PublishState, ChangesOnly: p.ChangesOnly, AfterName: p.AfterName, PageSize: p.Limit}
+	out := dbgen.ListMCPServersParams{PublishState: p.PublishState, ChangesOnly: p.ChangesOnly, AfterName: p.AfterName, PageSize: p.Limit,
+		AuthMode: p.AuthMode}
 	if p.Search != nil {
 		escaped := store.EscapeLike(*p.Search)
 		out.Search = &escaped
@@ -367,6 +378,12 @@ type CreateInput struct {
 	Requirement *RequirementInput
 	// CapturePayloads records calls' contents (team owners and admins only).
 	CapturePayloads bool
+	// AuthMode is none, static_header or oauth ("": static_header with a
+	// header, else none); OAuth configures oauth.
+	AuthMode string
+	OAuth    *OAuthInput
+	// SendIdentity sends the identity token (nil: true; decision 45).
+	SendIdentity *bool
 }
 
 // UpdateInput holds optional changes. AuthHeaderName "" removes the header
@@ -383,6 +400,12 @@ type UpdateInput struct {
 	// CapturePayloads changes the capture switch (nil keeps it; only team
 	// owners and admins may change it).
 	CapturePayloads *bool
+	// AuthMode changes the upstream auth mode (nil keeps it); OAuth changes
+	// the sign-in (fields nil keep their values).
+	AuthMode *string
+	OAuth    *OAuthInput
+	// SendIdentity changes whether the identity token is sent (nil keeps it).
+	SendIdentity *bool
 }
 
 // errCaptureRole: only the server team's owners and admins switch capture.
@@ -442,7 +465,8 @@ func valueHint(v string) string {
 func snapshot(s dbgen.McpServer) map[string]any {
 	out := map[string]any{"slug": s.Slug, "name": s.Name, "description": s.Description, "url": s.URL,
 		"timeoutSeconds": s.TimeoutSeconds, "enabled": s.Enabled, "hasAuth": s.AuthValueCipher != nil,
-		"publishState": s.PublishState, "requirement": requirementSnapshot(s), "capturePayloads": s.CapturePayloads}
+		"publishState": s.PublishState, "requirement": requirementSnapshot(s), "capturePayloads": s.CapturePayloads,
+		"authMode": AuthModeOf(s), "sendIdentity": s.SendIdentity}
 	if s.AuthHeaderName != nil {
 		out["authHeaderName"] = *s.AuthHeaderName
 	}
@@ -455,6 +479,9 @@ type Created struct {
 	View    ServerView
 	Refresh *RefreshResult
 	Failure *TestResult
+	// SetupRequired: created in oauth mode, so nobody has signed in yet and
+	// capabilities weren't read.
+	SetupRequired bool
 }
 
 // Create registers a server (team editors and above) and reads its
@@ -466,8 +493,41 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 	if in.TimeoutSeconds == 0 {
 		in.TimeoutSeconds = defaultTimeoutSec
 	}
+	mode, err := createMode(in)
+	if err != nil {
+		return Created{}, err
+	}
+	var plan *oauthPlan
+	if mode == AuthOAuth {
+		// Discovery and registration happen before the transaction: check
+		// what can be checked first.
+		ta, err := access(ctx, s.q, a, ref)
+		if err != nil {
+			return Created{}, err
+		}
+		if err := ta.writable(authz.CheckServerEdit); err != nil {
+			return Created{}, err
+		}
+		if err := oauthConflicts(in.AuthHeaderName, in.Requirement != nil); err != nil {
+			return Created{}, err
+		}
+		if !slugRE.MatchString(in.Slug) {
+			return Created{}, apperr.Invalid("invalid_slug",
+				"Slug must be 1-48 lowercase letters, digits or hyphens, and cannot start or end with a hyphen")
+		}
+		if err := checkFields(in.Name, in.Description, in.TimeoutSeconds); err != nil {
+			return Created{}, err
+		}
+		u, err := s.client.NormalizeURL(ctx, in.URL)
+		if err != nil {
+			return Created{}, err
+		}
+		if plan, err = s.prepareOAuth(ctx, s.q, u, in.Name, in.OAuth, nil); err != nil {
+			return Created{}, err
+		}
+	}
 	id := uuid.New()
-	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
+	err = store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		ta, err := access(ctx, q, a, ref)
 		if err != nil {
 			return err
@@ -482,6 +542,7 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 		if p.AuthProviderID, p.AuthScopes, err = checkRequirement(ctx, q, in.Requirement, uuid.NullUUID{}); err != nil {
 			return err
 		}
+		p.AuthMode, p.SendIdentity = mode, in.SendIdentity == nil || *in.SendIdentity
 		row, err := q.InsertMCPServer(ctx, p)
 		if apperr.IsUniqueViolation(err, "mcp_servers_slug_key") {
 			return errSlugTaken
@@ -493,7 +554,18 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 		}
 		e := a.Audit("mcp_server.create", "mcp_server", id.String())
 		e.TeamID, e.After = ta.team.ID, snapshot(row)
-		return audit.Record(ctx, q, e)
+		if err := audit.Record(ctx, q, e); err != nil {
+			return err
+		}
+		if plan == nil {
+			return nil
+		}
+		prov, err := s.insertProvider(ctx, q, a, row, plan)
+		if err != nil {
+			return err
+		}
+		return authUpdateAudit(ctx, q, a, nil, nil, row, &prov, map[string]any{"registered": plan.registered,
+			"clientIdChanged": true, "clientSecretChanged": plan.secret != nil, "connectionsReset": 0})
 	})
 	if err != nil {
 		return Created{}, err
@@ -503,6 +575,13 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, ref string, in Crea
 		return Created{}, err
 	}
 	var out Created
+	if mode == AuthOAuth {
+		// Nobody has signed in yet: capabilities are read after the setup
+		// sign-in (authorize-setup).
+		out.SetupRequired = true
+		out.View, err = s.view(ctx, s.q, id)
+		return out, err
+	}
 	res, fail, err := s.refresh(ctx, a, sv)
 	if err != nil {
 		return Created{}, err
@@ -548,8 +627,15 @@ func (s *Service) insertParams(ctx context.Context, id, teamID uuid.UUID, a auth
 // current value) writes nothing: no revision bump and no audit entry, as a
 // member role change to the same role.
 func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid.UUID, in UpdateInput, expectedRevision int64) (ServerView, error) {
+	// Upstream OAuth changes need the network (discovery, registration,
+	// revocation): that happens first, against the server as read now; the
+	// transaction then checks the revision again.
+	pre, err := s.prepareUpdate(ctx, a, ref, id, in, expectedRevision)
+	if err != nil {
+		return ServerView{}, err
+	}
 	var moved bool
-	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
+	err = store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		ta, err := access(ctx, q, a, ref)
 		if err != nil {
 			return err
@@ -564,7 +650,7 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 		if cur.Revision != expectedRevision {
 			return apperr.Stale()
 		}
-		p, valueChanged, err := s.applyUpdate(ctx, cur, in)
+		p, valueChanged, err := s.applyUpdate(ctx, cur, in, pre.mode)
 		if err != nil {
 			return err
 		}
@@ -573,7 +659,17 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 				return err
 			}
 		}
-		if unchanged(cur, p, valueChanged, in.CapturePayloads) {
+		if pre.mode == AuthOAuth {
+			if err := oauthConflicts(deref(p.AuthHeaderName), p.AuthProviderID.Valid); err != nil {
+				return err
+			}
+		}
+		if in.SendIdentity != nil {
+			p.SendIdentity = *in.SendIdentity
+		}
+		curProv := pre.provider
+		planChanged := pre.plan != nil && (curProv == nil || !planUnchanged(*curProv, pre.plan))
+		if unchanged(cur, p, valueChanged, in.CapturePayloads) && !planChanged && pre.mode == AuthModeOf(cur) {
 			return nil
 		}
 		ps, err := LoadProviders(ctx, q)
@@ -614,9 +710,15 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 		if err := audit.Record(ctx, q, e); err != nil {
 			return err
 		}
+		authChanged, err := s.applyOAuth(ctx, q, a, cur, row, pre)
+		if err != nil {
+			return err
+		}
 		switch {
 		case row.URL != cur.URL:
 			err = resubmit(ctx, q, a, ta.team, cur, "url_changed", "The server's URL changed; review it again.")
+		case authChanged:
+			err = resubmit(ctx, q, a, ta.team, cur, "upstream_auth_changed", noteUpstreamAuthChanged)
 		case widened(before, after):
 			err = resubmit(ctx, q, a, ta.team, cur, "requirement_changed", noteRequirementChanged)
 		}
@@ -629,7 +731,7 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 			}
 		}
 		// A new address or credentials make the stored health meaningless.
-		if valueChanged || row.URL != cur.URL || !equalPtr(row.AuthHeaderName, cur.AuthHeaderName) {
+		if valueChanged || row.URL != cur.URL || !equalPtr(row.AuthHeaderName, cur.AuthHeaderName) || AuthModeOf(row) != AuthModeOf(cur) {
 			return q.ForgetMCPHealthChecks(ctx, id)
 		}
 		return nil
@@ -652,10 +754,172 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 	return s.view(ctx, s.q, id)
 }
 
-func (s *Service) applyUpdate(ctx context.Context, cur dbgen.McpServer, in UpdateInput) (dbgen.UpdateMCPServerParams, bool, error) {
+// updatePrep is what an update decided before its transaction.
+type updatePrep struct {
+	// mode is the auth mode after the update.
+	mode string
+	// provider is the server-bound provider before the update (nil: none).
+	provider *dbgen.AuthProvider
+	// plan is the new sign-in (nil: unchanged).
+	plan *oauthPlan
+	// revoked: leaving oauth, the connections were revoked (results).
+	revoked map[uuid.UUID]any
+}
+
+// prepareUpdate runs what an update needs from the network: discovery and
+// registration when the server is (or stays) in oauth mode and its URL or
+// sign-in changes, and revoking connections when it leaves oauth.
+func (s *Service) prepareUpdate(ctx context.Context, a authz.Actor, ref string, id uuid.UUID, in UpdateInput, expectedRevision int64) (updatePrep, error) {
+	ta, err := access(ctx, s.q, a, ref)
+	if err != nil {
+		return updatePrep{}, err
+	}
+	if err := ta.writable(authz.CheckServerEdit); err != nil {
+		return updatePrep{}, err
+	}
+	cur, err := teamServer(ctx, s.q, ta.team.ID, id, false)
+	if err != nil {
+		return updatePrep{}, err
+	}
+	if cur.Revision != expectedRevision {
+		return updatePrep{}, apperr.Stale()
+	}
+	out := updatePrep{mode: AuthModeOf(cur)}
+	if in.AuthMode != nil {
+		switch *in.AuthMode {
+		case AuthNone, AuthStaticHeader, AuthOAuth:
+			out.mode = *in.AuthMode
+		default:
+			return out, apperr.Invalid("invalid_auth_mode", "authMode must be none, static_header or oauth")
+		}
+	} else if out.mode != AuthOAuth {
+		// Without a mode, a header added or removed decides it.
+		header := deref(cur.AuthHeaderName)
+		if in.AuthHeaderName != nil {
+			header = *in.AuthHeaderName
+		}
+		out.mode = AuthNone
+		if header != "" {
+			out.mode = AuthStaticHeader
+		}
+	}
+	if out.mode != AuthOAuth {
+		// An oauth input without oauth mode is ignored (clients may always
+		// send it with its defaults).
+		in.OAuth = nil
+	}
+	if AuthModeOf(cur) == AuthOAuth {
+		p, err := s.q.GetServerProvider(ctx, uuid.NullUUID{UUID: id, Valid: true})
+		if err != nil && !errors.Is(store.NotFound(err), store.ErrNotFound) {
+			return out, err
+		} else if err == nil {
+			out.provider = &p
+		}
+	}
+	newURL := cur.URL
+	if in.URL != nil {
+		if newURL, err = s.client.NormalizeURL(ctx, *in.URL); err != nil {
+			return out, err
+		}
+	}
+	switch {
+	case out.mode == AuthOAuth && (AuthModeOf(cur) != AuthOAuth || in.OAuth != nil || newURL != cur.URL || out.provider == nil):
+		header := deref(cur.AuthHeaderName)
+		if in.AuthHeaderName != nil {
+			header = *in.AuthHeaderName
+		}
+		requirement := cur.AuthProviderID.Valid
+		if in.SetRequirement {
+			requirement = in.Requirement != nil
+		}
+		if err := oauthConflicts(header, requirement); err != nil {
+			return out, err
+		}
+		name := cur.Name
+		if in.Name != nil {
+			name = strings.TrimSpace(*in.Name)
+		}
+		if out.plan, err = s.prepareOAuth(ctx, s.q, newURL, name, in.OAuth, out.provider); err != nil {
+			return out, err
+		}
+	case out.mode != AuthOAuth && out.provider != nil && s.oauth.Hooks != nil:
+		out.revoked = s.oauth.Hooks.RevokeConnections(ctx, *out.provider)
+	}
+	return out, nil
+}
+
+// applyOAuth stores an update's sign-in changes in its transaction and
+// reports whether they need review again (a switch to oauth, another
+// authorization server, or a scope not asked for before). A URL change,
+// another authorization server or another client ID erases every
+// connection's tokens; leaving oauth deletes the connections. Audited as
+// mcp_server.auth_update.
+func (s *Service) applyOAuth(ctx context.Context, q *dbgen.Queries, a authz.Actor, cur, row dbgen.McpServer, pre updatePrep) (bool, error) {
+	beforeMode, afterMode := AuthModeOf(cur), AuthModeOf(row)
+	prov := pre.provider
+	switch {
+	case afterMode == AuthOAuth && pre.plan != nil && prov == nil:
+		np, err := s.insertProvider(ctx, q, a, row, pre.plan)
+		if err != nil {
+			return false, err
+		}
+		return true, authUpdateAudit(ctx, q, a, &cur, nil, row, &np, map[string]any{"registered": pre.plan.registered,
+			"clientIdChanged": true, "clientSecretChanged": pre.plan.secret != nil, "connectionsReset": 0})
+	case afterMode == AuthOAuth && prov != nil:
+		if pre.plan == nil || planUnchanged(*prov, pre.plan) {
+			if row.Name != cur.Name {
+				if err := q.RenameServerProvider(ctx, dbgen.RenameServerProviderParams{Name: row.Name, ServerID: uuid.NullUUID{UUID: row.ID, Valid: true}}); err != nil {
+					return false, err
+				}
+			}
+			if row.SendIdentity != cur.SendIdentity {
+				return false, authUpdateAudit(ctx, q, a, &cur, prov, row, prov, nil)
+			}
+			return false, nil
+		}
+		np, err := s.updateProvider(ctx, q, a, row.Name, *prov, pre.plan)
+		if err != nil {
+			return false, err
+		}
+		otherServer := deref(prov.Issuer) != deref(np.Issuer) || deref(prov.AuthorizationServer) != deref(np.AuthorizationServer)
+		clientChanged := prov.ClientID != np.ClientID || prov.LinkProviderID != np.LinkProviderID
+		var reset int64
+		if otherServer || clientChanged || row.URL != cur.URL {
+			if reset, err = q.ResetProviderConnections(ctx, dbgen.ResetProviderConnectionsParams{ProviderID: prov.ID,
+				ErrorClass: ptr("server_auth_changed")}); err != nil {
+				return false, err
+			}
+		}
+		meta := map[string]any{"registered": pre.plan.registered, "clientIdChanged": clientChanged,
+			"clientSecretChanged": pre.plan.secret != nil || (pre.plan.clearSecret && prov.ClientSecretCipher != nil), "connectionsReset": reset}
+		if err := authUpdateAudit(ctx, q, a, &cur, prov, row, &np, meta); err != nil {
+			return false, err
+		}
+		return otherServer || widensScopes(nonNil(prov.DefaultScopes), nonNil(np.DefaultScopes)), nil
+	case afterMode != AuthOAuth && prov != nil:
+		if s.oauth.Hooks != nil {
+			if err := s.oauth.Hooks.DeleteConnections(ctx, q, a, *prov, pre.revoked, "server_auth_changed"); err != nil {
+				return false, err
+			}
+		}
+		if err := q.DeleteServerProvider(ctx, uuid.NullUUID{UUID: row.ID, Valid: true}); err != nil {
+			return false, err
+		}
+		return false, authUpdateAudit(ctx, q, a, &cur, prov, row, nil, map[string]any{"connectionsReset": 0,
+			"connectionsDeleted": len(pre.revoked)})
+	case beforeMode != afterMode || cur.SendIdentity != row.SendIdentity:
+		return false, authUpdateAudit(ctx, q, a, &cur, nil, row, nil, nil)
+	}
+	return false, nil
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func (s *Service) applyUpdate(ctx context.Context, cur dbgen.McpServer, in UpdateInput, mode string) (dbgen.UpdateMCPServerParams, bool, error) {
 	p := dbgen.UpdateMCPServerParams{ID: cur.ID, Name: cur.Name, Description: cur.Description, URL: cur.URL,
 		AuthHeaderName: cur.AuthHeaderName, AuthValueCipher: cur.AuthValueCipher, AuthValueHint: cur.AuthValueHint,
-		TimeoutSeconds: cur.TimeoutSeconds, Enabled: cur.Enabled, AuthProviderID: cur.AuthProviderID, AuthScopes: nonNil(cur.AuthScopes)}
+		TimeoutSeconds: cur.TimeoutSeconds, Enabled: cur.Enabled, AuthProviderID: cur.AuthProviderID, AuthScopes: nonNil(cur.AuthScopes),
+		AuthMode: mode, SendIdentity: cur.SendIdentity}
 	setIf(&p.Name, in.Name)
 	p.Name = strings.TrimSpace(p.Name)
 	setIf(&p.Description, in.Description)
@@ -671,8 +935,22 @@ func (s *Service) applyUpdate(ctx context.Context, cur dbgen.McpServer, in Updat
 		}
 		p.URL = u
 	}
+	if mode == AuthNone {
+		// authMode none removes the static header with its value.
+		if (in.AuthHeaderName != nil && *in.AuthHeaderName != "") || (in.AuthValue != nil && *in.AuthValue != "") {
+			return p, false, apperr.Invalid("invalid_auth_header", "authMode none has no static header")
+		}
+		p.AuthHeaderName, p.AuthValueCipher, p.AuthValueHint = nil, nil, ""
+		return p, cur.AuthValueCipher != nil, nil
+	}
 	removed := in.AuthHeaderName != nil && *in.AuthHeaderName == "" && cur.AuthValueCipher != nil
-	return p, in.AuthValue != nil || removed, s.applyAuth(&p, cur, in)
+	if err := s.applyAuth(&p, cur, in); err != nil {
+		return p, false, err
+	}
+	if mode == AuthStaticHeader && p.AuthHeaderName == nil {
+		return p, false, apperr.Invalid("invalid_auth_header", "Enter the static header's name and value")
+	}
+	return p, in.AuthValue != nil || removed, nil
 }
 
 // applyAuth applies a header change: "" removes it; a new name keeps the
@@ -720,7 +998,8 @@ func (s *Service) applyAuth(p *dbgen.UpdateMCPServerParams, cur dbgen.McpServer,
 func unchanged(cur dbgen.McpServer, p dbgen.UpdateMCPServerParams, valueChanged bool, capture *bool) bool {
 	return !valueChanged && p.Name == cur.Name && p.Description == cur.Description && p.URL == cur.URL &&
 		p.TimeoutSeconds == cur.TimeoutSeconds && p.Enabled == cur.Enabled && equalPtr(p.AuthHeaderName, cur.AuthHeaderName) &&
-		p.AuthProviderID == cur.AuthProviderID && slices.Equal(p.AuthScopes, cur.AuthScopes) &&
+		p.AuthProviderID == cur.AuthProviderID && slices.Equal(p.AuthScopes, cur.AuthScopes) && p.SendIdentity == cur.SendIdentity &&
+		p.AuthMode == AuthModeOf(cur) &&
 		(capture == nil || *capture == cur.CapturePayloads)
 }
 
@@ -733,8 +1012,19 @@ func setIf[T any](dst *T, v *T) {
 func equalPtr(a, b *string) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
 
 // Delete removes a server with its capabilities and health (team owners and
-// admins). Audited as mcp_server.delete.
+// admins). A server in oauth mode first has its connections revoked at the
+// authorization server (best effort); its server-bound provider and the
+// connections go with it (provider_connection.revoke, reason
+// server_deleted). Audited as mcp_server.delete.
 func (s *Service) Delete(ctx context.Context, a authz.Actor, ref string, id uuid.UUID) error {
+	var revoked map[uuid.UUID]any
+	if ta, err := access(ctx, s.q, a, ref); err == nil && ta.writable(authz.CheckServerManage) == nil {
+		if sv, err := teamServer(ctx, s.q, ta.team.ID, id, false); err == nil && AuthModeOf(sv) == AuthOAuth && s.oauth.Hooks != nil {
+			if p, err := s.q.GetServerProvider(ctx, uuid.NullUUID{UUID: id, Valid: true}); err == nil {
+				revoked = s.oauth.Hooks.RevokeConnections(ctx, p)
+			}
+		}
+	}
 	return store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		ta, err := access(ctx, q, a, ref)
 		if err != nil {
@@ -745,6 +1035,13 @@ func (s *Service) Delete(ctx context.Context, a authz.Actor, ref string, id uuid
 		}
 		cur, err := teamServer(ctx, q, ta.team.ID, id, true)
 		if err != nil {
+			return err
+		}
+		if p, err := q.GetServerProvider(ctx, uuid.NullUUID{UUID: id, Valid: true}); err == nil && s.oauth.Hooks != nil {
+			if err := s.oauth.Hooks.DeleteConnections(ctx, q, a, p, revoked, "server_deleted"); err != nil {
+				return err
+			}
+		} else if err != nil && !errors.Is(store.NotFound(err), store.ErrNotFound) {
 			return err
 		}
 		if err := q.DeleteMCPServer(ctx, id); err != nil {

@@ -2,10 +2,12 @@
  * The connect page's confirmation: the tool and gateway that asked, the
  * provider and the account connected now, each scope it will ask for
  * (already granted, or new), where the token goes, and Continue or Cancel.
+ * For an MCP server in oauth mode (provider.kind mcp_server) the person
+ * signs in to that server itself: the words name the server.
  */
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { type ConnectRequest, presetLabels } from "../../components/providers/labels";
+import { type ConnectRequest, connectionName, isServerSignIn, presetLabels } from "../../components/providers/labels";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import { Badge } from "@/components/ui/badge/badge";
 import { Button } from "@/components/ui/button/button";
@@ -20,7 +22,12 @@ const kindWords = { tool: "tool", prompt: "prompt", resource: "resource", resour
 
 /** Why the tool asked, in a sentence. */
 function reasonText(r: ConnectRequest, what: string) {
-  const p = r.provider.name;
+  const p = connectionName(r.provider);
+  if (isServerSignIn(r.provider)) {
+    if (r.reason === "missing_scopes") return `${what} needs more access at ${p} than you allowed before.`;
+    if (r.reason === "needs_reconsent") return `Your sign-in to ${p} has to be renewed: it stopped working or the server's sign-in changed. ${what} needs it.`;
+    return `${what} needs you to sign in to ${p}, so it can act as you there.`;
+  }
   switch (r.reason) {
     case "missing_scopes":
       return `${what} needs more access to your ${p} account than you allowed before.`;
@@ -53,7 +60,8 @@ type Props = {
 
 export function ConfirmBody({ request: r, titleId, email, start, leaving }: Props) {
   const [cancelled, setCancelled] = useState(false);
-  const p = r.provider.name;
+  const p = connectionName(r.provider);
+  const server = isServerSignIn(r.provider);
   const what = `The ${kindWords[r.capability.kind]} ${r.capability.exposedName}`;
   const granted = new Set(r.grantedScopes);
   const busy = start.pending || leaving !== null;
@@ -73,7 +81,7 @@ export function ConfirmBody({ request: r, titleId, email, start, leaving }: Prop
     <Stack gap={5}>
       <div>
         <h1 id={titleId} className={styles.title}>
-          Connect your {p} account
+          {server ? `Sign in to ${p}` : `Connect your ${p} account`}
         </h1>
         <p className={styles.muted}>{reasonText(r, what)}</p>
       </div>
@@ -91,15 +99,21 @@ export function ConfirmBody({ request: r, titleId, email, start, leaving }: Prop
           </dd>
           <dt>Gateway</dt>
           <dd>{r.gateway.name}</dd>
-          <dt>Provider</dt>
-          <dd>{r.provider.preset && presetLabels[r.provider.preset] !== p ? `${p} (${presetLabels[r.provider.preset]})` : p}</dd>
+          <dt>{server ? "MCP server" : "Provider"}</dt>
+          <dd>
+            {server
+              ? `${p}${r.provider.server ? ` (team ${r.provider.server.teamSlug})` : ""}`
+              : r.provider.preset && presetLabels[r.provider.preset] !== p
+                ? `${p} (${presetLabels[r.provider.preset]})`
+                : p}
+          </dd>
           <dt>Connected now</dt>
           <dd>{connectedNow(r)}</dd>
         </dl>
       </section>
       <section aria-labelledby={`${titleId}-scopes`}>
         <h2 id={`${titleId}-scopes`} className={styles.heading}>
-          {p} will ask you to allow
+          {server ? `Signing in to ${p} asks you to allow` : `${p} will ask you to allow`}
         </h2>
         {r.requestScopes.length === 0 ? (
           <p className={styles.muted}>The provider&apos;s default access.</p>
@@ -123,25 +137,25 @@ export function ConfirmBody({ request: r, titleId, email, start, leaving }: Prop
         )}
       </section>
       <Alert tone="info">
-        The gateway keeps the token and sends it only to the server behind {r.capability.exposedName}. Your AI client and its model never see it. Disconnect any time
+        The gateway keeps the token and sends it only to {server ? p : `the server behind ${r.capability.exposedName}`}. Your AI client and its model never see it. Disconnect any time
         from <TextLink render={<Link to="/settings/connections" target="_blank" rel="noreferrer" />}>
           Account › My connections<VisuallyHidden> (opens in a new tab)</VisuallyHidden>
         </TextLink>
         .
       </Alert>
       <p className={styles.muted}>
-        After you approve at {p}, you come back here. Then run the tool again. This link expires <Time value={r.expiresAt} />.
+        After you approve {server ? "the sign-in" : `at ${p}`}, you come back here. Then run the tool again. This link expires <Time value={r.expiresAt} />.
       </p>
       {start.error != null && <ErrorAlert error={start.error} title={`Couldn't start connecting ${p}`} />}
       <p role="status" className={styles.muted}>
-        {leaving ? `Taking you to ${p}…` : ""}
+        {leaving ? (server ? "Taking you to sign in…" : `Taking you to ${p}…`) : ""}
       </p>
       <div className={styles.actions}>
         <Button variant="secondary" disabled={busy} onClick={() => setCancelled(true)}>
           Cancel
         </Button>
         <Button loading={start.pending} disabled={busy} onClick={start.run}>
-          Continue to {p}
+          {server ? "Continue to sign in" : `Continue to ${p}`}
         </Button>
       </div>
     </Stack>

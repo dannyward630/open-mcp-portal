@@ -89,6 +89,11 @@ type Target struct {
 	// MCP-Gateway-Provider and MCP-Gateway-Provider-Token only on forwarded
 	// calls whose capability requires that provider (decision 27).
 	Provider, ProviderToken string
+	// BearerToken is a person's own token for an MCP server in oauth mode
+	// (docs/phase7-upstream-oauth.md), sent as Authorization: Bearer only to
+	// that server's URL. The identity token then goes in
+	// MCP-Gateway-Identity.
+	BearerToken string
 	// Timeout bounds the whole exchange (connect and every list page).
 	Timeout time.Duration
 }
@@ -359,6 +364,9 @@ type Error struct {
 	// RPCCode is the server's JSON-RPC error code when it answered with an
 	// error (0 otherwise).
 	RPCCode int64
+	// Challenge holds the WWW-Authenticate values of a 401 or 403 answer
+	// (an OAuth-protected server's error and scope; never shown).
+	Challenge []string
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -380,7 +388,8 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return &Error{Class: ClassTimeout, Message: "The server didn't answer in time."}
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
-		return &Error{Class: ClassAuth, HTTPStatus: status, Message: fmt.Sprintf("The server refused the credentials (HTTP %d).", status)}
+		return &Error{Class: ClassAuth, HTTPStatus: status, Message: fmt.Sprintf("The server refused the credentials (HTTP %d).", status),
+			Challenge: ex.lastChallenge()}
 	case status == http.StatusNotFound:
 		return &Error{Class: ClassNotFound, HTTPStatus: status, Message: "The server answered 404: check the URL."}
 	case status == http.StatusTooManyRequests:
@@ -414,6 +423,9 @@ func (t Target) safe(msg string) string {
 	}
 	if t.ProviderToken != "" {
 		msg = strings.ReplaceAll(msg, t.ProviderToken, "[redacted]")
+	}
+	if t.BearerToken != "" {
+		msg = strings.ReplaceAll(msg, t.BearerToken, "[redacted]")
 	}
 	return SafeMessage(msg, t.HeaderValue)
 }

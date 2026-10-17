@@ -20,10 +20,15 @@ SELECT * FROM auth_providers WHERE id = $1;
 SELECT * FROM auth_providers WHERE id = $1 FOR UPDATE;
 
 -- name: CountAuthProviders :one
-SELECT count(*)::bigint FROM auth_providers;
+-- Platform providers (the limit of 100 doesn't count server-bound ones).
+SELECT count(*)::bigint FROM auth_providers WHERE kind = 'oauth2';
 
 -- name: ListAllAuthProviders :many
+-- Every provider, platform and server-bound (requirements and the runtime).
 SELECT * FROM auth_providers ORDER BY name, id;
+
+-- name: ListPlatformAuthProviders :many
+SELECT * FROM auth_providers WHERE kind = 'oauth2' ORDER BY name, id;
 
 -- name: UpdateAuthProvider :one
 UPDATE auth_providers
@@ -43,7 +48,8 @@ DELETE FROM auth_providers WHERE id = $1;
 -- name: AuthProviderStats :many
 -- Per provider: the MCP servers that require it, and the connections to it.
 SELECT p.id AS provider_id,
-       (SELECT count(*) FROM mcp_servers s WHERE s.auth_provider_id = p.id)::bigint AS server_count,
+       ((SELECT count(*) FROM mcp_servers s WHERE s.auth_provider_id = p.id)
+        + (SELECT count(*) FROM auth_providers b WHERE b.link_provider_id = p.id))::bigint AS server_count,
        (SELECT count(*) FROM provider_connections pc WHERE pc.provider_id = p.id)::bigint AS connection_count,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = p.created_by), '')::text
            AS created_by_name
@@ -52,13 +58,63 @@ WHERE p.id = ANY(@ids::uuid[]);
 
 -- name: ServersRequiringProvider :many
 -- MCP servers that require a provider (as their requirement; a capability
--- override always names its server's provider), at most limit, by name.
+-- override always names its server's provider) or, in oauth mode, link it
+-- (registration platform_provider), at most limit, by name.
 SELECT s.id, s.slug, s.name, t.slug AS team_slug
 FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE s.auth_provider_id = @provider_id
+   OR EXISTS (SELECT 1 FROM auth_providers b WHERE b.server_id = s.id AND b.link_provider_id = @provider_id)
 ORDER BY s.name, s.id
 LIMIT @page_size;
+
+-- name: InsertServerProvider :one
+-- The OAuth client of an MCP server in oauth mode (kind mcp_server).
+INSERT INTO auth_providers (
+    id, slug, name, kind, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce,
+    authorization_url, token_url, revocation_url, default_scopes, server_id, link_provider_id, registration, resource,
+    resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported,
+    client_secret_expires_at, discovered_at, created_by, updated_by
+) VALUES (
+    @id, @slug, @name, 'mcp_server', true, @client_id, @client_secret_cipher, @client_secret_hint, @token_auth_method, true,
+    @authorization_url, @token_url, @revocation_url, @default_scopes, @server_id, @link_provider_id, @registration, @resource,
+    @resource_metadata_url, @authorization_server, @issuer, @scopes_supported, @send_resource, @iss_param_supported,
+    @client_secret_expires_at, now(), @created_by, @created_by
+)
+RETURNING *;
+
+-- name: UpdateServerProvider :one
+UPDATE auth_providers
+SET name = @name, client_id = @client_id, client_secret_cipher = @client_secret_cipher, client_secret_hint = @client_secret_hint,
+    token_auth_method = @token_auth_method, authorization_url = @authorization_url, token_url = @token_url,
+    revocation_url = @revocation_url, default_scopes = @default_scopes, link_provider_id = @link_provider_id,
+    registration = @registration, resource = @resource, resource_metadata_url = @resource_metadata_url,
+    authorization_server = @authorization_server, issuer = @issuer, scopes_supported = @scopes_supported,
+    send_resource = @send_resource, iss_param_supported = @iss_param_supported,
+    client_secret_expires_at = @client_secret_expires_at, discovered_at = now(),
+    revision = revision + 1, updated_by = @updated_by, updated_at = now()
+WHERE id = @id AND kind = 'mcp_server'
+RETURNING *;
+
+-- name: RenameServerProvider :exec
+-- A server-bound provider is named after its server.
+UPDATE auth_providers SET name = @name, updated_at = now() WHERE server_id = @server_id;
+
+-- name: GetServerProvider :one
+SELECT * FROM auth_providers WHERE server_id = $1;
+
+-- name: ServerProviders :many
+-- The server-bound providers of servers, with their connection counts.
+SELECT sqlc.embed(p), (SELECT count(*) FROM provider_connections pc WHERE pc.provider_id = p.id)::bigint AS connection_count
+FROM auth_providers p
+WHERE p.server_id = ANY(@server_ids::uuid[]);
+
+-- name: LinkedServerProviders :many
+-- Server-bound providers that use a platform provider's client.
+SELECT * FROM auth_providers WHERE link_provider_id = @link_provider_id ORDER BY id;
+
+-- name: DeleteServerProvider :exec
+DELETE FROM auth_providers WHERE server_id = @server_id AND kind = 'mcp_server';
 
 -- name: GetProviderConnection :one
 SELECT * FROM provider_connections WHERE user_id = @user_id AND provider_id = @provider_id;
@@ -107,6 +163,14 @@ SET status = 'needs_reconsent', access_token_cipher = NULL, refresh_token_cipher
     last_error_class = 'client_changed'
 WHERE provider_id = @provider_id AND status = 'active';
 
+-- name: ResetProviderConnections :execrows
+-- Erases the tokens of every active connection to a provider (an oauth
+-- server's URL, authorization server or client changed), with the reason.
+UPDATE provider_connections
+SET status = 'needs_reconsent', access_token_cipher = NULL, refresh_token_cipher = NULL, expires_at = NULL,
+    last_error_class = @error_class
+WHERE provider_id = @provider_id AND status = 'active';
+
 -- name: TouchProviderConnection :exec
 UPDATE provider_connections SET last_used_at = now()
 WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute');
@@ -115,13 +179,20 @@ WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 mi
 DELETE FROM provider_connections WHERE id = $1;
 
 -- name: ListProviderConnectionsForUser :many
--- A person's connections with their providers, by provider name.
+-- A person's connections with their providers (and, for a server-bound
+-- provider, its server and team), by provider name.
 SELECT sqlc.embed(pc), p.slug AS provider_slug, p.name AS provider_name, p.preset AS provider_preset,
-       p.logo_url AS provider_logo_url
+       p.logo_url AS provider_logo_url, p.kind AS provider_kind, s.id AS server_id, s.slug AS server_slug,
+       s.name AS server_name, t.slug AS server_team_slug
 FROM provider_connections pc
 JOIN auth_providers p ON p.id = pc.provider_id
+LEFT JOIN mcp_servers s ON s.id = p.server_id
+LEFT JOIN teams t ON t.id = s.team_id
 WHERE pc.user_id = @user_id
 ORDER BY p.name, p.id;
+
+-- name: GetServerRef :one
+SELECT s.id, s.slug, s.name, t.slug AS team_slug FROM mcp_servers s JOIN teams t ON t.id = s.team_id WHERE s.id = $1;
 
 -- name: ListProviderConnectionsForProvider :many
 SELECT * FROM provider_connections WHERE provider_id = @provider_id ORDER BY id;
@@ -167,9 +238,9 @@ DELETE FROM provider_connect_requests WHERE expires_at < @before;
 
 -- name: InsertProviderAuthState :exec
 INSERT INTO provider_auth_states (state_digest, user_id, session_digest, provider_id, scopes, required_scopes,
-                                  code_verifier_cipher, request_digest, return_to, expires_at)
+                                  code_verifier_cipher, request_digest, return_to, expires_at, setup_server_id, resource)
 VALUES (@state_digest, @user_id, @session_digest, @provider_id, @scopes, @required_scopes, @code_verifier_cipher,
-        @request_digest, @return_to, @expires_at);
+        @request_digest, @return_to, @expires_at, @setup_server_id, @resource);
 
 -- name: TakeProviderAuthState :one
 -- A state is single use: it is deleted before anything else is checked.

@@ -186,6 +186,13 @@ var matrixPolicies = map[string]policy{
 	"unpublishTeamMcpServer": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
 		return post(c.team("/mcp-servers/"+c.server("published")+"/unpublish"), nil)
 	}},
+	// Upstream OAuth (Phase 7): editors detect and sign in for setup.
+	"detectTeamMcpServerAuth": {scope: scopeTeam, own: editors, build: func(c *mctx) request {
+		return post(c.team("/mcp-servers/detect-auth"), map[string]any{"url": c.e.fakeURL})
+	}},
+	"authorizeTeamMcpServerSetup": {scope: scopeTeam, own: editors, build: func(c *mctx) request {
+		return post(c.team("/mcp-servers/"+c.tf.oauthServer+"/oauth/authorize-setup"), map[string]any{"returnTo": "/settings"})
+	}},
 	"getTeamPublishing": {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request { return get(c.team("/publishing")) }},
 
 	// The catalog: anyone signed in.

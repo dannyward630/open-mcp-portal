@@ -109,7 +109,7 @@ ON CONFLICT (gateway_id, capability_id) DO UPDATE SET min_team_role = EXCLUDED.m
 -- server; search is LIKE-escaped by the caller.
 SELECT c.id, c.kind, c.name, c.title, c.description, c.requirement_mode, c.requirement_scopes,
        s.id AS server_id, s.slug AS server_slug, s.name AS server_name, s.team_id AS server_team_id,
-       s.auth_provider_id AS server_auth_provider_id, s.auth_scopes AS server_auth_scopes,
+       s.auth_provider_id AS server_auth_provider_id, s.auth_scopes AS server_auth_scopes, s.auth_mode AS server_auth_mode,
        s.capture_payloads AS server_capture_payloads,
        t.slug AS team_slug, t.name AS team_name
 FROM mcp_capabilities c

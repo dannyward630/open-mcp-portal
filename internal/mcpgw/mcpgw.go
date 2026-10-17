@@ -424,6 +424,10 @@ type request struct {
 	forwarded bool
 	// capture is the payload to store with the call record (nil: none).
 	capture *capture.Input
+	// scrub are a person's tokens for an oauth server, removed from the
+	// server's answer should it echo them (the client and the model never
+	// see them).
+	scrub []string
 }
 
 // observe records the request's metrics.

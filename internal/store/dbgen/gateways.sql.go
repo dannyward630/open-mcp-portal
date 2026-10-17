@@ -479,7 +479,7 @@ func (q *Queries) ListGatewayGrants(ctx context.Context, gatewayID uuid.UUID) ([
 const listGatewayOptions = `-- name: ListGatewayOptions :many
 SELECT c.id, c.kind, c.name, c.title, c.description, c.requirement_mode, c.requirement_scopes,
        s.id AS server_id, s.slug AS server_slug, s.name AS server_name, s.team_id AS server_team_id,
-       s.auth_provider_id AS server_auth_provider_id, s.auth_scopes AS server_auth_scopes,
+       s.auth_provider_id AS server_auth_provider_id, s.auth_scopes AS server_auth_scopes, s.auth_mode AS server_auth_mode,
        s.capture_payloads AS server_capture_payloads,
        t.slug AS team_slug, t.name AS team_name
 FROM mcp_capabilities c
@@ -532,6 +532,7 @@ type ListGatewayOptionsRow struct {
 	ServerTeamID          uuid.UUID
 	ServerAuthProviderID  uuid.NullUUID
 	ServerAuthScopes      []string
+	ServerAuthMode        string
 	ServerCapturePayloads bool
 	TeamSlug              string
 	TeamName              string
@@ -580,6 +581,7 @@ func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptions
 			&i.ServerTeamID,
 			&i.ServerAuthProviderID,
 			&i.ServerAuthScopes,
+			&i.ServerAuthMode,
 			&i.ServerCapturePayloads,
 			&i.TeamSlug,
 			&i.TeamName,
@@ -595,7 +597,7 @@ func (q *Queries) ListGatewayOptions(ctx context.Context, arg ListGatewayOptions
 }
 
 const listGatewaySelection = `-- name: ListGatewaySelection :many
-SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, c.requirement_mode, c.requirement_scopes, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes, s.capture_payloads, gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
+SELECT c.id, c.server_id, c.kind, c.name, c.title, c.description, c.definition, c.fingerprint, c.approved_fingerprint, c.approved_by, c.approved_at, c.first_seen_at, c.last_seen_at, c.gone_at, c.requirement_mode, c.requirement_scopes, s.id, s.team_id, s.slug, s.name, s.description, s.url, s.transport, s.auth_header_name, s.auth_value_cipher, s.auth_value_hint, s.timeout_seconds, s.enabled, s.publish_state, s.publish_requested_at, s.publish_requested_by, s.publish_request_note, s.publish_reviewed_at, s.publish_reviewed_by, s.publish_review_note, s.published_at, s.refreshed_at, s.last_refresh_error, s.revision, s.created_by, s.created_at, s.updated_by, s.updated_at, s.auth_provider_id, s.auth_scopes, s.capture_payloads, s.auth_mode, s.oauth_setup_user_id, s.oauth_setup_at, s.send_identity, gc.min_team_role, t.slug AS team_slug, t.name AS team_name, t.status AS team_status
 FROM gateway_capabilities gc
 JOIN mcp_capabilities c ON c.id = gc.capability_id
 JOIN mcp_servers s ON s.id = c.server_id
@@ -672,6 +674,10 @@ func (q *Queries) ListGatewaySelection(ctx context.Context, gatewayID uuid.UUID)
 			&i.McpServer.AuthProviderID,
 			&i.McpServer.AuthScopes,
 			&i.McpServer.CapturePayloads,
+			&i.McpServer.AuthMode,
+			&i.McpServer.OauthSetupUserID,
+			&i.McpServer.OauthSetupAt,
+			&i.McpServer.SendIdentity,
 			&i.MinTeamRole,
 			&i.TeamSlug,
 			&i.TeamName,

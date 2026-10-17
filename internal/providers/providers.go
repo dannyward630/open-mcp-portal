@@ -93,6 +93,9 @@ type Service struct {
 	tr  *http.Transport
 	Log *slog.Logger
 	now func() time.Time
+	// Registry reads an oauth server's capabilities after its setup
+	// sign-in (nil: not read).
+	Registry *registry.Service
 }
 
 // New returns the service. up supplies the address guard (the development
@@ -131,7 +134,17 @@ func by(a authz.Actor) uuid.NullUUID {
 }
 
 // SecretAAD binds a provider's sealed client secret to its row.
-func SecretAAD(id uuid.UUID) []byte { return []byte("auth_provider:" + id.String()) }
+func SecretAAD(id uuid.UUID) []byte { return registry.ProviderSecretAAD(id) }
+
+// Provider kinds.
+const (
+	KindOAuth2    = registry.KindOAuth2
+	KindMCPServer = registry.KindMCPServer
+)
+
+// ServerSlugPrefix starts every server-bound provider's slug; platform
+// providers can't use it.
+const ServerSlugPrefix = "mcp-"
 
 // View is a provider as platform admins see it: never the secret.
 type View struct {
@@ -174,7 +187,7 @@ func (s *Service) views(ctx context.Context, q *dbgen.Queries, rows []dbgen.Auth
 }
 
 func (s *Service) view(ctx context.Context, q *dbgen.Queries, id uuid.UUID) (View, error) {
-	p, err := getProvider(ctx, q, id, false)
+	p, err := getPlatformProvider(ctx, q, id, false)
 	if err != nil {
 		return View{}, err
 	}
@@ -201,10 +214,20 @@ func getProvider(ctx context.Context, q *dbgen.Queries, id uuid.UUID, lock bool)
 	return p, err
 }
 
+// getPlatformProvider is getProvider for the platform's routes: a
+// server-bound provider (kind mcp_server) is not found there.
+func getPlatformProvider(ctx context.Context, q *dbgen.Queries, id uuid.UUID, lock bool) (dbgen.AuthProvider, error) {
+	p, err := getProvider(ctx, q, id, lock)
+	if err == nil && p.Kind != KindOAuth2 {
+		return p, errNoProvider
+	}
+	return p, err
+}
+
 // List is the enabled providers, by name, for picking one (any active
 // signed-in person): no client ID, secret or endpoint.
 func (s *Service) List(ctx context.Context) ([]registry.Provider, error) {
-	rows, err := s.q.ListAllAuthProviders(ctx)
+	rows, err := s.q.ListPlatformAuthProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +245,7 @@ func (s *Service) AdminList(ctx context.Context, a authz.Actor) ([]View, error) 
 	if !a.CanReadPlatform() {
 		return nil, errPlatformRead
 	}
-	rows, err := s.q.ListAllAuthProviders(ctx)
+	rows, err := s.q.ListPlatformAuthProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -421,6 +444,8 @@ func snapshot(p dbgen.AuthProvider) map[string]any {
 	}
 }
 
+func ptr[T any](v T) *T { return &v }
+
 func nonNil(s []string) []string {
 	if s == nil {
 		return []string{}
@@ -454,7 +479,7 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, in CreateInput) (Vi
 	if !slugRE.MatchString(in.Slug) {
 		return View{}, apperr.Invalid("invalid_slug", "Slug must be 1-48 lowercase letters, digits or hyphens, and cannot start or end with a hyphen")
 	}
-	if reservedSlugs[in.Slug] {
+	if reservedSlugs[in.Slug] || strings.HasPrefix(in.Slug, ServerSlugPrefix) {
 		// /connect/{slug} is the consent page: these paths are taken.
 		return View{}, unprocessable("invalid_slug", "This slug is reserved", map[string]any{"reason": "reserved"})
 	}
@@ -524,12 +549,16 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, id uuid.UUID, in Up
 		return View{}, errAdminOnly
 	}
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
-		cur, err := getProvider(ctx, q, id, true)
+		cur, err := getPlatformProvider(ctx, q, id, true)
 		if err != nil {
 			return err
 		}
 		if cur.Revision != expectedRevision {
 			return apperr.Stale()
+		}
+		linked, err := q.LinkedServerProviders(ctx, uuid.NullUUID{UUID: id, Valid: true})
+		if err != nil {
+			return err
 		}
 		f := fields{
 			name: or(in.Name, cur.Name), clientID: or(in.ClientID, cur.ClientID), method: or(in.TokenAuthMethod, cur.TokenAuthMethod),
@@ -588,6 +617,11 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, id uuid.UUID, in Up
 				p.ClientSecretCipher, p.ClientSecretHint = ct, secretHint(*f.secret)
 			}
 		}
+		if len(linked) > 0 && (f.authorizationURL != cur.AuthorizationUrl || f.tokenURL != cur.TokenUrl) {
+			// oauth servers use this client because its endpoints matched
+			// their authorization server's.
+			return s.inUse(ctx, q, id)
+		}
 		row, err := q.UpdateAuthProvider(ctx, p)
 		if err != nil {
 			return err
@@ -596,6 +630,14 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, id uuid.UUID, in Up
 		if row.ClientID != cur.ClientID {
 			if reset, err = q.MarkProviderConnectionsReconsent(ctx, id); err != nil {
 				return err
+			}
+			// The linked servers' connections belong to the old client too.
+			for _, l := range linked {
+				n, err := q.ResetProviderConnections(ctx, dbgen.ResetProviderConnectionsParams{ProviderID: l.ID, ErrorClass: ptr("client_changed")})
+				if err != nil {
+					return err
+				}
+				reset += n
 			}
 		}
 		e := a.Audit("auth_provider.update", "auth_provider", id.String())
@@ -609,12 +651,6 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, id uuid.UUID, in Up
 	return s.view(ctx, s.q, id)
 }
 
-// ServerRef is a server that requires a provider (in_use details).
-type ServerRef struct {
-	ID             uuid.UUID
-	Slug, TeamSlug string
-}
-
 // Delete deletes a provider and every connection to it (platform admins).
 // 409 in_use while any MCP server requires it. Connections' tokens are
 // revoked at the provider first where it has a revocation endpoint (best
@@ -625,7 +661,7 @@ func (s *Service) Delete(ctx context.Context, a authz.Actor, id uuid.UUID) error
 	if !a.IsPlatformAdmin() {
 		return errAdminOnly
 	}
-	p, err := getProvider(ctx, s.q, id, false)
+	p, err := getPlatformProvider(ctx, s.q, id, false)
 	if err != nil {
 		return err
 	}
@@ -638,7 +674,7 @@ func (s *Service) Delete(ctx context.Context, a authz.Actor, id uuid.UUID) error
 	}
 	revoked := s.revokeAll(ctx, p, conns)
 	return store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
-		cur, err := getProvider(ctx, q, id, true)
+		cur, err := getPlatformProvider(ctx, q, id, true)
 		if err != nil {
 			return err
 		}
@@ -695,7 +731,7 @@ func (s *Service) inUse(ctx context.Context, q *dbgen.Queries, id uuid.UUID) err
 		}
 		servers = append(servers, map[string]any{"id": r.ID, "slug": r.Slug, "name": r.Name, "teamSlug": r.TeamSlug})
 	}
-	e := apperr.Conflict("in_use", "MCP servers require this provider. Remove their requirement first.")
+	e := apperr.Conflict("in_use", "MCP servers require this provider or use its client. Remove their requirement or sign-in first.")
 	e.Details = map[string]any{"serverCount": len(rows), "servers": servers}
 	return e
 }

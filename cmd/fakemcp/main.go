@@ -24,6 +24,18 @@
 // for -audience, by default this server's URL:
 //
 //	go run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/jwks.json
+//
+// With -protect <issuer> it is an OAuth-protected MCP server (Phase 7,
+// docs/phase7-upstream-oauth.md): requests without a valid bearer token get
+// 401 with resource_metadata, it serves its protected-resource metadata at
+// /.well-known/oauth-protected-resource/mcp, accepts only tokens that
+// `fakeoauth` (its /introspect, -introspect) says are active and bound to
+// this server's URL, and adds the tool write (403 insufficient_scope
+// without the write scope); whoami then reports a digest of the bearer
+// token, never the token:
+//
+//	go run ./cmd/fakeoauth -auto -dcr &
+//	go run ./cmd/fakemcp -addr 127.0.0.1:8094 -protect http://127.0.0.1:8092
 package main
 
 import (
@@ -31,6 +43,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -50,6 +63,9 @@ func main() {
 	gatewayTools := flag.Bool("gateway-tools", true, "add the whoami, provider_token and echo tools")
 	jwks := flag.String("jwks", "", "verify identity tokens against this JWKS URL")
 	audience := flag.String("audience", "", "the audience identity tokens must have (default: this server's URL)")
+	protect := flag.String("protect", "", "act as an OAuth resource server of this authorization server (issuer URL)")
+	introspect := flag.String("introspect", "", "the authorization server's introspection endpoint (default: <issuer origin>/introspect)")
+	scopes := flag.String("scopes", "repo read:user write", "scopes_supported in the protected-resource metadata")
 	var describe descriptions
 	flag.Var(&describe, "describe", "tool=description: change a tool's description (repeatable)")
 	flag.Parse()
@@ -58,6 +74,18 @@ func main() {
 	}
 
 	f, h := testutil.NewFakeMCPHandler()
+	if *protect != "" {
+		endpoint := *introspect
+		if endpoint == "" {
+			u, err := url.Parse(*protect)
+			if err != nil || u.Host == "" {
+				log.Fatalf("-protect %q: want an issuer URL", *protect)
+			}
+			endpoint = u.Scheme + "://" + u.Host + "/introspect"
+		}
+		f.Protect(testutil.Protection{Issuer: *protect, Introspect: testutil.IntrospectAt(endpoint), ScopesSupported: strings.Fields(*scopes)})
+		log.Printf("protected by %s (introspection %s)", *protect, endpoint)
+	}
 	if *header != "" {
 		f.RequireHeader(*header, *value)
 	}
@@ -92,6 +120,7 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", h)
+	mux.Handle("/.well-known/", h)
 	log.Printf("fake MCP server on http://%s/mcp", *addr)
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())

@@ -15,7 +15,8 @@ import (
 
 const authProviderStats = `-- name: AuthProviderStats :many
 SELECT p.id AS provider_id,
-       (SELECT count(*) FROM mcp_servers s WHERE s.auth_provider_id = p.id)::bigint AS server_count,
+       ((SELECT count(*) FROM mcp_servers s WHERE s.auth_provider_id = p.id)
+        + (SELECT count(*) FROM auth_providers b WHERE b.link_provider_id = p.id))::bigint AS server_count,
        (SELECT count(*) FROM provider_connections pc WHERE pc.provider_id = p.id)::bigint AS connection_count,
        COALESCE((SELECT COALESCE(NULLIF(u.display_name, ''), u.email::text) FROM users u WHERE u.id = p.created_by), '')::text
            AS created_by_name
@@ -57,9 +58,10 @@ func (q *Queries) AuthProviderStats(ctx context.Context, ids []uuid.UUID) ([]Aut
 }
 
 const countAuthProviders = `-- name: CountAuthProviders :one
-SELECT count(*)::bigint FROM auth_providers
+SELECT count(*)::bigint FROM auth_providers WHERE kind = 'oauth2'
 `
 
+// Platform providers (the limit of 100 doesn't count server-bound ones).
 func (q *Queries) CountAuthProviders(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countAuthProviders)
 	var column_1 int64
@@ -94,6 +96,15 @@ DELETE FROM provider_connections WHERE id = $1
 
 func (q *Queries) DeleteProviderConnection(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteProviderConnection, id)
+	return err
+}
+
+const deleteServerProvider = `-- name: DeleteServerProvider :exec
+DELETE FROM auth_providers WHERE server_id = $1 AND kind = 'mcp_server'
+`
+
+func (q *Queries) DeleteServerProvider(ctx context.Context, serverID uuid.NullUUID) error {
+	_, err := q.db.Exec(ctx, deleteServerProvider, serverID)
 	return err
 }
 
@@ -161,7 +172,7 @@ func (q *Queries) FindOpenConnectRequest(ctx context.Context, arg FindOpenConnec
 }
 
 const getAuthProvider = `-- name: GetAuthProvider :one
-SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at FROM auth_providers WHERE id = $1
+SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at FROM auth_providers WHERE id = $1
 `
 
 func (q *Queries) GetAuthProvider(ctx context.Context, id uuid.UUID) (AuthProvider, error) {
@@ -194,6 +205,18 @@ func (q *Queries) GetAuthProvider(ctx context.Context, id uuid.UUID) (AuthProvid
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.ServerID,
+		&i.LinkProviderID,
+		&i.Registration,
+		&i.Resource,
+		&i.ResourceMetadataUrl,
+		&i.AuthorizationServer,
+		&i.Issuer,
+		&i.ScopesSupported,
+		&i.SendResource,
+		&i.IssParamSupported,
+		&i.ClientSecretExpiresAt,
+		&i.DiscoveredAt,
 	)
 	return i, err
 }
@@ -256,6 +279,79 @@ func (q *Queries) GetProviderConnection(ctx context.Context, arg GetProviderConn
 	return i, err
 }
 
+const getServerProvider = `-- name: GetServerProvider :one
+SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at FROM auth_providers WHERE server_id = $1
+`
+
+func (q *Queries) GetServerProvider(ctx context.Context, serverID uuid.NullUUID) (AuthProvider, error) {
+	row := q.db.QueryRow(ctx, getServerProvider, serverID)
+	var i AuthProvider
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Kind,
+		&i.Preset,
+		&i.Enabled,
+		&i.ClientID,
+		&i.ClientSecretCipher,
+		&i.ClientSecretHint,
+		&i.TokenAuthMethod,
+		&i.Pkce,
+		&i.AuthorizationUrl,
+		&i.TokenUrl,
+		&i.RevocationUrl,
+		&i.UserinfoUrl,
+		&i.DefaultScopes,
+		&i.ScopeParam,
+		&i.ScopeSeparator,
+		&i.TokenResponseFormat,
+		&i.ExtraAuthorizeParams,
+		&i.LogoUrl,
+		&i.Revision,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.ServerID,
+		&i.LinkProviderID,
+		&i.Registration,
+		&i.Resource,
+		&i.ResourceMetadataUrl,
+		&i.AuthorizationServer,
+		&i.Issuer,
+		&i.ScopesSupported,
+		&i.SendResource,
+		&i.IssParamSupported,
+		&i.ClientSecretExpiresAt,
+		&i.DiscoveredAt,
+	)
+	return i, err
+}
+
+const getServerRef = `-- name: GetServerRef :one
+SELECT s.id, s.slug, s.name, t.slug AS team_slug FROM mcp_servers s JOIN teams t ON t.id = s.team_id WHERE s.id = $1
+`
+
+type GetServerRefRow struct {
+	ID       uuid.UUID
+	Slug     string
+	Name     string
+	TeamSlug string
+}
+
+func (q *Queries) GetServerRef(ctx context.Context, id uuid.UUID) (GetServerRefRow, error) {
+	row := q.db.QueryRow(ctx, getServerRef, id)
+	var i GetServerRefRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.TeamSlug,
+	)
+	return i, err
+}
+
 const insertAuthProvider = `-- name: InsertAuthProvider :one
 
 INSERT INTO auth_providers (
@@ -267,7 +363,7 @@ INSERT INTO auth_providers (
     $11, $12, $13, $14, $15, $16, $17,
     $18, $19, $20, $21, $21
 )
-RETURNING id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at
+RETURNING id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at
 `
 
 type InsertAuthProviderParams struct {
@@ -348,6 +444,18 @@ func (q *Queries) InsertAuthProvider(ctx context.Context, arg InsertAuthProvider
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.ServerID,
+		&i.LinkProviderID,
+		&i.Registration,
+		&i.Resource,
+		&i.ResourceMetadataUrl,
+		&i.AuthorizationServer,
+		&i.Issuer,
+		&i.ScopesSupported,
+		&i.SendResource,
+		&i.IssParamSupported,
+		&i.ClientSecretExpiresAt,
+		&i.DiscoveredAt,
 	)
 	return i, err
 }
@@ -421,9 +529,9 @@ func (q *Queries) InsertConnectRequest(ctx context.Context, arg InsertConnectReq
 
 const insertProviderAuthState = `-- name: InsertProviderAuthState :exec
 INSERT INTO provider_auth_states (state_digest, user_id, session_digest, provider_id, scopes, required_scopes,
-                                  code_verifier_cipher, request_digest, return_to, expires_at)
+                                  code_verifier_cipher, request_digest, return_to, expires_at, setup_server_id, resource)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10)
+        $8, $9, $10, $11, $12)
 `
 
 type InsertProviderAuthStateParams struct {
@@ -437,6 +545,8 @@ type InsertProviderAuthStateParams struct {
 	RequestDigest      *string
 	ReturnTo           *string
 	ExpiresAt          time.Time
+	SetupServerID      uuid.NullUUID
+	Resource           *string
 }
 
 func (q *Queries) InsertProviderAuthState(ctx context.Context, arg InsertProviderAuthStateParams) error {
@@ -451,6 +561,8 @@ func (q *Queries) InsertProviderAuthState(ctx context.Context, arg InsertProvide
 		arg.RequestDigest,
 		arg.ReturnTo,
 		arg.ExpiresAt,
+		arg.SetupServerID,
+		arg.Resource,
 	)
 	return err
 }
@@ -503,10 +615,187 @@ func (q *Queries) InsertProviderConnection(ctx context.Context, arg InsertProvid
 	return i, err
 }
 
-const listAllAuthProviders = `-- name: ListAllAuthProviders :many
-SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at FROM auth_providers ORDER BY name, id
+const insertServerProvider = `-- name: InsertServerProvider :one
+INSERT INTO auth_providers (
+    id, slug, name, kind, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce,
+    authorization_url, token_url, revocation_url, default_scopes, server_id, link_provider_id, registration, resource,
+    resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported,
+    client_secret_expires_at, discovered_at, created_by, updated_by
+) VALUES (
+    $1, $2, $3, 'mcp_server', true, $4, $5, $6, $7, true,
+    $8, $9, $10, $11, $12, $13, $14, $15,
+    $16, $17, $18, $19, $20, $21,
+    $22, now(), $23, $23
+)
+RETURNING id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at
 `
 
+type InsertServerProviderParams struct {
+	ID                    uuid.UUID
+	Slug                  string
+	Name                  string
+	ClientID              string
+	ClientSecretCipher    []byte
+	ClientSecretHint      string
+	TokenAuthMethod       string
+	AuthorizationUrl      string
+	TokenUrl              string
+	RevocationUrl         *string
+	DefaultScopes         []string
+	ServerID              uuid.NullUUID
+	LinkProviderID        uuid.NullUUID
+	Registration          *string
+	Resource              *string
+	ResourceMetadataUrl   *string
+	AuthorizationServer   *string
+	Issuer                *string
+	ScopesSupported       []string
+	SendResource          bool
+	IssParamSupported     bool
+	ClientSecretExpiresAt *time.Time
+	CreatedBy             uuid.NullUUID
+}
+
+// The OAuth client of an MCP server in oauth mode (kind mcp_server).
+func (q *Queries) InsertServerProvider(ctx context.Context, arg InsertServerProviderParams) (AuthProvider, error) {
+	row := q.db.QueryRow(ctx, insertServerProvider,
+		arg.ID,
+		arg.Slug,
+		arg.Name,
+		arg.ClientID,
+		arg.ClientSecretCipher,
+		arg.ClientSecretHint,
+		arg.TokenAuthMethod,
+		arg.AuthorizationUrl,
+		arg.TokenUrl,
+		arg.RevocationUrl,
+		arg.DefaultScopes,
+		arg.ServerID,
+		arg.LinkProviderID,
+		arg.Registration,
+		arg.Resource,
+		arg.ResourceMetadataUrl,
+		arg.AuthorizationServer,
+		arg.Issuer,
+		arg.ScopesSupported,
+		arg.SendResource,
+		arg.IssParamSupported,
+		arg.ClientSecretExpiresAt,
+		arg.CreatedBy,
+	)
+	var i AuthProvider
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Kind,
+		&i.Preset,
+		&i.Enabled,
+		&i.ClientID,
+		&i.ClientSecretCipher,
+		&i.ClientSecretHint,
+		&i.TokenAuthMethod,
+		&i.Pkce,
+		&i.AuthorizationUrl,
+		&i.TokenUrl,
+		&i.RevocationUrl,
+		&i.UserinfoUrl,
+		&i.DefaultScopes,
+		&i.ScopeParam,
+		&i.ScopeSeparator,
+		&i.TokenResponseFormat,
+		&i.ExtraAuthorizeParams,
+		&i.LogoUrl,
+		&i.Revision,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.ServerID,
+		&i.LinkProviderID,
+		&i.Registration,
+		&i.Resource,
+		&i.ResourceMetadataUrl,
+		&i.AuthorizationServer,
+		&i.Issuer,
+		&i.ScopesSupported,
+		&i.SendResource,
+		&i.IssParamSupported,
+		&i.ClientSecretExpiresAt,
+		&i.DiscoveredAt,
+	)
+	return i, err
+}
+
+const linkedServerProviders = `-- name: LinkedServerProviders :many
+SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at FROM auth_providers WHERE link_provider_id = $1 ORDER BY id
+`
+
+// Server-bound providers that use a platform provider's client.
+func (q *Queries) LinkedServerProviders(ctx context.Context, linkProviderID uuid.NullUUID) ([]AuthProvider, error) {
+	rows, err := q.db.Query(ctx, linkedServerProviders, linkProviderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuthProvider{}
+	for rows.Next() {
+		var i AuthProvider
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Kind,
+			&i.Preset,
+			&i.Enabled,
+			&i.ClientID,
+			&i.ClientSecretCipher,
+			&i.ClientSecretHint,
+			&i.TokenAuthMethod,
+			&i.Pkce,
+			&i.AuthorizationUrl,
+			&i.TokenUrl,
+			&i.RevocationUrl,
+			&i.UserinfoUrl,
+			&i.DefaultScopes,
+			&i.ScopeParam,
+			&i.ScopeSeparator,
+			&i.TokenResponseFormat,
+			&i.ExtraAuthorizeParams,
+			&i.LogoUrl,
+			&i.Revision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.ServerID,
+			&i.LinkProviderID,
+			&i.Registration,
+			&i.Resource,
+			&i.ResourceMetadataUrl,
+			&i.AuthorizationServer,
+			&i.Issuer,
+			&i.ScopesSupported,
+			&i.SendResource,
+			&i.IssParamSupported,
+			&i.ClientSecretExpiresAt,
+			&i.DiscoveredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllAuthProviders = `-- name: ListAllAuthProviders :many
+SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at FROM auth_providers ORDER BY name, id
+`
+
+// Every provider, platform and server-bound (requirements and the runtime).
 func (q *Queries) ListAllAuthProviders(ctx context.Context) ([]AuthProvider, error) {
 	rows, err := q.db.Query(ctx, listAllAuthProviders)
 	if err != nil {
@@ -543,6 +832,81 @@ func (q *Queries) ListAllAuthProviders(ctx context.Context) ([]AuthProvider, err
 			&i.CreatedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.ServerID,
+			&i.LinkProviderID,
+			&i.Registration,
+			&i.Resource,
+			&i.ResourceMetadataUrl,
+			&i.AuthorizationServer,
+			&i.Issuer,
+			&i.ScopesSupported,
+			&i.SendResource,
+			&i.IssParamSupported,
+			&i.ClientSecretExpiresAt,
+			&i.DiscoveredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlatformAuthProviders = `-- name: ListPlatformAuthProviders :many
+SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at FROM auth_providers WHERE kind = 'oauth2' ORDER BY name, id
+`
+
+func (q *Queries) ListPlatformAuthProviders(ctx context.Context) ([]AuthProvider, error) {
+	rows, err := q.db.Query(ctx, listPlatformAuthProviders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuthProvider{}
+	for rows.Next() {
+		var i AuthProvider
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Kind,
+			&i.Preset,
+			&i.Enabled,
+			&i.ClientID,
+			&i.ClientSecretCipher,
+			&i.ClientSecretHint,
+			&i.TokenAuthMethod,
+			&i.Pkce,
+			&i.AuthorizationUrl,
+			&i.TokenUrl,
+			&i.RevocationUrl,
+			&i.UserinfoUrl,
+			&i.DefaultScopes,
+			&i.ScopeParam,
+			&i.ScopeSeparator,
+			&i.TokenResponseFormat,
+			&i.ExtraAuthorizeParams,
+			&i.LogoUrl,
+			&i.Revision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.ServerID,
+			&i.LinkProviderID,
+			&i.Registration,
+			&i.Resource,
+			&i.ResourceMetadataUrl,
+			&i.AuthorizationServer,
+			&i.Issuer,
+			&i.ScopesSupported,
+			&i.SendResource,
+			&i.IssParamSupported,
+			&i.ClientSecretExpiresAt,
+			&i.DiscoveredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -594,9 +958,12 @@ func (q *Queries) ListProviderConnectionsForProvider(ctx context.Context, provid
 
 const listProviderConnectionsForUser = `-- name: ListProviderConnectionsForUser :many
 SELECT pc.id, pc.user_id, pc.provider_id, pc.status, pc.scopes, pc.account_label, pc.access_token_cipher, pc.refresh_token_cipher, pc.expires_at, pc.connected_at, pc.refreshed_at, pc.last_used_at, pc.last_error_class, p.slug AS provider_slug, p.name AS provider_name, p.preset AS provider_preset,
-       p.logo_url AS provider_logo_url
+       p.logo_url AS provider_logo_url, p.kind AS provider_kind, s.id AS server_id, s.slug AS server_slug,
+       s.name AS server_name, t.slug AS server_team_slug
 FROM provider_connections pc
 JOIN auth_providers p ON p.id = pc.provider_id
+LEFT JOIN mcp_servers s ON s.id = p.server_id
+LEFT JOIN teams t ON t.id = s.team_id
 WHERE pc.user_id = $1
 ORDER BY p.name, p.id
 `
@@ -607,9 +974,15 @@ type ListProviderConnectionsForUserRow struct {
 	ProviderName       string
 	ProviderPreset     *string
 	ProviderLogoUrl    *string
+	ProviderKind       string
+	ServerID           uuid.NullUUID
+	ServerSlug         *string
+	ServerName         *string
+	ServerTeamSlug     *string
 }
 
-// A person's connections with their providers, by provider name.
+// A person's connections with their providers (and, for a server-bound
+// provider, its server and team), by provider name.
 func (q *Queries) ListProviderConnectionsForUser(ctx context.Context, userID uuid.UUID) ([]ListProviderConnectionsForUserRow, error) {
 	rows, err := q.db.Query(ctx, listProviderConnectionsForUser, userID)
 	if err != nil {
@@ -637,6 +1010,11 @@ func (q *Queries) ListProviderConnectionsForUser(ctx context.Context, userID uui
 			&i.ProviderName,
 			&i.ProviderPreset,
 			&i.ProviderLogoUrl,
+			&i.ProviderKind,
+			&i.ServerID,
+			&i.ServerSlug,
+			&i.ServerName,
+			&i.ServerTeamSlug,
 		); err != nil {
 			return nil, err
 		}
@@ -649,7 +1027,7 @@ func (q *Queries) ListProviderConnectionsForUser(ctx context.Context, userID uui
 }
 
 const lockAuthProvider = `-- name: LockAuthProvider :one
-SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at FROM auth_providers WHERE id = $1 FOR UPDATE
+SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at FROM auth_providers WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockAuthProvider(ctx context.Context, id uuid.UUID) (AuthProvider, error) {
@@ -682,6 +1060,18 @@ func (q *Queries) LockAuthProvider(ctx context.Context, id uuid.UUID) (AuthProvi
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.ServerID,
+		&i.LinkProviderID,
+		&i.Registration,
+		&i.Resource,
+		&i.ResourceMetadataUrl,
+		&i.AuthorizationServer,
+		&i.Issuer,
+		&i.ScopesSupported,
+		&i.SendResource,
+		&i.IssParamSupported,
+		&i.ClientSecretExpiresAt,
+		&i.DiscoveredAt,
 	)
 	return i, err
 }
@@ -836,11 +1226,121 @@ func (q *Queries) ReconnectProviderConnection(ctx context.Context, arg Reconnect
 	return i, err
 }
 
+const renameServerProvider = `-- name: RenameServerProvider :exec
+UPDATE auth_providers SET name = $1, updated_at = now() WHERE server_id = $2
+`
+
+type RenameServerProviderParams struct {
+	Name     string
+	ServerID uuid.NullUUID
+}
+
+// A server-bound provider is named after its server.
+func (q *Queries) RenameServerProvider(ctx context.Context, arg RenameServerProviderParams) error {
+	_, err := q.db.Exec(ctx, renameServerProvider, arg.Name, arg.ServerID)
+	return err
+}
+
+const resetProviderConnections = `-- name: ResetProviderConnections :execrows
+UPDATE provider_connections
+SET status = 'needs_reconsent', access_token_cipher = NULL, refresh_token_cipher = NULL, expires_at = NULL,
+    last_error_class = $1
+WHERE provider_id = $2 AND status = 'active'
+`
+
+type ResetProviderConnectionsParams struct {
+	ErrorClass *string
+	ProviderID uuid.UUID
+}
+
+// Erases the tokens of every active connection to a provider (an oauth
+// server's URL, authorization server or client changed), with the reason.
+func (q *Queries) ResetProviderConnections(ctx context.Context, arg ResetProviderConnectionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetProviderConnections, arg.ErrorClass, arg.ProviderID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const serverProviders = `-- name: ServerProviders :many
+SELECT p.id, p.slug, p.name, p.kind, p.preset, p.enabled, p.client_id, p.client_secret_cipher, p.client_secret_hint, p.token_auth_method, p.pkce, p.authorization_url, p.token_url, p.revocation_url, p.userinfo_url, p.default_scopes, p.scope_param, p.scope_separator, p.token_response_format, p.extra_authorize_params, p.logo_url, p.revision, p.created_by, p.created_at, p.updated_by, p.updated_at, p.server_id, p.link_provider_id, p.registration, p.resource, p.resource_metadata_url, p.authorization_server, p.issuer, p.scopes_supported, p.send_resource, p.iss_param_supported, p.client_secret_expires_at, p.discovered_at, (SELECT count(*) FROM provider_connections pc WHERE pc.provider_id = p.id)::bigint AS connection_count
+FROM auth_providers p
+WHERE p.server_id = ANY($1::uuid[])
+`
+
+type ServerProvidersRow struct {
+	AuthProvider    AuthProvider
+	ConnectionCount int64
+}
+
+// The server-bound providers of servers, with their connection counts.
+func (q *Queries) ServerProviders(ctx context.Context, serverIds []uuid.UUID) ([]ServerProvidersRow, error) {
+	rows, err := q.db.Query(ctx, serverProviders, serverIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServerProvidersRow{}
+	for rows.Next() {
+		var i ServerProvidersRow
+		if err := rows.Scan(
+			&i.AuthProvider.ID,
+			&i.AuthProvider.Slug,
+			&i.AuthProvider.Name,
+			&i.AuthProvider.Kind,
+			&i.AuthProvider.Preset,
+			&i.AuthProvider.Enabled,
+			&i.AuthProvider.ClientID,
+			&i.AuthProvider.ClientSecretCipher,
+			&i.AuthProvider.ClientSecretHint,
+			&i.AuthProvider.TokenAuthMethod,
+			&i.AuthProvider.Pkce,
+			&i.AuthProvider.AuthorizationUrl,
+			&i.AuthProvider.TokenUrl,
+			&i.AuthProvider.RevocationUrl,
+			&i.AuthProvider.UserinfoUrl,
+			&i.AuthProvider.DefaultScopes,
+			&i.AuthProvider.ScopeParam,
+			&i.AuthProvider.ScopeSeparator,
+			&i.AuthProvider.TokenResponseFormat,
+			&i.AuthProvider.ExtraAuthorizeParams,
+			&i.AuthProvider.LogoUrl,
+			&i.AuthProvider.Revision,
+			&i.AuthProvider.CreatedBy,
+			&i.AuthProvider.CreatedAt,
+			&i.AuthProvider.UpdatedBy,
+			&i.AuthProvider.UpdatedAt,
+			&i.AuthProvider.ServerID,
+			&i.AuthProvider.LinkProviderID,
+			&i.AuthProvider.Registration,
+			&i.AuthProvider.Resource,
+			&i.AuthProvider.ResourceMetadataUrl,
+			&i.AuthProvider.AuthorizationServer,
+			&i.AuthProvider.Issuer,
+			&i.AuthProvider.ScopesSupported,
+			&i.AuthProvider.SendResource,
+			&i.AuthProvider.IssParamSupported,
+			&i.AuthProvider.ClientSecretExpiresAt,
+			&i.AuthProvider.DiscoveredAt,
+			&i.ConnectionCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const serversRequiringProvider = `-- name: ServersRequiringProvider :many
 SELECT s.id, s.slug, s.name, t.slug AS team_slug
 FROM mcp_servers s
 JOIN teams t ON t.id = s.team_id
 WHERE s.auth_provider_id = $1
+   OR EXISTS (SELECT 1 FROM auth_providers b WHERE b.server_id = s.id AND b.link_provider_id = $1)
 ORDER BY s.name, s.id
 LIMIT $2
 `
@@ -858,7 +1358,8 @@ type ServersRequiringProviderRow struct {
 }
 
 // MCP servers that require a provider (as their requirement; a capability
-// override always names its server's provider), at most limit, by name.
+// override always names its server's provider) or, in oauth mode, link it
+// (registration platform_provider), at most limit, by name.
 func (q *Queries) ServersRequiringProvider(ctx context.Context, arg ServersRequiringProviderParams) ([]ServersRequiringProviderRow, error) {
 	rows, err := q.db.Query(ctx, serversRequiringProvider, arg.ProviderID, arg.PageSize)
 	if err != nil {
@@ -928,7 +1429,7 @@ func (q *Queries) SetProviderConnectionRefreshed(ctx context.Context, arg SetPro
 }
 
 const takeProviderAuthState = `-- name: TakeProviderAuthState :one
-DELETE FROM provider_auth_states WHERE state_digest = $1 RETURNING state_digest, user_id, session_digest, provider_id, scopes, required_scopes, code_verifier_cipher, request_digest, return_to, created_at, expires_at
+DELETE FROM provider_auth_states WHERE state_digest = $1 RETURNING state_digest, user_id, session_digest, provider_id, scopes, required_scopes, code_verifier_cipher, request_digest, return_to, created_at, expires_at, setup_server_id, resource
 `
 
 // A state is single use: it is deleted before anything else is checked.
@@ -947,6 +1448,8 @@ func (q *Queries) TakeProviderAuthState(ctx context.Context, stateDigest string)
 		&i.ReturnTo,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.SetupServerID,
+		&i.Resource,
 	)
 	return i, err
 }
@@ -995,7 +1498,7 @@ SET name = $1, preset = $2, enabled = $3, client_id = $4, client_secret_cipher =
     extra_authorize_params = $17, logo_url = $18,
     revision = revision + 1, updated_by = $19, updated_at = now()
 WHERE id = $20
-RETURNING id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at
+RETURNING id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at
 `
 
 type UpdateAuthProviderParams struct {
@@ -1072,6 +1575,124 @@ func (q *Queries) UpdateAuthProvider(ctx context.Context, arg UpdateAuthProvider
 		&i.CreatedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.ServerID,
+		&i.LinkProviderID,
+		&i.Registration,
+		&i.Resource,
+		&i.ResourceMetadataUrl,
+		&i.AuthorizationServer,
+		&i.Issuer,
+		&i.ScopesSupported,
+		&i.SendResource,
+		&i.IssParamSupported,
+		&i.ClientSecretExpiresAt,
+		&i.DiscoveredAt,
+	)
+	return i, err
+}
+
+const updateServerProvider = `-- name: UpdateServerProvider :one
+UPDATE auth_providers
+SET name = $1, client_id = $2, client_secret_cipher = $3, client_secret_hint = $4,
+    token_auth_method = $5, authorization_url = $6, token_url = $7,
+    revocation_url = $8, default_scopes = $9, link_provider_id = $10,
+    registration = $11, resource = $12, resource_metadata_url = $13,
+    authorization_server = $14, issuer = $15, scopes_supported = $16,
+    send_resource = $17, iss_param_supported = $18,
+    client_secret_expires_at = $19, discovered_at = now(),
+    revision = revision + 1, updated_by = $20, updated_at = now()
+WHERE id = $21 AND kind = 'mcp_server'
+RETURNING id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at
+`
+
+type UpdateServerProviderParams struct {
+	Name                  string
+	ClientID              string
+	ClientSecretCipher    []byte
+	ClientSecretHint      string
+	TokenAuthMethod       string
+	AuthorizationUrl      string
+	TokenUrl              string
+	RevocationUrl         *string
+	DefaultScopes         []string
+	LinkProviderID        uuid.NullUUID
+	Registration          *string
+	Resource              *string
+	ResourceMetadataUrl   *string
+	AuthorizationServer   *string
+	Issuer                *string
+	ScopesSupported       []string
+	SendResource          bool
+	IssParamSupported     bool
+	ClientSecretExpiresAt *time.Time
+	UpdatedBy             uuid.NullUUID
+	ID                    uuid.UUID
+}
+
+func (q *Queries) UpdateServerProvider(ctx context.Context, arg UpdateServerProviderParams) (AuthProvider, error) {
+	row := q.db.QueryRow(ctx, updateServerProvider,
+		arg.Name,
+		arg.ClientID,
+		arg.ClientSecretCipher,
+		arg.ClientSecretHint,
+		arg.TokenAuthMethod,
+		arg.AuthorizationUrl,
+		arg.TokenUrl,
+		arg.RevocationUrl,
+		arg.DefaultScopes,
+		arg.LinkProviderID,
+		arg.Registration,
+		arg.Resource,
+		arg.ResourceMetadataUrl,
+		arg.AuthorizationServer,
+		arg.Issuer,
+		arg.ScopesSupported,
+		arg.SendResource,
+		arg.IssParamSupported,
+		arg.ClientSecretExpiresAt,
+		arg.UpdatedBy,
+		arg.ID,
+	)
+	var i AuthProvider
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Kind,
+		&i.Preset,
+		&i.Enabled,
+		&i.ClientID,
+		&i.ClientSecretCipher,
+		&i.ClientSecretHint,
+		&i.TokenAuthMethod,
+		&i.Pkce,
+		&i.AuthorizationUrl,
+		&i.TokenUrl,
+		&i.RevocationUrl,
+		&i.UserinfoUrl,
+		&i.DefaultScopes,
+		&i.ScopeParam,
+		&i.ScopeSeparator,
+		&i.TokenResponseFormat,
+		&i.ExtraAuthorizeParams,
+		&i.LogoUrl,
+		&i.Revision,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.ServerID,
+		&i.LinkProviderID,
+		&i.Registration,
+		&i.Resource,
+		&i.ResourceMetadataUrl,
+		&i.AuthorizationServer,
+		&i.Issuer,
+		&i.ScopesSupported,
+		&i.SendResource,
+		&i.IssParamSupported,
+		&i.ClientSecretExpiresAt,
+		&i.DiscoveredAt,
 	)
 	return i, err
 }

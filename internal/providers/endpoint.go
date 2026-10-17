@@ -128,8 +128,23 @@ func (s *Service) secretOf(p dbgen.AuthProvider) (string, error) {
 	return string(b), nil
 }
 
+// clientOf is the provider whose client (ID, secret, token endpoint
+// authentication) a provider's requests use: the linked platform provider
+// of an oauth server registered with platform_provider (its client is
+// shared, never its connections), else the provider itself.
+func (s *Service) clientOf(ctx context.Context, p dbgen.AuthProvider) (dbgen.AuthProvider, error) {
+	if !p.LinkProviderID.Valid {
+		return p, nil
+	}
+	return s.q.GetAuthProvider(ctx, p.LinkProviderID.UUID)
+}
+
 // postForm posts a form to a provider endpoint with client authentication.
 func (s *Service) postForm(ctx context.Context, p dbgen.AuthProvider, endpoint string, form url.Values) (int, string, []byte, *endpointError) {
+	p, err := s.clientOf(ctx, p)
+	if err != nil {
+		return 0, "", nil, unavailable("config", 0)
+	}
 	secret, err := s.secretOf(p)
 	if err != nil {
 		s.Log.ErrorContext(ctx, "auth provider client secret unreadable", "provider", p.Slug)
@@ -277,12 +292,21 @@ func parseToken(format string, status int, mt string, body []byte) (tokenSet, *e
 	return out, nil
 }
 
+// resourceParam adds RFC 8707's resource to a request of an oauth server's
+// provider (the MCP spec), unless the server turned it off.
+func resourceParam(p dbgen.AuthProvider, form url.Values) {
+	if p.Kind == KindMCPServer && p.SendResource && p.Resource != nil {
+		form.Set("resource", *p.Resource)
+	}
+}
+
 // exchange trades an authorization code for tokens.
 func (s *Service) exchange(ctx context.Context, p dbgen.AuthProvider, code, verifier string) (tokenSet, *endpointError) {
 	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {s.RedirectURI()}}
 	if verifier != "" {
 		form.Set("code_verifier", verifier)
 	}
+	resourceParam(p, form)
 	status, mt, body, ee := s.postForm(ctx, p, p.TokenUrl, form)
 	if ee != nil {
 		return tokenSet{}, ee
@@ -294,6 +318,7 @@ func (s *Service) exchange(ctx context.Context, p dbgen.AuthProvider, code, veri
 // it, and authorization servers ignore parameters they don't know).
 func (s *Service) refresh(ctx context.Context, p dbgen.AuthProvider, refreshToken string) (tokenSet, *endpointError) {
 	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshToken}, "redirect_uri": {s.RedirectURI()}}
+	resourceParam(p, form)
 	status, mt, body, ee := s.postForm(ctx, p, p.TokenUrl, form)
 	if ee != nil {
 		return tokenSet{}, ee

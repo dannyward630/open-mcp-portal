@@ -33,7 +33,7 @@ func (rc *request) captureCall(o gateways.Offer, args []byte, target upstream.Ta
 		secrets = append(secrets, strings.TrimSpace(bearer))
 	}
 	if cred != nil {
-		secrets = append(secrets, cred.AccessToken, cred.Provider.Slug+" "+cred.AccessToken)
+		secrets = append(secrets, cred.AccessToken, cred.Provider.Slug+" "+cred.AccessToken, "Bearer "+cred.AccessToken)
 	}
 	rc.capture = &capture.Input{
 		ByGateway: rc.gateway.CapturePayloads, ByServer: o.Server.CapturePayloads,

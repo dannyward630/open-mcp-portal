@@ -8,12 +8,26 @@ Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list
 
 ## Where the token arrives
 
-| Your server's static header (set when it was registered) | The token arrives as |
+| Your server's upstream auth (set when it was registered) | The token arrives as |
 |---|---|
-| none, or any header other than `Authorization` (for example `X-API-Key`) | `Authorization: Bearer <jwt>` |
-| `Authorization` | `MCP-Gateway-Identity: <jwt>` (the bare token). Your static `Authorization` value is sent unchanged |
+| `none`, or a static header other than `Authorization` (for example `X-API-Key`) | `Authorization: Bearer <jwt>` |
+| a static `Authorization` header | `MCP-Gateway-Identity: <jwt>` (the bare token). Your static `Authorization` value is sent unchanged |
+| `oauth` (each person signs in to your server's own authorization server, [phase7-upstream-oauth.md](phase7-upstream-oauth.md)) | `MCP-Gateway-Identity: <jwt>`. `Authorization: Bearer` carries the person's own token for your server, issued for your server's URL (RFC 8707 `resource`) |
+| any mode with **Send identity** off (`sendIdentity: false`) | not sent at all: no identity header |
 
 With no static header, your server can act as an ordinary OAuth resource server that accepts bearer tokens from the gateway's JWKS. Servers can't register a static header named `MCP-Gateway-Identity`, `MCP-Gateway-Provider` or `MCP-Gateway-Provider-Token`.
+
+**Send identity (decision 45).** Every server has a `sendIdentity` switch, on by default (decision 7). Turn it off for
+servers run outside the company, such as GitHub's hosted MCP server, so people's names, emails and teams aren't sent to a
+third party; the server then gets no identity token on any call. It isn't a review trigger (it sends less).
+
+**OAuth servers.** In `oauth` mode the gateway is an ordinary MCP client of your server (MCP authorization 2025-11-25):
+it reads your protected-resource metadata and your authorization server's metadata, and sends each person's token
+only to your server's URL, which must equal the metadata's `resource`. There is never an `MCP-Gateway-Provider` header
+or a `provider` claim. Answer `401` with a `Bearer` challenge when a token isn't valid (the gateway refreshes once and
+retries, then asks the person to sign in again) and `403` with `error="insufficient_scope", scope="…"` when a call needs
+more access (the gateway asks for it if your team's reviewed scopes or your `scopes_supported` include it). Scheduled
+health checks send an unauthenticated `initialize`; your `401` challenge counts as healthy ("requires sign-in").
 
 ## What to check
 

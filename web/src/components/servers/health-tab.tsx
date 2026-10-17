@@ -13,11 +13,14 @@ import { type DataTableColumn } from "@/components/ui/data-table/data-table";
 import { Time } from "@/components/ui/time/time";
 import s from "../../pages/shared.module.css";
 import { HealthBadge } from "./badges";
-import { failureDetail, failureText, type McpServer } from "./labels";
+import { failureDetail, failureText, type McpServer, signInRequiredLabel } from "./labels";
 import { type ServerScope, healthChecksQuery } from "./scope";
 import m from "./servers.module.css";
 
 type Check = Schemas["McpHealthCheck"];
+
+/** "Healthy", "Failing", or "Reachable — requires sign-in" (an oauth server's scheduled check, which uses nobody's token). */
+const checkText = (c: Check) => (c.ok ? (c.signInRequired ? signInRequiredLabel : "Healthy") : "Failing");
 
 const triggerLabels: Record<Check["trigger"], string> = { manual: "Manual", scheduled: "Scheduled" };
 
@@ -34,7 +37,7 @@ const columns: DataTableColumn<Check>[] = [
       </span>
     ),
   },
-  { id: "result", header: "Result", accessor: (c) => (c.ok ? "Healthy" : "Failing"), cell: (c) => <StatusBadge tone={c.ok ? "success" : "danger"}>{c.ok ? "Healthy" : "Failing"}</StatusBadge> },
+  { id: "result", header: "Result", accessor: (c) => checkText(c), cell: (c) => <StatusBadge tone={c.ok ? "success" : "danger"}>{checkText(c)}</StatusBadge> },
   { id: "latency", header: "Latency", accessor: (c) => c.latencyMs, numeric: true, cell: (c) => `${c.latencyMs.toLocaleString()} ms` },
   { id: "trigger", header: "Trigger", accessor: (c) => triggerLabels[c.trigger], cell: (c) => <Badge size="sm">{triggerLabels[c.trigger]}</Badge>, defaultHiddenNarrow: true },
   {

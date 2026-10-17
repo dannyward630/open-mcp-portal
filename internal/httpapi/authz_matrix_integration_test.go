@@ -45,6 +45,8 @@ type teamFix struct {
 	serviceAccount, saKey string
 	// call is a call through the team's gateway, captured by the gateway.
 	call string
+	// oauthServer is a server in oauth mode (a public manual client).
+	oauthServer string
 }
 
 type matrixEnv struct {
@@ -114,7 +116,22 @@ func (e *matrixEnv) newTeam(slug, name string) teamFix {
 	tf.serviceAccount = e.newServiceAccount(tf.id)
 	tf.saKey = e.newServiceAccountKey(tf.serviceAccount)
 	tf.call = e.newCapturedCall(tf.id, tf.gateway, tf.member)
+	tf.oauthServer = e.newOAuthServer(tf)
 	return tf
+}
+
+// newOAuthServer inserts a server in oauth mode with its server-bound
+// provider (a public client, so starting a sign-in dials nothing).
+func (e *matrixEnv) newOAuthServer(tf teamFix) string {
+	n := e.next()
+	id := e.exec(`INSERT INTO mcp_servers (team_id, slug, name, url, auth_mode) VALUES ($1, $2, $3, 'https://mcp.example.com/mcp', 'oauth')
+		RETURNING id::text`, tf.id, fmt.Sprintf("oauth-srv-%d", n), fmt.Sprintf("OAuth server %d", n))
+	e.exec(`INSERT INTO auth_providers (slug, name, kind, client_id, token_auth_method, pkce, authorization_url, token_url, server_id,
+		registration, resource, issuer, authorization_server, resource_metadata_url, default_scopes)
+		VALUES ($1, 'OAuth server', 'mcp_server', 'matrix-client', 'none', true, 'https://auth.example.com/authorize',
+		'https://auth.example.com/token', $2, 'manual', 'https://mcp.example.com/mcp', 'https://auth.example.com', 'https://auth.example.com',
+		'https://mcp.example.com/.well-known/oauth-protected-resource/mcp', '{repo}') RETURNING id::text`, fmt.Sprintf("mcp-%012d", n), id)
+	return id
 }
 
 // newCapturedCall inserts a call through a team gateway with a payload its

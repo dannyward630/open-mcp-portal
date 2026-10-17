@@ -8,6 +8,7 @@ import { ApiError, type Schemas } from "../../api/client";
 import { plural } from "../../lib/format";
 import { Alert, ErrorAlert } from "@/components/ui/alert/alert";
 import s from "../../pages/shared.module.css";
+import { describeAuthError } from "./auth-errors";
 import { countsText, failureDetail, failureText } from "./labels";
 import m from "./servers.module.css";
 
@@ -38,9 +39,18 @@ export function TestResultAlert({ result, title, onDismiss, children }: { result
     const about = reported(result);
     return (
       <Alert tone="success" title={title ?? `Connected in ${result.latencyMs.toLocaleString()} ms`} onDismiss={onDismiss}>
+        {result.readAs && <>Signed in as {result.readAs}. </>}
         {about && <>The server says it's {about}. </>}
         {result.counts && <>It lists {countsText(result.counts).toLowerCase()}. </>}
         The test is kept in the health history. The capabilities weren't changed and no tool was called.
+        {children}
+      </Alert>
+    );
+  }
+  if (result.setupRequired) {
+    return (
+      <Alert tone="danger" title={title ?? "The test couldn't sign in"} onDismiss={onDismiss}>
+        Nobody&apos;s sign-in can be used to reach the server: the one that read its capabilities lapsed or is missing. Authorize as yourself, then test again.
         {children}
       </Alert>
     );
@@ -64,7 +74,7 @@ export function discoveryFailure(err: unknown): TestResult | undefined {
 export function RefreshError({ error }: { error: unknown }) {
   const failure = discoveryFailure(error);
   if (failure) return <TestResultAlert result={failure} title="The capabilities couldn't be read" />;
-  return <ErrorAlert error={error} title="Couldn't refresh the capabilities" />;
+  return <ErrorAlert error={error} title={describeAuthError(error)?.title ?? "Couldn't refresh the capabilities"} describe={describeAuthError} />;
 }
 
 /** "3 new, 1 changed, 2 gone", or "nothing changed". */

@@ -75,6 +75,10 @@ describe("Add MCP server", () => {
     await u.type(name, "Service Status!");
     expect(screen.getByRole("textbox", { name: "Slug" })).toHaveValue("service-status");
     await u.type(screen.getByRole("textbox", { name: "URL" }), "ftp://status.example.com/mcp");
+    // None by default; a static header is one choice of how the gateway authenticates.
+    expect(screen.getByRole("radio", { name: /^None/ })).toBeChecked();
+    expect(screen.queryByRole("textbox", { name: /Header name/ })).toBeNull();
+    await u.click(screen.getByRole("radio", { name: /^Static header/ }));
     await u.type(screen.getByRole("textbox", { name: /Header name/ }), "Authorization");
     await u.click(screen.getByRole("button", { name: "Add server" }));
     // https, or http where the server allows it (loopback in development, allowlisted internal hosts).
@@ -92,8 +96,10 @@ describe("Add MCP server", () => {
         slug: "service-status",
         name: "Service Status!",
         url: "https://status.example.com/mcp",
+        authMode: "static_header",
         authHeaderName: "Authorization",
         authValue: "Bearer s3cret",
+        sendIdentity: true,
         timeoutSeconds: 30,
         enabled: true,
         capturePayloads: false,

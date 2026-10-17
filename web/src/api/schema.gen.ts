@@ -459,8 +459,32 @@ export interface paths {
         /**
          * Register a remote MCP server (editors and above); reads its capabilities at once
          * @description 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused (details.reason invalid, too_long, userinfo, query, fragment, scheme, private_address or blocked_address; private_address can be allowed by a platform admin in Internal networks). The server is created even when discovery fails; refresh then says why. requirement (optional) names an enabled auth provider (422 provider_not_found otherwise) and its scopes (400 invalid_scope, details.scope). 400 invalid_auth_header also for the reserved MCP-Gateway-Identity, MCP-Gateway-Provider and MCP-Gateway-Provider-Token.
+         *     authMode oauth (docs/phase7-upstream-oauth.md) needs oauth. The gateway runs the sign-in discovery again itself (it never trusts endpoints sent by the browser) and, for registration dcr (or auto resolving to it), registers its client before saving: 422 oauth_discovery_failed (details.problems as in DetectAuthResult) or 502 oauth_registration_failed, and nothing is saved. 422 auth_conflict when oauth is combined with a static Authorization header or a requirement (details.reason static_authorization or requirement). 422 registration_unavailable (the chosen or auto registration isn't offered; details.options). 422 client_required (manual without clientId, or without clientSecret unless tokenAuthMethod none). 422 provider_mismatch (platform_provider whose authorization and token endpoints differ from the discovered ones, or turned off). In oauth mode the first capability discovery is skipped (refresh and refreshError null, setupRequired true): someone signs in with authorizeTeamMcpServerSetup first. Audited as mcp_server.create and mcp_server.auth_update (never a secret).
          */
         post: operations["createTeamMcpServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/mcp-servers/detect-auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe a URL and report how the MCP server wants clients to sign in (editors and above); changes nothing
+         * @description Sends one unauthenticated MCP initialize request to url (no identity token, no header) and follows the MCP authorization spec (2025-11-25) as a client would; the 401 challenge's resource_metadata (else the well-known protected-resource URIs; path form, then root), the resource metadata's authorization server, then its metadata (RFC 8414 path insertion, OpenID Connect path insertion, OpenID Connect path appending; the two root forms for an issuer without a path). Every request goes through the address guard and the internal-network allowlist (no proxy, no redirects, 5 s each, responses of at most 64 KiB, at most 8 requests). Nothing is stored or audited. Problems found (resource or issuer mismatch, no PKCE S256, ...) are reported in the result with status 200, not as errors. 422 url_not_allowed as for create. 409 team_archived. 429 slow_down (10 a minute per person).
+         */
+        post: operations["detectTeamMcpServerAuth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -489,6 +513,8 @@ export interface paths {
         /**
          * Change a server's settings (editors and above); the slug never changes
          * @description requirement: omit to keep, null to remove (capability overrides with mode scopes go back to inherit; so do they when the provider changes). A newly chosen provider must be enabled (422 provider_not_found); a turned-off one can be kept. 400 invalid_scope (details.scope). Under approval_required, a published server goes back to pending when its URL changes or its requirement widens what any capability receives (a provider where there was none, another provider, or a scope not in effect before), audited as mcp_server.publish_request with reason url_changed or requirement_changed. Removing or narrowing a requirement never needs review.
+         *
+         *     authMode and oauth (docs/phase7-upstream-oauth.md): omit to keep. Fields omitted inside oauth keep their stored values; clientSecret is replace-only. Errors as for create. Switching to oauth, choosing another authorization server, or adding a scope not asked for before sends a published server back to review under approval_required (mcp_server.publish_request, reason upstream_auth_changed). Leaving oauth, a URL change, another authorization server or another client ID erases the tokens of every connection to the server (needs_reconsent; leaving oauth deletes them, revoked where possible). Audited as mcp_server.auth_update (before/after, clientIdChanged, clientSecretChanged, connectionsReset; never a secret).
          */
         patch: operations["updateTeamMcpServer"];
         trace?: never;
@@ -506,7 +532,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Connect and list capabilities without saving them (editors and above); stored as a health check */
+        /**
+         * Connect and list capabilities without saving them (editors and above); stored as a health check
+         * @description For an oauth server the test signs in with the setup connection (McpServer.oauth.setupConnection; readAs names its person). Without an active one it fails with errorClass auth and setupRequired true.
+         */
         post: operations["testTeamMcpServer"];
         delete?: never;
         options?: never;
@@ -529,9 +558,33 @@ export interface paths {
         put?: never;
         /**
          * Read the server's tools, resources, resource templates and prompts again (editors and above)
-         * @description 502 discovery_failed (details is an McpTestResult) when the server can't be read.
+         * @description 502 discovery_failed (details is an McpTestResult) when the server can't be read. For an oauth server capabilities are read with the setup connection; 409 setup_reconsent_required (details.status missing or needs_reconsent) when it can't be used, and any editor can sign in again with authorizeTeamMcpServerSetup.
          */
         post: operations["refreshTeamMcpServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/mcp-servers/{serverId}/oauth/authorize-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serverId: components["parameters"]["ServerIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to an oauth server as yourself so the gateway can read its capabilities (editors and above)
+         * @description Browser session only (403 session_required with an API key). Starts the connect flow of startMyConnection for the caller's own connection to this server (the server's scopes, PKCE S256, the resource parameter unless sendResource is false, a single-use state bound to this session, person and server). After the callback that connection becomes the server's setup connection (McpServer.oauth.setupConnection, audited as mcp_server.auth_update with setupBy) and the gateway reads the capabilities with it at once (mcp_server.refresh; a failure is stored as lastRefreshError). The browser returns to returnTo (default /teams/{team}/servers/{serverId}?setup=connected) or to /connect/done when the sign-in failed. 409 not_oauth (authMode isn't oauth); 409 team_archived; 422 provider_mismatch (a linked platform provider was turned off or no longer matches); 400 invalid_return_to; 429 slow_down (shared with startMyConnection).
+         */
+        post: operations["authorizeTeamMcpServerSetup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -599,7 +652,7 @@ export interface paths {
         get?: never;
         /**
          * Override the server's user-authorization requirement for one capability (editors and above)
-         * @description inherit: the server's requirement applies. none: calls to this capability get no provider token and never ask for consent. scopes: the server's provider with these scopes instead. The token always goes to the server, so overrides limit what is asked for and sent, not which code of the server sees it. If-Match is the server's revision, which this bumps (ETag). 400 invalid_mode (scopes sent with inherit or none, or missing with scopes); 400 invalid_scope (details.scope); 409 no_server_requirement (mode scopes on a server without a requirement); 409 team_archived. Under approval_required a published server goes back to pending when the override widens what the capability receives (audited mcp_server.publish_request, reason requirement_changed). Audited as mcp_capability.requirement_set.
+         * @description inherit: the server's requirement applies. none: calls to this capability get no provider token and never ask for consent. scopes: the server's provider with these scopes instead. The token always goes to the server, so overrides limit what is asked for and sent, not which code of the server sees it. If-Match is the server's revision, which this bumps (ETag). 400 invalid_mode (scopes sent with inherit or none, or missing with scopes); 400 invalid_scope (details.scope); 409 no_server_requirement (mode scopes on a server without a requirement); 409 team_archived. Under approval_required a published server goes back to pending when the override widens what the capability receives (audited mcp_server.publish_request, reason requirement_changed). Audited as mcp_capability.requirement_set. 409 upstream_oauth on a server in oauth mode, where every call carries the person's own token for the server and scopes come from the server (McpServer.oauth.scopes and its insufficient_scope challenges).
          */
         put: operations["setTeamMcpCapabilityRequirement"];
         post?: never;
@@ -1595,14 +1648,14 @@ export interface paths {
         post?: never;
         /**
          * Delete an auth provider and every connection to it (platform admins)
-         * @description 409 in_use (details.serverCount, details.servers with up to 20 {id, slug, name, teamSlug}) while any MCP server requires it, as its requirement or in a capability override (Admin servers filter by provider). Otherwise each connection's tokens are erased and, where the provider has a revocation endpoint, revoked there (best effort). Audited as auth_provider.delete (connectionCount) and provider_connection.revoke (reason provider_deleted) per connection.
+         * @description 409 in_use (details.serverCount, details.servers with up to 20 {id, slug, name, teamSlug}) while any MCP server requires it, as its requirement or in a capability override, or links it in oauth mode (Admin servers filter by provider). Otherwise each connection's tokens are erased and, where the provider has a revocation endpoint, revoked there (best effort). Audited as auth_provider.delete (connectionCount) and provider_connection.revoke (reason provider_deleted) per connection.
          */
         delete: operations["adminDeleteAuthProvider"];
         options?: never;
         head?: never;
         /**
          * Change an auth provider (platform admins); the slug never changes
-         * @description Omit clientSecret to keep it. Changing clientId marks every connection to the provider needs_reconsent and erases their tokens (they belong to the old app). Turning the provider off refuses calls that require it and new connections at once; connections are kept. Errors as for create. Audited as auth_provider.update (clientSecretChanged, never the secret).
+         * @description Omit clientSecret to keep it. Changing clientId marks every connection to the provider needs_reconsent and erases their tokens (they belong to the old app). Turning the provider off refuses calls that require it and new connections at once; connections are kept. Errors as for create. Audited as auth_provider.update (clientSecretChanged, never the secret). While MCP servers in oauth mode link the provider (registration platform_provider), changing authorizationUrl or tokenUrl is 409 in_use (details as for delete); changing clientId also resets their server connections. Server-bound providers (kind mcp_server) are not reachable here (404).
          */
         patch: operations["adminUpdateAuthProvider"];
         trace?: never;
@@ -1676,7 +1729,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The caller's connected accounts (never tokens) */
+        /**
+         * The caller's connected accounts (never tokens)
+         * @description Includes sign-ins to MCP servers in oauth mode (provider.kind mcp_server, provider.server names the server; provider.name is the server's name). Disconnecting one works the same way.
+         */
         get: operations["listMyConnections"];
         put?: never;
         post?: never;
@@ -1697,7 +1753,7 @@ export interface paths {
         put?: never;
         /**
          * Begin connecting (or reconnecting) an account; returns where to send the browser
-         * @description Browser session only (403 session_required with an API key). The authorization URL is built from the provider's stored settings, with PKCE S256 when the provider uses it and a single-use state bound to this session, person, provider and connect request; it expires after 10 minutes. The scopes asked for are the union of the connection's granted scopes (when active), scopes (or the provider's default scopes when both scopes and requestId are absent) and the connect request's required scopes. 404 provider_not_found (unknown or turned off). 404 connect_request_not_found (unknown, or another person's); 410 connect_request_expired (expired or used); 409 provider_mismatch (the request is for another provider). 400 invalid_scope; 400 invalid_return_to (returnTo must be a path on this site). 429 slow_down (20 a minute per person).
+         * @description Browser session only (403 session_required with an API key). The authorization URL is built from the provider's stored settings, with PKCE S256 when the provider uses it and a single-use state bound to this session, person, provider and connect request; it expires after 10 minutes. The scopes asked for are the union of the connection's granted scopes (when active), scopes (or the provider's default scopes when both scopes and requestId are absent) and the connect request's required scopes. 404 provider_not_found (unknown or turned off). 404 connect_request_not_found (unknown, or another person's); 410 connect_request_expired (expired or used); 409 provider_mismatch (the request is for another provider). 400 invalid_scope; 400 invalid_return_to (returnTo must be a path on this site). 429 slow_down (20 a minute per person). providerId may name a server-bound provider (kind mcp_server) when the caller can use one of that server's capabilities through a gateway now; otherwise 404 provider_not_found. Server editors use authorizeTeamMcpServerSetup instead.
          */
         post: operations["startMyConnection"];
         delete?: never;
@@ -2399,6 +2455,8 @@ export interface components {
             latencyMs?: number;
             errorClass?: components["schemas"]["McpErrorClass"];
             message?: string;
+            /** @description The latest check was an oauth server's unauthenticated probe that got the expected sign-in challenge (status healthy, shown as "requires sign-in") */
+            signInRequired?: boolean;
         };
         /** @description A remote MCP server a team registered. The auth header value is never returned. */
         McpServer: {
@@ -2454,6 +2512,11 @@ export interface components {
             requirement?: components["schemas"]["McpServerRequirement"] | null;
             /** @description Record the arguments and results of calls to this server's capabilities through any gateway (redacted, truncated to 16 KiB per part; readable by the team's owners and admins and platform staff; kept for the captured_payloads retention period). Absent from servers before Phase 6. */
             capturePayloads?: boolean;
+            authMode?: components["schemas"]["McpServerAuthMode"];
+            /** @description The sign-in configuration when authMode is oauth, else null. Absent (like authMode) from servers before Phase 7 */
+            oauth?: components["schemas"]["McpServerOAuth"] | null;
+            /** @description Send the identity token (decision 45). true (the default) keeps decision 7: every forwarded call carries the signed identity JWT (Authorization: Bearer, or MCP-Gateway-Identity when the server has a static Authorization header or is in oauth mode). false: the JWT is not sent to this server at all (no header), recommended for servers run outside the company such as GitHub's hosted MCP server, so names, emails and teams are not sent to a third party. Absent from servers before Phase 7 (true) */
+            sendIdentity?: boolean;
             revision: components["schemas"]["Revision"];
             /** Format: date-time */
             createdAt: string;
@@ -2489,6 +2552,14 @@ export interface components {
              * @default false
              */
             capturePayloads: boolean;
+            /** @description Default: static_header when authHeaderName is sent, else none. oauth needs oauth */
+            authMode?: components["schemas"]["McpServerAuthMode"];
+            oauth?: components["schemas"]["McpServerOAuthInput"];
+            /**
+             * @description Send the signed identity token with forwarded calls (McpServer.sendIdentity)
+             * @default true
+             */
+            sendIdentity: boolean;
         };
         McpServerUpdate: {
             name?: string;
@@ -2505,6 +2576,12 @@ export interface components {
             requirement?: components["schemas"]["McpServerRequirementInput"] | null;
             /** @description Omit to keep. Only team owners and admins may change it (403 capture_role; sending the current value is allowed). Not a review trigger. Audited in mcp_server.update. */
             capturePayloads?: boolean;
+            /** @description Omit to keep. none removes the static header and the oauth configuration; leaving oauth deletes the server's connections */
+            authMode?: components["schemas"]["McpServerAuthMode"];
+            /** @description Only with authMode oauth (sent now or stored). Omitted fields keep their stored values */
+            oauth?: components["schemas"]["McpServerOAuthInput"];
+            /** @description Omit to keep. Not a review trigger (turning it off sends less). Audited in mcp_server.update */
+            sendIdentity?: boolean;
         };
         McpServerCreated: {
             server: components["schemas"]["McpServer"];
@@ -2512,6 +2589,8 @@ export interface components {
             refresh?: components["schemas"]["McpRefreshResult"] | null;
             /** @description Why the first discovery failed */
             refreshError?: components["schemas"]["McpTestResult"] | null;
+            /** @description true for a server created in oauth mode; nobody has signed in yet, so capabilities weren't read. Call authorizeTeamMcpServerSetup next */
+            setupRequired?: boolean;
         };
         /** @description A tool, resource, resource template or prompt as the server listed it. Descriptions and schemas are untrusted text a model will read: review them before approving. */
         McpCapability: {
@@ -2573,6 +2652,10 @@ export interface components {
             httpStatus?: number;
             /** @description A short message (never a header value or a raw body) */
             message?: string;
+            /** @description oauth servers; the display name of the person whose sign-in (the setup connection) was used */
+            readAs?: string | null;
+            /** @description oauth servers; there is no usable setup connection, so the test couldn't sign in */
+            setupRequired?: boolean;
         };
         McpHealthCheck: {
             /** Format: date-time */
@@ -2586,6 +2669,8 @@ export interface components {
             /** Format: int32 */
             httpStatus?: number;
             message?: string;
+            /** @description A scheduled check of an oauth server, which uses nobody's token; the server answered the expected 401 sign-in challenge for its resource, so it is reachable (ok true). It says nothing about whether calls work */
+            signInRequired?: boolean;
         };
         McpPublishRequest: {
             /** @description For the reviewer */
@@ -2674,6 +2759,8 @@ export interface components {
             publishedAt: string;
             /** @description The server's team records call arguments and results (McpServer.capturePayloads). Absent from servers before Phase 6. */
             capturePayloads?: boolean;
+            /** @description oauth means each person signs in to the server's own service before calling it. Absent from servers before Phase 7 */
+            authMode?: components["schemas"]["McpServerAuthMode"];
         };
         CatalogServerPage: {
             items: components["schemas"]["CatalogServer"][];
@@ -3190,10 +3277,10 @@ export interface components {
         /** @description OAuth scopes exactly as the provider names them (RFC 6749 scope characters, no spaces or quotes); duplicates collapse. Use the provider's canonical names (the ones its token response returns), otherwise the gateway can't tell that they were granted. */
         ScopeList: string[];
         /**
-         * @description oauth2: OAuth 2.0 authorization code grant (with PKCE where the provider supports it)
+         * @description oauth2: a platform provider, OAuth 2.0 authorization code grant (with PKCE where the provider supports it). mcp_server: the OAuth client of one MCP server in oauth mode (docs/phase7-upstream-oauth.md), bound to that server; never listed among platform providers and never reusable
          * @enum {string}
          */
-        AuthProviderKind: "oauth2";
+        AuthProviderKind: "oauth2" | "mcp_server";
         /**
          * @description Which built-in preset the provider started from; only used for its icon and help text
          * @enum {string}
@@ -3395,6 +3482,10 @@ export interface components {
             name: string;
             preset: components["schemas"]["AuthProviderPresetName"] | null;
             logoUrl: string | null;
+            /** @description mcp_server for an MCP server's own sign-in (then name is the server's name and server is set). Absent before Phase 7 (oauth2) */
+            kind?: components["schemas"]["AuthProviderKind"];
+            /** @description The MCP server a kind mcp_server provider belongs to (null for platform providers) */
+            server?: components["schemas"]["McpServerRef"] | null;
         };
         McpServerRequirement: {
             /** Format: uuid */
@@ -3432,6 +3523,8 @@ export interface components {
             scopes: components["schemas"]["ScopeList"];
             /** @description Only in the caller's own views (MyGatewayDetail): true when the caller has an active connection to the provider whose granted scopes include these, so a call would be forwarded without asking */
             connected?: boolean;
+            /** @description mcp_server when the capability's server is in oauth mode (the person signs in to the server itself; providerName is the server's name). Absent before Phase 7 */
+            providerKind?: components["schemas"]["AuthProviderKind"];
         };
         /**
          * @description needs_reconsent: the tokens were erased (a refresh failed, the access token expired without a refresh token, or the provider's client ID changed); the next call asks the person to connect again
@@ -3511,10 +3604,242 @@ export interface components {
             accountLabel: string | null;
             gateway: components["schemas"]["CallRef"];
             capability: components["schemas"]["ConnectRequestCapability"];
+            /**
+             * @description For an MCP server's own sign-in (provider.kind mcp_server), the host of its authorization server, for "lets <server> act as you at github.com"; null or absent for platform providers
+             * @example github.com
+             */
+            authorizationServerHost?: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             expiresAt: string;
+        };
+        /**
+         * @description How the gateway authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
+         * @enum {string}
+         */
+        McpServerAuthMode: "none" | "static_header" | "oauth";
+        /**
+         * @description How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+         * @enum {string}
+         */
+        McpServerOAuthRegistration: "dcr" | "cimd" | "manual" | "platform_provider";
+        /**
+         * @description auto: cimd when offered, else dcr (the MCP spec's order); 422 registration_unavailable when neither is. Stored as the McpServerOAuthRegistration it resolved to
+         * @enum {string}
+         */
+        McpServerOAuthRegistrationChoice: "auto" | "dcr" | "cimd" | "manual" | "platform_provider";
+        McpServerRef: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            teamSlug: string;
+        };
+        /** @description The sign-in the gateway uses to read the server's capabilities and for manual tests (decision 42) */
+        McpServerOAuthSetupConnection: {
+            /**
+             * @description missing: nobody has signed in yet, or the person disconnected or was deleted. needs_reconsent: the sign-in lapsed (refresh refused, token revoked); refresh answers 409 setup_reconsent_required until an editor signs in again
+             * @enum {string}
+             */
+            status: "active" | "needs_reconsent" | "missing";
+            /** Format: uuid */
+            personId: string | null;
+            /** @description Shown as "Capabilities read as <name>" */
+            personName: string | null;
+            /** Format: date-time */
+            authorizedAt: string | null;
+        };
+        /** @description An oauth server's sign-in configuration, as discovered and chosen. The client secret is never returned */
+        McpServerOAuth: {
+            /**
+             * Format: uuid
+             * @description The server-bound provider (kind mcp_server); people's connections to this server name it
+             */
+            providerId: string;
+            /** @description Generated (mcp-...); used in consent links (/connect/{slug}) and call records */
+            providerSlug: string;
+            /**
+             * @description The server's canonical URI from its protected-resource metadata; sent as the resource parameter and the only URL its tokens are ever sent to
+             * @example https://api.githubcopilot.com/mcp/
+             */
+            resource: string;
+            /** @example https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/ */
+            resourceMetadataUrl: string;
+            /**
+             * @description The authorization server as the resource metadata lists it
+             * @example https://github.com/login/oauth
+             */
+            authorizationServer: string;
+            /**
+             * @description issuer from the authorization server's metadata (equal to authorizationServer); checked against the iss parameter of every authorization response
+             * @example https://github.com/login/oauth
+             */
+            issuer: string;
+            /** @example https://github.com/login/oauth/authorize */
+            authorizationEndpoint: string;
+            /** @example https://github.com/login/oauth/access_token */
+            tokenEndpoint: string;
+            revocationEndpoint: string | null;
+            /** @description Asked for on every sign-in (empty; no scope parameter). Widening sends a published server back to review */
+            scopes: components["schemas"]["ScopeList"];
+            /** @description scopes_supported from the resource metadata */
+            scopesSupported: components["schemas"]["ScopeList"];
+            registration: components["schemas"]["McpServerOAuthRegistration"];
+            /** @description Last 6 characters of the client ID (the CIMD URL in full for cimd) */
+            clientIdHint: string;
+            hasClientSecret: boolean;
+            /**
+             * Format: date-time
+             * @description dcr only, when the authorization server gave an expiry
+             */
+            clientSecretExpiresAt: string | null;
+            tokenAuthMethod: components["schemas"]["AuthProviderTokenAuthMethod"];
+            /** @description Send the resource parameter (RFC 8707) on authorization and token requests, as the MCP spec requires; turn off only for an authorization server that rejects it */
+            sendResource: boolean;
+            /** @description The authorization server sends iss in its authorization responses (RFC 9207); then a response without it is refused */
+            issParameterSupported: boolean;
+            /** @description The linked platform provider (registration platform_provider) */
+            platformProvider: components["schemas"]["ProviderRef"] | null;
+            setupConnection: components["schemas"]["McpServerOAuthSetupConnection"];
+            /**
+             * Format: int64
+             * @description People signed in to this server
+             */
+            connectionCount: number;
+            /**
+             * Format: date-time
+             * @description When the metadata was last read (on save)
+             */
+            discoveredAt: string;
+            /**
+             * @description The callback the server's OAuth client uses (<APP_URL>/connect/callback); register it with a manual client. Absent before this field was added
+             * @example https://mcp.example.com/connect/callback
+             */
+            redirectUri?: string;
+        };
+        McpServerOAuthInput: {
+            /** @description One of the resource metadata's authorization_servers (default; the first) */
+            authorizationServer?: string;
+            /** @default auto */
+            registration: components["schemas"]["McpServerOAuthRegistrationChoice"];
+            /** @description manual only */
+            clientId?: string;
+            /** @description manual only. Sealed with ENCRYPTION_KEY, never returned. Replace-only; omit to keep the stored one. Required unless tokenAuthMethod is none */
+            clientSecret?: string;
+            /** @description manual only (default client_secret_post, or the first the authorization server lists). dcr picks from the metadata; cimd is always none; platform_provider uses the provider's */
+            tokenAuthMethod?: components["schemas"]["AuthProviderTokenAuthMethod"];
+            /**
+             * Format: uuid
+             * @description platform_provider only; one of DetectAuthRegistration.matchingProviders
+             */
+            platformProviderId?: string;
+            /** @description Default: the challenge's scope, else the resource metadata's scopes_supported (the MCP spec's scope selection) */
+            scopes?: components["schemas"]["ScopeList"];
+            /** @default true */
+            sendResource: boolean;
+        };
+        OAuthSetupStart: {
+            /** @description A path on this site (default /teams/{team}/servers/{serverId}?setup=connected) */
+            returnTo?: string;
+        };
+        DetectAuthRequest: {
+            /** @description The MCP endpoint, checked like a server URL */
+            url: string;
+        };
+        /**
+         * @description no_auth: initialize worked without credentials (authMode none). oauth: a Bearer challenge and usable metadata (authMode oauth possible; check problems). other_auth: 401/403 without usable OAuth metadata (use a static header). unreachable: network error, timeout, 5xx or not an MCP endpoint
+         * @enum {string}
+         */
+        DetectAuthOutcome: "no_auth" | "oauth" | "other_auth" | "unreachable";
+        /** @description The parsed WWW-Authenticate header of the 401 */
+        DetectAuthChallenge: {
+            /** @example Bearer */
+            scheme: string;
+            resourceMetadataUrl: string | null;
+            scope: components["schemas"]["ScopeList"];
+            error: string | null;
+        };
+        /** @description RFC 9728 protected-resource metadata */
+        DetectAuthResourceMetadata: {
+            /** @description Where it was read */
+            url: string;
+            resource: string;
+            resourceName: string | null;
+            authorizationServers: string[];
+            scopesSupported: components["schemas"]["ScopeList"];
+            bearerMethodsSupported: string[];
+        };
+        /** @description RFC 8414 / OpenID Connect metadata of the chosen authorization server */
+        DetectAuthServerMetadata: {
+            issuer: string;
+            /** @example https://github.com/.well-known/oauth-authorization-server/login/oauth */
+            metadataUrl: string;
+            authorizationEndpoint: string;
+            tokenEndpoint: string;
+            revocationEndpoint: string | null;
+            registrationEndpoint: string | null;
+            scopesSupported: components["schemas"]["ScopeList"];
+            codeChallengeMethodsSupported: string[];
+            tokenEndpointAuthMethodsSupported: string[];
+            grantTypesSupported: string[];
+            issParameterSupported: boolean;
+            clientIdMetadataDocumentSupported: boolean;
+        };
+        /** @description How the gateway can get a client, and what to give a manual one */
+        DetectAuthRegistration: {
+            /** @description Always includes manual */
+            options: components["schemas"]["McpServerOAuthRegistration"][];
+            recommended: components["schemas"]["McpServerOAuthRegistration"];
+            /** @enum {string|null} */
+            cimdUnavailableReason: "not_supported" | "app_url_not_public" | null;
+            /** @description Enabled platform providers whose authorization and token endpoints equal the discovered ones */
+            matchingProviders: components["schemas"]["ProviderRef"][];
+            /**
+             * @description Register this callback with a manual client
+             * @example https://mcp.example.com/connect/callback
+             */
+            redirectUri: string;
+            /** @description The gateway's Client ID Metadata Document (the client ID for cimd) */
+            clientMetadataUrl: string;
+        };
+        DetectAuthProblem: {
+            /**
+             * @description blocking ones stop oauth mode: resource_mismatch (the metadata's resource isn't this URL; see suggestedUrl), metadata_not_found, invalid_metadata, issuer_mismatch, no_pkce (S256 not listed, so the MCP spec says not to proceed), endpoint_not_allowed (an endpoint isn't https or is refused by the address rules). Informational: no_resource_metadata (found by the well-known fallback), several_authorization_servers (the first is used unless another is chosen), no_registration (enter a client), no_refresh (refresh_token not in grant_types_supported)
+             * @enum {string}
+             */
+            code: "no_resource_metadata" | "resource_mismatch" | "several_authorization_servers" | "metadata_not_found" | "invalid_metadata" | "issuer_mismatch" | "no_pkce" | "endpoint_not_allowed" | "no_registration" | "no_refresh";
+            blocking: boolean;
+            message: string;
+        };
+        /** @description One request the probe made, so the UI can show what was tried */
+        DetectAuthStep: {
+            /** @enum {string} */
+            purpose: "mcp" | "resource_metadata" | "authorization_server_metadata";
+            url: string;
+            /** Format: int32 */
+            httpStatus: number | null;
+            /** @enum {string} */
+            result: "ok" | "challenge" | "not_found" | "error" | "not_allowed" | "timeout";
+            /** Format: int64 */
+            latencyMs: number;
+        };
+        DetectAuthResult: {
+            /** @description The URL probed */
+            url: string;
+            outcome: components["schemas"]["DetectAuthOutcome"];
+            /** Format: int32 */
+            httpStatus: number | null;
+            challenge: components["schemas"]["DetectAuthChallenge"] | null;
+            resourceMetadata: components["schemas"]["DetectAuthResourceMetadata"] | null;
+            /** @description The metadata's resource when it differs from url only by a trailing slash or the case of scheme and host; register the server with this URL */
+            suggestedUrl: string | null;
+            authorizationServer: components["schemas"]["DetectAuthServerMetadata"] | null;
+            registration: components["schemas"]["DetectAuthRegistration"] | null;
+            /** @description The challenge's scope, else the resource metadata's scopes_supported */
+            suggestedScopes: components["schemas"]["ScopeList"];
+            problems: components["schemas"]["DetectAuthProblem"][];
+            steps: components["schemas"]["DetectAuthStep"][];
         };
         /**
          * @description As CallPrincipal.kind
@@ -4914,6 +5239,41 @@ export interface operations {
             422: components["responses"]["ErrorReply"];
         };
     };
+    detectTeamMcpServerAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetectAuthRequest"];
+            };
+        };
+        responses: {
+            /** @description What was found and what is still needed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DetectAuthResult"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            429: components["responses"]["ErrorReply"];
+        };
+    };
     getTeamMcpServer: {
         parameters: {
             query?: never;
@@ -5055,6 +5415,42 @@ export interface operations {
             403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
             502: components["responses"]["ErrorReply"];
+        };
+    };
+    authorizeTeamMcpServerSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                serverId: components["parameters"]["ServerIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OAuthSetupStart"];
+            };
+        };
+        responses: {
+            /** @description Where to send the browser */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ConnectStarted"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            429: components["responses"]["ErrorReply"];
         };
     };
     listTeamMcpCapabilities: {
@@ -5337,8 +5733,10 @@ export interface operations {
                 changes?: boolean;
                 /** @description Team slug or ID */
                 team?: string;
-                /** @description Auth provider ID; only servers that require it (as their requirement or in a capability override) */
+                /** @description Auth provider ID; only servers that require it (as their requirement or in a capability override) or, for a platform provider, servers in oauth mode that link it */
                 provider?: string;
+                /** @description Only servers with this upstream auth mode */
+                authMode?: components["schemas"]["McpServerAuthMode"];
                 /** @description nextCursor from the previous page */
                 cursor?: components["parameters"]["CursorParam"];
                 limit?: components["parameters"]["LimitParam"];

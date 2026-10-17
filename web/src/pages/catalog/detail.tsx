@@ -2,7 +2,8 @@
  * A server in the catalog (/catalog/$serverId): who runs it, its health and
  * its approved capabilities grouped by kind, each with its definition and
  * the account it needs ("Needs GitHub (repo)"). A changed capability waits
- * for approval and isn't listed here.
+ * for approval and isn't listed here. A server in oauth mode says that each
+ * person signs in to it ("Needs sign-in to …" on its capabilities).
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -12,7 +13,7 @@ import { isNotFound, NotFoundState } from "../../components/not-found";
 import { PageSkeleton } from "../../components/page-skeleton";
 import { serviceAccountsCant } from "../../components/providers/labels";
 import { RequiresBadge } from "../../components/providers/requires";
-import { HealthBadge } from "../../components/servers/badges";
+import { HealthBadge, SignInBadge } from "../../components/servers/badges";
 import { CapabilityItem } from "../../components/servers/capability-item";
 import { countsText, kindOrder, kindTitle, untrustedText } from "../../components/servers/labels";
 import m from "../../components/servers/servers.module.css";
@@ -46,6 +47,7 @@ export function CatalogServerPage() {
           <span className={s.badges}>
             <HealthBadge health={server.health} />
             {server.capturePayloads && <CaptureBadge />}
+            <SignInBadge authMode={server.authMode} />
           </span>
         }
         description={server.description || undefined}
@@ -67,6 +69,11 @@ export function CatalogServerPage() {
         }
       />
       <Alert tone="info">{gatewaysNote}</Alert>
+      {server.authMode === "oauth" && (
+        <Alert tone="info" title={`Each person signs in to ${server.name}`}>
+          {`The first time someone calls it, their AI client shows a link to sign in to ${server.name}'s own service, once. The gateway then sends their own token with each call. ${serviceAccountsCant}`}
+        </Alert>
+      )}
       {server.capturePayloads && (
         <Alert tone="warning" title="This server's team records call contents">
           {`Calls to its capabilities, through any gateway, are recorded with their arguments and results (secrets removed first). ${captureWho.replace("the team's", `${server.teamName}'s`)}`}

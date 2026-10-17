@@ -49,32 +49,44 @@ type AuditLog struct {
 }
 
 type AuthProvider struct {
-	ID                   uuid.UUID
-	Slug                 string
-	Name                 string
-	Kind                 string
-	Preset               *string
-	Enabled              bool
-	ClientID             string
-	ClientSecretCipher   []byte
-	ClientSecretHint     string
-	TokenAuthMethod      string
-	Pkce                 bool
-	AuthorizationUrl     string
-	TokenUrl             string
-	RevocationUrl        *string
-	UserinfoUrl          *string
-	DefaultScopes        []string
-	ScopeParam           string
-	ScopeSeparator       string
-	TokenResponseFormat  string
-	ExtraAuthorizeParams json.RawMessage
-	LogoUrl              *string
-	Revision             int64
-	CreatedBy            uuid.NullUUID
-	CreatedAt            time.Time
-	UpdatedBy            uuid.NullUUID
-	UpdatedAt            time.Time
+	ID                    uuid.UUID
+	Slug                  string
+	Name                  string
+	Kind                  string
+	Preset                *string
+	Enabled               bool
+	ClientID              string
+	ClientSecretCipher    []byte
+	ClientSecretHint      string
+	TokenAuthMethod       string
+	Pkce                  bool
+	AuthorizationUrl      string
+	TokenUrl              string
+	RevocationUrl         *string
+	UserinfoUrl           *string
+	DefaultScopes         []string
+	ScopeParam            string
+	ScopeSeparator        string
+	TokenResponseFormat   string
+	ExtraAuthorizeParams  json.RawMessage
+	LogoUrl               *string
+	Revision              int64
+	CreatedBy             uuid.NullUUID
+	CreatedAt             time.Time
+	UpdatedBy             uuid.NullUUID
+	UpdatedAt             time.Time
+	ServerID              uuid.NullUUID
+	LinkProviderID        uuid.NullUUID
+	Registration          *string
+	Resource              *string
+	ResourceMetadataUrl   *string
+	AuthorizationServer   *string
+	Issuer                *string
+	ScopesSupported       []string
+	SendResource          bool
+	IssParamSupported     bool
+	ClientSecretExpiresAt *time.Time
+	DiscoveredAt          *time.Time
 }
 
 type CaptureSetting struct {
@@ -210,17 +222,18 @@ type McpCapability struct {
 }
 
 type McpHealthCheck struct {
-	ID          int64
-	ServerID    uuid.UUID
-	CheckedAt   time.Time
-	Ok          bool
-	LatencyMs   int32
-	Trigger     string
-	TriggeredBy uuid.NullUUID
-	ErrorClass  *string
-	HttpStatus  *int32
-	Message     string
-	StatusSince time.Time
+	ID             int64
+	ServerID       uuid.UUID
+	CheckedAt      time.Time
+	Ok             bool
+	LatencyMs      int32
+	Trigger        string
+	TriggeredBy    uuid.NullUUID
+	ErrorClass     *string
+	HttpStatus     *int32
+	Message        string
+	StatusSince    time.Time
+	SignInRequired bool
 }
 
 type McpServer struct {
@@ -254,6 +267,10 @@ type McpServer struct {
 	AuthProviderID     uuid.NullUUID
 	AuthScopes         []string
 	CapturePayloads    bool
+	AuthMode           string
+	OauthSetupUserID   uuid.NullUUID
+	OauthSetupAt       *time.Time
+	SendIdentity       bool
 }
 
 type NetworkSetting struct {
@@ -348,6 +365,8 @@ type ProviderAuthState struct {
 	ReturnTo           *string
 	CreatedAt          time.Time
 	ExpiresAt          time.Time
+	SetupServerID      uuid.NullUUID
+	Resource           *string
 }
 
 type ProviderConnectRequest struct {
