@@ -119,7 +119,7 @@ export function SignInPage() {
           {instance.logoUrl ? (
             <InstanceLogo src={instance.logoUrl} className={styles.logo} />
           ) : (
-            <ProductMark className={styles.mark} />
+            <ProductMark small className={styles.mark} />
           )}
           <h1 className={styles.title}>{instance.name}</h1>
           <p className={styles.subtitle}>{tagline(instance)}</p>

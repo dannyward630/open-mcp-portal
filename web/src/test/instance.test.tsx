@@ -62,7 +62,7 @@ describe("sign-in page", () => {
     expect(screen.getByText("MCP servers and tools for your teams")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Sign in with single sign-on/ })).toHaveAttribute("href", expect.stringMatching(/^\/auth\/login\?next=/));
     // The default mark is the product's, decorative (alt ""), not an instance logo.
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/open-mcp-portal-mark.svg");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("/open-mcp-portal-mark-small.svg");
     expect(container.querySelector("img")?.getAttribute("alt")).toBe("");
     expect(screen.queryByRole("link", { name: /Help/ })).toBeNull();
     expect(await axe(container)).toHaveNoViolations();

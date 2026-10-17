@@ -1,8 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Open MCP Portal">
-<rect width="64" height="64" rx="14" fill="#1f2937"/>
-<path d="M32 32V15M32 32L17.3 40.5M32 32L46.7 40.5" fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round"/>
-<circle cx="32" cy="15" r="6" fill="#ffffff"/>
-<circle cx="17.3" cy="40.5" r="6" fill="#ffffff"/>
-<circle cx="46.7" cy="40.5" r="6" fill="#ffffff"/>
-<circle cx="32" cy="32" r="8.5" fill="#5eead4"/>
+<rect width="64" height="64" rx="14" fill="#161a22"/>
+<path d="M12 33A20 20 0 0 1 24.18 14.59L26.51 21.77A12.5 12.5 0 0 0 19.5 33ZM39.82 14.59A20 20 0 0 1 52 33L44.5 33A12.5 12.5 0 0 0 37.49 21.77ZM12 33H19.5V53H12ZM44.5 33H52V53H44.5Z" fill="#f7f8fa"/>
+<path d="M26.58 10.65A23 23 0 0 1 37.42 10.65L34.16 20.69A12.5 12.5 0 0 0 29.84 20.69Z" fill="#2dd4bf"/>
 </svg>

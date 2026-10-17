@@ -69,7 +69,7 @@ export function SessionUnavailable({ error, retrying, onRetry }: Props) {
     <main className={styles.page}>
       <Card className={styles.card}>
         <CardBody className={styles.body}>
-          {logoUrl ? <img src={logoUrl} alt="" className={styles.logo} /> : <ProductMark className={styles.mark} />}
+          {logoUrl ? <img src={logoUrl} alt="" className={styles.logo} /> : <ProductMark small className={styles.mark} />}
           <h1 ref={heading} tabIndex={-1} className={styles.title}>
             {title}
           </h1>
