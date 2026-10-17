@@ -314,6 +314,11 @@ both new operations.
 endpoint (registration `manual`), refresh supported, ten scopes (`repo read:org read:user user:email read:packages
 write:packages read:project project gist notifications`).
 
-**Not built / gaps:** the manual GitHub sign-in (needs a GitHub OAuth app) wasn't run; CIMD was only tested as "not
+**Verified live (2026-10-17):** GitHub's hosted MCP server with a GitHub App as the manual client: setup sign-in read 57
+tools, and per-person calls (get_me, search_repositories, list_issues, list_branches, get_file_contents, search_code)
+worked from pi; another person got the -32042 sign-in link. That run found the empty-scope, outputSchema,
+structuredContent and SEP-2243 parameter-header fixes (see git log).
+
+**Not built / gaps:** CIMD was only tested as "not
 offered on a loopback APP_URL"; a server challenging for scopes already held is refused by logic not exercised by the
 fake; detect counts toward its limit before authorization.
