@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -233,6 +234,25 @@ type exchange struct {
 	// challenge holds the WWW-Authenticate values of the last 401 or 403
 	// (an OAuth-protected server's error and scope).
 	challenge []string
+	// detail is the start of the last error response's body (at most
+	// errorPeek bytes, raw: classify redacts it before anyone sees it).
+	detail string
+}
+
+// errorPeek bounds how much of an error response's body is kept to explain
+// the failure.
+const errorPeek = 2048
+
+func (e *exchange) setDetail(d string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.detail = d
+}
+
+func (e *exchange) lastDetail() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.detail
 }
 
 func (e *exchange) setStatus(code int, h http.Header) {
@@ -303,6 +323,18 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	t.ex.setStatus(res.StatusCode, res.Header)
+	if res.StatusCode >= 400 && res.Body != nil {
+		// Keep the start of an error body to explain the failure, and hand
+		// the whole body on unchanged.
+		head := make([]byte, errorPeek)
+		n, _ := io.ReadFull(res.Body, head)
+		head = head[:n]
+		t.ex.setDetail(string(head))
+		res.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(head), res.Body), res.Body}
+	}
 	res.Body = &cappedBody{ReadCloser: res.Body, left: t.maxResponse}
 	return res, nil
 }

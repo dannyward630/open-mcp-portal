@@ -145,3 +145,48 @@ func TestSafeMessage(t *testing.T) {
 		t.Fatalf("length = %d", n)
 	}
 }
+
+func TestErrorDetail(t *testing.T) {
+	cases := map[string]string{
+		"":                                      "",
+		"<html><body>Bad Gateway</body></html>": "",
+		"bad request: missing required Authorization header\n":                                     "bad request: missing required Authorization header",
+		`{"error":"invalid_request","error_description":"Resource not accessible by integration"}`: "Resource not accessible by integration",
+		`{"message":"Not Found","documentation_url":"https://docs.github.com"}`:                    "Not Found",
+		`{"error":{"code":403,"message":"Resource not accessible"}}`:                               "Resource not accessible",
+		`{"detail":"Repository access blocked"}`:                                                   "Repository access blocked",
+		"event: message\ndata: {\"message\":\"from SSE\"}\n\n":                                     "from SSE",
+		`{"message":"cut off`: "",
+		"bin\x00ary":          "",
+	}
+	for body, want := range cases {
+		if got := errorDetail(body); got != want {
+			t.Errorf("errorDetail(%q) = %q, want %q", body, got, want)
+		}
+	}
+}
+
+func TestErrorBodyExplainsFailure(t *testing.T) {
+	const token = "ghu_SENTINELtoken1234567890"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		// A server that echoes the caller's token in its error.
+		_, _ = w.Write([]byte(`{"message":"Resource not accessible by integration (token ` + token + `)"}`))
+	}))
+	defer srv.Close()
+	_, err := testClient(true).Discover(context.Background(), Target{URL: srv.URL, BearerToken: token, Timeout: 5 * time.Second})
+	var e *Error
+	if !errors.As(err, &e) || e.Class != ClassBadRequest {
+		t.Fatalf("got %v", err)
+	}
+	if !strings.Contains(e.Message, "HTTP 400") || !strings.Contains(e.Message, "Resource not accessible by integration") {
+		t.Errorf("message lacks the server's reason: %q", e.Message)
+	}
+	if strings.Contains(e.Message, token) || strings.Contains(e.Message, "SENTINEL") {
+		t.Errorf("message carries the token: %q", e.Message)
+	}
+	if len([]rune(e.Message)) > MaxMessage {
+		t.Errorf("message longer than MaxMessage: %d", len([]rune(e.Message)))
+	}
+}

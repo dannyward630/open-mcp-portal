@@ -13,6 +13,7 @@ package upstream
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -378,6 +379,11 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 		return e
 	}
 	status := ex.lastStatus()
+	// The server's own reason, when its error body gave one (redacted).
+	why := ""
+	if d := errorDetail(ex.lastDetail()); d != "" {
+		why = " The server said: " + t.safe(d)
+	}
 	var rpc *jsonrpc.Error
 	var netErr *url.Error
 	switch {
@@ -388,16 +394,16 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return &Error{Class: ClassTimeout, Message: "The server didn't answer in time."}
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
-		return &Error{Class: ClassAuth, HTTPStatus: status, Message: fmt.Sprintf("The server refused the credentials (HTTP %d).", status),
+		return &Error{Class: ClassAuth, HTTPStatus: status, Message: clipMessage(fmt.Sprintf("The server refused the credentials (HTTP %d).", status) + why),
 			Challenge: ex.lastChallenge()}
 	case status == http.StatusNotFound:
-		return &Error{Class: ClassNotFound, HTTPStatus: status, Message: "The server answered 404: check the URL."}
+		return &Error{Class: ClassNotFound, HTTPStatus: status, Message: clipMessage("The server answered 404: check the URL." + why)}
 	case status == http.StatusTooManyRequests:
-		return &Error{Class: ClassRateLimited, HTTPStatus: status, Message: "The server is rate limiting requests (HTTP 429)."}
+		return &Error{Class: ClassRateLimited, HTTPStatus: status, Message: clipMessage("The server is rate limiting requests (HTTP 429)." + why)}
 	case status == http.StatusBadRequest:
-		return &Error{Class: ClassBadRequest, HTTPStatus: status, Message: "The server refused the request (HTTP 400)."}
+		return &Error{Class: ClassBadRequest, HTTPStatus: status, Message: clipMessage("The server refused the request (HTTP 400)." + why)}
 	case status >= 400:
-		return &Error{Class: ClassUnavailable, HTTPStatus: status, Message: fmt.Sprintf("The server answered HTTP %d.", status)}
+		return &Error{Class: ClassUnavailable, HTTPStatus: status, Message: clipMessage(fmt.Sprintf("The server answered HTTP %d.", status) + why)}
 	case errors.As(err, &netErr):
 		c.log().InfoContext(ctx, "mcp server unreachable", "err", t.safe(err.Error()))
 		return &Error{Class: ClassUnavailable, Message: unreachableMessage(err)}
@@ -413,6 +419,66 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 	// Logged without the header value, should an error ever quote it.
 	c.log().WarnContext(ctx, "mcp server exchange failed", "err", t.safe(err.Error()))
 	return &Error{Class: ClassUnavailable, Message: unreachableMessage(err)}
+}
+
+// errorDetail reads a short reason from the start of an error response's
+// body: a JSON error_description, message, error.message, error or detail
+// field, else the first line of a plain-text body. HTML and binary bodies
+// give nothing. The result is not yet redacted.
+func errorDetail(body string) string {
+	body = strings.TrimSpace(strings.ToValidUTF8(body, ""))
+	if body == "" || strings.HasPrefix(body, "<") {
+		return ""
+	}
+	// Server-sent events: use the first data line.
+	if strings.HasPrefix(body, "event:") || strings.HasPrefix(body, "data:") {
+		for _, line := range strings.Split(body, "\n") {
+			if d, ok := strings.CutPrefix(strings.TrimSpace(line), "data:"); ok {
+				body = strings.TrimSpace(d)
+				break
+			}
+		}
+	}
+	if strings.HasPrefix(body, "{") {
+		var m map[string]json.RawMessage
+		if json.Unmarshal([]byte(body), &m) != nil {
+			return "" // cut off or not JSON after all: nothing reliable
+		}
+		str := func(raw json.RawMessage) string {
+			var s string
+			if json.Unmarshal(raw, &s) == nil {
+				return s
+			}
+			var o struct {
+				Message string `json:"message"`
+			}
+			if json.Unmarshal(raw, &o) == nil {
+				return o.Message
+			}
+			return ""
+		}
+		for _, k := range []string{"error_description", "message", "error", "detail", "title"} {
+			if s := strings.TrimSpace(str(m[k])); s != "" {
+				return s
+			}
+		}
+		return ""
+	}
+	line, _, _ := strings.Cut(body, "\n")
+	for _, r := range line {
+		if r < 0x20 && r != '\t' {
+			return ""
+		}
+	}
+	return strings.TrimSpace(line)
+}
+
+// clipMessage bounds a message to MaxMessage characters.
+func clipMessage(msg string) string {
+	if r := []rune(msg); len(r) > MaxMessage {
+		return string(r[:MaxMessage-1]) + "…"
+	}
+	return msg
 }
 
 // safe is SafeMessage with both the header value and the identity token
