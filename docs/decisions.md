@@ -53,6 +53,13 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 | 36 | Key rotation *(accepted default)* | `API_KEY_PEPPER_PREVIOUS` keeps keys and tokens valid during a pepper rotation (keys re-digested on use); `open-mcp-gateway rotate-keys` re-encrypts stored secrets from `ENCRYPTION_KEY_PREVIOUS` to `ENCRYPTION_KEY` and reports counts; `doctor` reports what is still on the old key |
 | 37 | CI *(accepted default)* | A GitHub Actions workflow: lint, generated-code check, Go unit and integration tests with a Postgres service, web typecheck/tests/build, `k8s-validate`, docker build. The repository has no remote yet, so it is validated locally with `actionlint` |
 | 38 | Suspension blocks, doesn't disconnect *(accepted default)* | Suspending a person ends their browser sessions and refuses every later request at authentication, but keeps their OAuth connections (connected apps), API keys and provider connections, so reactivating restores them. This is the current behaviour, recorded because the user hasn't asked to change it |
+| 39 | Upstream auth modes *(accepted default)* | An MCP server's upstream auth is `none`, `static_header` (as today) or `oauth` (per person). In `oauth` mode the person's token goes in `Authorization: Bearer` and the identity JWT moves to `MCP-Gateway-Identity` (decision 19's rule). `oauth` excludes a static `Authorization` header and a Phase 5 requirement on the same server: one credential per call |
+| 40 | Server connections *(accepted default)* | An `oauth` server has a server-bound connection config: a provider row of kind `mcp_server`, bound to exactly that server, not listed among platform providers and not reusable. The server's team (editors and above) creates it, which is an exception to decision 25 because the client belongs to the server. It comes from automatic registration (DCR or CIMD) or a client ID and secret entered by hand (secret sealed, never returned). Alternatively the team links an existing platform provider whose endpoints match the discovered authorization server. Admin review (`approval_required`) shows the auth mode, authorization server and scopes; switching a published server to `oauth`, changing the authorization server or widening its scopes sends it back to review |
+| 41 | Setup by discovery *(accepted default)* | Entering the URL and choosing "detect" probes the server: a 401 with `resource_metadata` fills in the authorization server, endpoints, `scopes_supported` and registration capability, and the UI shows what was found and what is still needed (a client ID and secret when there's no registration). Every discovery, registration and token request goes through the SSRF guard and the internal-network allowlist (as Phase 5). The `resource` parameter is sent on authorize and token requests (MCP spec), with a per-server switch to omit it for authorization servers that reject it |
+| 42 | Discovery and health *(accepted default)* | Capabilities are read with the connection of the person who set the server up (they sign in once during setup, Arcade-style); the server shows "Capabilities read as <person>" and any editor can re-authorize as themselves. Scheduled health checks use nobody's token: an unauthenticated probe that gets the expected 401 challenge for this resource counts as reachable (healthy, "requires sign-in"); a manual Test uses the setup connection. If the setup connection lapses, refresh reports that it needs re-consent |
+| 43 | Runtime *(accepted default)* | Every call to an `oauth` server needs the caller's own connection to that server; missing, expired or insufficient means the existing `-32042` consent-link flow (same `/connect` pages, same My connections, labelled with the server's name). An upstream 401 `invalid_token` gets one refresh attempt, then `needs_reconsent` and `-32042`; a 403 `insufficient_scope` asks for re-consent with the requested scope. Service accounts are refused (`-32010`). Tool lists come from discovery; the upstream may show each person different tools and still checks every call |
+| 44 | Tokens and audit *(accepted default)* | Phase 5 storage, refresh, revocation and audit events (`provider_connection.*`) are reused, plus `mcp_server.auth_update`. Tokens never appear in logs, audit, call records or captured payloads; payload capture never records the `Authorization` header |
+| 45 | Identity token to external servers | Per-server switch `sendIdentity` (default on, keeping decision 7). The UI recommends turning it off for servers run outside the company (for example GitHub's hosted MCP server), so names, emails and teams aren't sent to a third party. Accepted default chosen by the assistant |
 
 Decisions 25–30 are defaults the assistant accepted under the user's instruction "continue until both are done".
 They are not interview answers, and the user may change them. Design: [phase5-delegated-credentials.md](phase5-delegated-credentials.md).
@@ -64,6 +71,14 @@ account keys count toward the service account's limit); usage rollups get their 
 platform only); captured payloads are sealed with `ENCRYPTION_KEY`; payloads are readable by the team whose switch
 captured them rather than by both teams of a call.
 
+Decisions 39–44 are accepted defaults chosen by the assistant; the user asked to implement now. They are not interview
+answers, and the user may change them. Design: [phase7-upstream-oauth.md](phase7-upstream-oauth.md). Choices made there
+beyond the wording above: a linked platform provider shares only its client, not its connections (every server keeps its
+own connections and `resource`); a platform provider "matches" when its authorization and token URLs equal the
+discovered ones (platform providers have no issuer field); step-up is limited to the reviewed scopes and
+`scopes_supported`; the setup connection counts only while its person is an editor or above. Open question: whether the
+identity JWT should still go to third-party `oauth` servers (decision 7).
+
 ## Proposed build order
 
 1. Foundations from Grounded: config, store, OIDC/dev sign-in, sessions, users, teams, platform admin, audit, UI shell.
@@ -72,6 +87,7 @@ captured them rather than by both teams of a call.
 4. Client authentication for MCP clients (OAuth for Claude Code, VS Code and similar; API keys for headless agents).
 5. Auth providers, per-user token vault and the "authorize this tool" flow.
 6. Usage, rate limits, health and execution history.
+7. Per-person OAuth to MCP servers that are themselves OAuth-protected (GitHub's remote server).
 
 ## Open questions
 

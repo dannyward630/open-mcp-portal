@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-10-16 (Phase 6 backend and UI built, browser QA findings fixed:
+Last updated: 2026-10-17 (Phase 7 upstream OAuth designed: [phase7-upstream-oauth.md](phase7-upstream-oauth.md); Phase 6 backend and UI built, browser QA findings fixed:
 [phase6-operations.md](phase6-operations.md) "As built"; Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built").
 
 ## Where things stand
@@ -194,6 +194,13 @@ make test && make web-test
 4. Push to a remote and let `.github/workflows/ci.yml` run once; fix what only GitHub's runners show.
 5. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow; see [deploy.md](deploy.md) "Not
    covered yet".
+6. **Phase 7 (upstream OAuth): designed** (decisions 39–44, [phase7-upstream-oauth.md](phase7-upstream-oauth.md); contract
+   additions `detectTeamMcpServerAuth`, `authorizeTeamMcpServerSetup`, `McpServer.authMode`/`oauth`,
+   `ProviderRef.kind`/`server`, `signInRequired` on health). Build order: migration `00012_upstream_oauth`, discovery
+   package and fakes (`fakemcp -protect`, `fakeoauth -issuer-path/-dcr/-cimd/-no-dcr`), save/registration, setup sign-in,
+   runtime (401/403), health probe, UI, then `make generate`. Until the backend serves the two new routes,
+   `TestRoutesMatchOpenAPI` fails. Then the manual GitHub test in the design. Open question for the user: whether to keep
+   sending the identity JWT to third-party `oauth` servers.
 
 ## Phase 1 UI
 

@@ -171,6 +171,14 @@ encrypted at rest, refreshed by the gateway. See [docs/phase5-delegated-credenti
    (redacted, 16 KiB per part, sealed, views audited); retention with team overrides; hourly usage rollups and
    dashboards; Prometheus on `METRICS_ADDR`; `API_KEY_PEPPER_PREVIOUS` and `rotate-keys`; GitHub Actions CI.
    Kubernetes manifests are done ([docs/deploy.md](docs/deploy.md)).
+7. **Upstream OAuth** — *Designed* (decisions 39–44): [docs/phase7-upstream-oauth.md](docs/phase7-upstream-oauth.md);
+   contract in `api/openapi.yaml` (`McpServer.authMode`/`oauth`, `detectTeamMcpServerAuth`, `authorizeTeamMcpServerSetup`,
+   `ProviderRef.kind`/`server`). The gateway acts as an MCP client to servers that are OAuth resource servers themselves
+   (GitHub's `https://api.githubcopilot.com/mcp/`). Discovery follows the MCP authorization spec 2025-11-25: RFC 9728
+   metadata from the 401, RFC 8414/OIDC (path insertion), PKCE S256, `resource`, then CIMD, DCR, a client entered by
+   hand, or a linked platform provider. A server-bound provider row (kind `mcp_server`) reuses Phase 5's connections,
+   `-32042` consent links, refresh and revocation. Each person's token goes in `Authorization: Bearer` and the identity
+   JWT in `MCP-Gateway-Identity`. Capabilities are read as the setup person; scheduled health checks use nobody's token.
 
 ## 8. Commands
 
