@@ -1,6 +1,7 @@
 # Phase 6: Operations (design)
 
-Status: **backend built** (see [As built](#as-built)); the web UI is next. Decisions 31–38 in [decisions.md](decisions.md) are defaults the assistant accepted
+Status: **backend and web UI built; browser QA done and its findings fixed** (see [As built](#as-built)). Not yet:
+a CI run on GitHub, a kind smoke test, an end-to-end provider-token redaction test. Decisions 31–38 in [decisions.md](decisions.md) are defaults the assistant accepted
 under the instruction "continue until both are done". The contract is in [`../api/openapi.yaml`](../api/openapi.yaml)
 (tags `limits`, `retention`, `usage`, and the call and payload operations under `gateways`/`admin`). Builds on decisions
 11 and 14. Grounded's `internal/limits`, `internal/retention`, `internal/keyrotation` and `internal/observability` are
@@ -257,8 +258,8 @@ image publishing.
 
 ## As built
 
-Backend only; the UI described above is not built yet. **No contract changes**: every operation and field in
-`api/openapi.yaml` is served as written (`TestRoutesMatchOpenAPI` and the authz-matrix classification pass).
+Backend and web UI. **No contract changes**: every operation and field in `api/openapi.yaml` is served as written
+(`TestRoutesMatchOpenAPI` and the authz-matrix classification pass).
 
 - **Migration `00011_operations`** as designed, plus: `usage_hourly.id` (an identity key, for batched deletes) and a
   one-row `usage_rollup_state` (`rolled_up_to`, the rollup watermark). `gateways.rate_limit_per_minute` is `bigint`.
@@ -299,7 +300,9 @@ Backend only; the UI described above is not built yet. **No contract changes**: 
   `ENCRYPTION_KEY_PREVIOUS` it checks and reports. `doctor` adds `keys encryption` (counts by key id per column) and
   `keys pepper`.
 - **Edits outside the new packages, kept small:** `internal/registry` (the server capture switch, `capture_role`; a
-  health-check counter), `internal/providers/runtime.go` (the refresh counter), `internal/gateways` (gateway capture and
+  health-check counter; a server PATCH that changes nothing, such as the switch resent at its current value, writes
+  nothing: no revision bump and no `mcp_server.update` entry, as a member role change to the same role. Gateway,
+  team and settings updates still bump and audit when nothing changed), `internal/providers/runtime.go` (the refresh counter), `internal/gateways` (gateway capture and
   limit, `Mine.CapturesPayloads`), `internal/testutil/fakemcp.go` (`EnableEchoSecrets`: `echo_secrets` and `image`
   tools, tests only).
 - **CI:** `.github/workflows/ci.yml` (lint + actionlint, generated, go with a Postgres 17 service via `make test-ci`,
@@ -315,5 +318,24 @@ Backend only; the UI described above is not built yet. **No contract changes**: 
   (rollup equals the direct aggregate, re-run, late commit, percentiles, every grouping, filters, scope, bounds),
   pepper rotation (keys, service account keys, OAuth tokens; re-digest and audit; removal), rotate-keys (dry run,
   every column, idempotence, undecryptable stop, doctor), and the authz matrix for all 19 operations.
-- **Not done:** the UI; provider-token redaction is covered by the redactor's exact-value rule and unit tests, not an
-  end-to-end test with a provider; CI has not run on GitHub; no `k8s-smoke`.
+- **Web UI:** as in [UI](#ui): Admin › Limits, Retention (periods, last run), Payload capture (built-in rules,
+  patterns, tester) and Usage; Admin › Teams › a team › Limits & retention; Team › Settings › Limits &
+  retention (read-only) and Team › Usage; the gateway's rate limit and both "Record call contents" switches (each
+  confirmed, stating who reads recordings and for how long); call pages (`/teams/$team/calls/$callId`,
+  `/admin/calls/$callId`) with "View contents" behind the audit notice; "Records call contents" badges in the
+  catalog (list and page), the picker and My gateways. Vitest covers every new screen (421 tests in all).
+- **Browser QA:** done; findings fixed: the catalog list's badge; no-op server PATCHes no longer
+  audited (above); the usage freshness line is formatted in UTC; the call page's h1 size, a 403 explained without
+  "Try again", and platform staff on a team's call page pointed to Admin when the call was recorded (the team record
+  never says "captured" to them, so the page reads the Admin record, which isn't audited); distinct chart colours
+  for "Needed a connection" and "Rate limited"; an admin team's "Applies" column shows "Fix the team value" instead
+  of previewing invalid input; the gateway's "Applies now" adds the staged value ("After saving: …") or says the
+  change applies after saving; the capture confirmations state the retention period; the add-pattern dialog checks
+  syntax and empty matches in the browser where JavaScript's RegExp reads the pattern as RE2 does (lookarounds and
+  backreferences are refused; RE2-only syntax is left to the server, whose rules decide); the custom usage dates are
+  month/day/year selects named "From month", "To year" and so on (a native date input names its parts only "Month",
+  "Day", "Year"), and nonexistent dates such as 31 February are refused; Retention › Last run says "Nothing
+  deleted" for zero counts. The fixes are covered by Vitest and integration tests, not re-checked in a browser.
+- **Not done:** CI has never run on GitHub (only actionlint locally); no kind smoke test (`k8s-smoke`);
+  provider-token redaction is covered by the redactor's exact-value rule and unit tests, not by an end-to-end test
+  that captures a call to a server requiring a provider and echoing its token.

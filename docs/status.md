@@ -1,7 +1,7 @@
 # Status and handoff
 
-Last updated: 2026-10-16 (Phase 6 backend built: [phase6-operations.md](phase6-operations.md) "As built"; Phase 5
-backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built").
+Last updated: 2026-10-16 (Phase 6 backend and UI built, browser QA findings fixed:
+[phase6-operations.md](phase6-operations.md) "As built"; Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built").
 
 ## Where things stand
 
@@ -127,7 +127,7 @@ backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md
     Not browser-checked; not tried against a real provider.
   - Gaps: no background refresh (the start rate limit is shared since Phase 6); see the design's "Not in this phase".
 
-- **Phase 6 (operations): backend done; UI next.** Rate limits shared by replicas in PostgreSQL (per person, credential,
+- **Phase 6 (operations): backend and UI done; browser QA done and its findings fixed.** Rate limits shared by replicas in PostgreSQL (per person, credential,
   service account and gateway; 429 + JSON-RPC `-32029`, recorded `rate_limited`), payload capture (opt-in per gateway or
   server, redacted, 16 KiB, sealed, audited views), retention loop, hourly usage rollups and reports, Prometheus metrics
   on `METRICS_ADDR`, `API_KEY_PEPPER_PREVIOUS`, `open-mcp-gateway rotate-keys`, doctor key reports, and
@@ -139,8 +139,18 @@ backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md
   - New config: `API_KEY_PEPPER_PREVIOUS`, `METRICS_ADDR`, `METRICS_MAX_OBJECTS`, `RETENTION_INTERVAL`,
     `RETENTION_BATCH_SIZE`. New targets `make test-ci`, `make actionlint`.
   - Contract: all 19 operations and the new fields served; **no contract changes**.
+  - UI: Admin › Limits, Retention, Payload capture (patterns, tester), Usage; Admin › Teams › a team › Limits &
+    retention; Team › Usage and Settings › Limits & retention; gateway rate limit and "Record call contents" switches
+    on gateways and servers; call pages with "View contents"; capture badges (catalog, picker, My gateways).
+  - QA fixes: catalog list badge; a server PATCH that changes nothing writes no audit entry and keeps the revision;
+    usage times in UTC; call page (h1 size, 403 explained, platform staff pointed to Admin for recorded contents);
+    chart colours; invalid team overrides not previewed; staged gateway limit shown; retention period in the capture
+    confirmations; browser-side pattern check (RE2 rules still decide); named month/day/year selects for custom usage
+    dates; "Nothing deleted" in Retention's last run. Not re-checked in a browser after the fixes.
   - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), `make k8s-validate`,
-    actionlint. Not browser-checked (no UI yet); CI not run on GitHub.
+    actionlint; web typecheck, 421 Vitest tests, build, `check:styling`, `check:size`.
+  - Gaps: CI never run on GitHub; no kind smoke test (`k8s-smoke`); provider-token redaction has unit tests only, no
+    end-to-end test through a provider-backed server.
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
   example overlay in `deploy/kubernetes` (one Deployment with a migrate init container, Service, PDB, NetworkPolicies,
@@ -179,9 +189,8 @@ make test && make web-test
 2. Phase 5 (delegated credentials): **backend built**; the web UI is built in parallel from the same contract. Then a
    browser QA pass of the connect flow (`/connect/{provider}`, `/connect/done`) with `make fake-oauth`, and a check
    against one real provider (GitHub is the simplest).
-3. Phase 6 web UI from the same contract: Admin › Limits, Retention, Payload capture (tester), Usage; team Usage and
-   Settings › Limits & retention; gateway and server switches (rate limit, record call contents); call detail with
-   "Show contents"; capture badges. Then a browser QA pass.
+3. Phase 6: a browser re-check of the QA fixes (call page as auditor and as an editor, custom usage dates, pattern
+   dialog), and an end-to-end test that a provider token echoed by a server is redacted from a captured payload.
 4. Push to a remote and let `.github/workflows/ci.yml` run once; fix what only GitHub's runners show.
 5. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow; see [deploy.md](deploy.md) "Not
    covered yet".

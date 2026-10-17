@@ -30,3 +30,10 @@
     height: 1rem;
   }
 }
+
+/* The page's h1: the called name in the mono font at the heading's own size (long names wrap on phones). */
+.title {
+  font-family: var(--font-family-mono);
+  font-size: inherit;
+  overflow-wrap: anywhere;
+}

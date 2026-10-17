@@ -7,15 +7,25 @@ import { BarChart } from "@/components/ui/bar-chart/bar-chart";
 import type { ChartTone } from "@/components/ui/chart/chart";
 import { Card } from "@/components/ui/card/card";
 import { LineChart } from "@/components/ui/line-chart/line-chart";
-import { type CallOutcome, callOutcomes, outcomeLabels, outcomeTone } from "../gateways/labels";
+import { type CallOutcome, callOutcomes, outcomeLabels } from "../gateways/labels";
 import { bucketLabel, ms, num, type UsageReport } from "./range";
 import u from "./usage.module.css";
 
-const tones: Record<(typeof outcomeTone)[CallOutcome], ChartTone> = {
-  success: "success",
-  warning: "warning",
-  danger: "danger",
-  neutral: "neutral",
+/**
+ * Each outcome's colour in the stacked chart. Badges share a few tones, but stacked bars need the outcomes people
+ * tell apart to differ: refusals for a missing connection (info) and for a rate limit (accent) are never both amber.
+ * Nine outcomes, seven tones: the remaining errors share warning or danger by severity.
+ */
+export const outcomeChartTone: Record<CallOutcome, ChartTone> = {
+  ok: "success",
+  tool_error: "warning",
+  denied: "neutral",
+  upstream_error: "danger",
+  timeout: "danger",
+  too_large: "warning",
+  bad_request: "warning",
+  needs_authorization: "info",
+  rate_limited: "accent",
 };
 
 const word = (bucket: "hour" | "day") => (bucket === "day" ? "day" : "hour");
@@ -38,7 +48,7 @@ export function CallsChart({ report, bucket }: { report: UsageReport; bucket: "h
         <BarChart
           layout="stack"
           data={data}
-          series={present.map((o) => ({ key: o, label: outcomeLabels[o], tone: tones[outcomeTone[o]] }))}
+          series={present.map((o) => ({ key: o, label: outcomeLabels[o], tone: outcomeChartTone[o] }))}
           summary={summary}
           dataTable={{ caption: `Calls per ${word(bucket)} by outcome` }}
         />

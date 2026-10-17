@@ -91,7 +91,7 @@ function Report({ report, bucket, groupBy, children }: { report: UsageReport; bu
   const t = report.totals;
   const freshness = report.rolledUpTo ? (
     <p className={s.note}>
-      Includes calls up to <Time value={report.rolledUpTo} format="datetime" />. Totals are updated every 5 minutes; times are UTC.
+      Includes calls up to <Time value={report.rolledUpTo} format="datetime" timeZone="UTC" /> UTC. Totals are updated every 5 minutes; all times here are UTC.
     </p>
   ) : (
     <Alert tone="info">Usage totals are computed every 5 minutes from the call records; none have been computed yet.</Alert>

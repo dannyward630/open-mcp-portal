@@ -10,7 +10,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import { parseRate, rateProblem, rateText } from "../../lib/limits";
-import { captureWhat, captureWho } from "../capture";
+import { captureWhat, captureWho, keptFallback, useCaptureRetention } from "../capture";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { adminOnly } from "../../lib/terms";
@@ -62,6 +62,7 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
   const [form, setForm, revision] = useRevisionForm(saved, gateway.revision, { labels, choices });
   const [submitted, setSubmitted] = useState(false);
   const { ceiling } = useGatewayLimit(gateway);
+  const kept = useCaptureRetention(gateway.teamSlug, gateway.ownerKind === "platform");
   // Saving would switch it off or start recording: confirmed first.
   const [confirming, setConfirming] = useState<Confirm | null>(null);
   const save = useMutation({
@@ -143,7 +144,7 @@ export function GatewaySettingsTab({ gateway, scope, abilities }: Props) {
         mutation={save}
         onConfirm={() => save.mutate()}
         title={`Record what's sent through ${gateway.name}?`}
-        description={`${captureWhat} ${gateway.ownerKind === "team" ? `Readable by ${gateway.teamName ?? "the team"}'s owners and admins and by platform admins and auditors; every view is audited.` : captureWho} Everyone who uses the gateway is told it records.${
+        description={`${captureWhat} ${gateway.ownerKind === "team" ? `Readable by ${gateway.teamName ?? "the team"}'s owners and admins and by platform admins and auditors; every view is audited.` : captureWho} ${kept ?? keptFallback} Everyone who uses the gateway is told it records.${
           gateway.enabled && !form.enabled ? " The gateway is also turned off." : ""
         }`}
         confirmLabel="Record call contents"

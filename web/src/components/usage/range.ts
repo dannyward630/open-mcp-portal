@@ -32,11 +32,11 @@ export function nextHour(now: Date) {
   return new Date(Math.floor(now.getTime() / HOUR) * HOUR + HOUR);
 }
 
-/** "2026-10-16" as the start of that UTC day; null when it isn't a date. */
+/** "2026-10-16" as the start of that UTC day; null when it isn't a date (Date.parse would turn 2026-02-31 into 3 March). */
 function utcDay(text: string | null): number | null {
   if (!text || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
   const t = Date.parse(`${text}T00:00:00Z`);
-  return Number.isNaN(t) ? null : t;
+  return Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== text ? null : t;
 }
 
 /** A UTC date as YYYY-MM-DD (the custom range's inputs). */

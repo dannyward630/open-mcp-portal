@@ -42,6 +42,14 @@ describe("Admin › a team › Limits & retention", () => {
     await u.selectOptions(screen.getByRole("combobox", { name: "Per service account: team setting" }), "custom");
     await u.type(screen.getByRole("textbox", { name: "Per service account: team value (requests per minute)" }), "6000");
     expect(screen.getByText("At most the ceiling, 5,000 per minute.")).toBeInTheDocument();
+    // An invalid value isn't previewed (not even capped at the ceiling): Applies says to fix it.
+    const saRow = within(limits).getByRole("combobox", { name: "Per service account: team setting" }).closest("tr")!;
+    expect(within(saRow).getByText("Fix the team value")).toBeInTheDocument();
+    expect(within(saRow).queryByText("5,000 per minute")).toBeNull();
+    await u.clear(screen.getByRole("textbox", { name: "Per service account: team value (requests per minute)" }));
+    await u.type(screen.getByRole("textbox", { name: "Per service account: team value (requests per minute)" }), "0");
+    expect(within(saRow).getByText("Fix the team value")).toBeInTheDocument();
+    expect(within(saRow).queryByText("0 per minute")).toBeNull();
     await u.clear(screen.getByRole("textbox", { name: "Per service account: team value (requests per minute)" }));
     await u.type(screen.getByRole("textbox", { name: "Per service account: team value (requests per minute)" }), "2500");
     expect(within(limits).getByText("2,500 per minute")).toBeInTheDocument();
@@ -82,6 +90,9 @@ describe("Admin › a team › Limits & retention", () => {
     await u.clear(days);
     await u.type(days, "120");
     expect(screen.getByText("Between 1 and 90 days.")).toBeInTheDocument();
+    const row = days.closest("tr")!;
+    expect(within(row).getByText("Fix the team value")).toBeInTheDocument();
+    expect(within(row).queryByText("120 days")).toBeNull();
     await u.clear(days);
     await u.type(days, "7");
     await u.click(screen.getByRole("button", { name: "Save settings" }));

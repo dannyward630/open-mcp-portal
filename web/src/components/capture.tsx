@@ -26,6 +26,9 @@ export function CaptureBadge({ size = "sm", label = "Records call contents" }: {
   );
 }
 
+/** Said instead of the period while it loads (or when it can't be read). */
+export const keptFallback = "Kept for the retention period set for recorded call contents, then deleted.";
+
 /**
  * "Kept for 14 days" for a team's recordings (the team's effective period), or the platform's in Admin; undefined
  * until it's known (the sentence is then left out).

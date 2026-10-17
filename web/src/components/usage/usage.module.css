@@ -36,3 +36,49 @@
   gap: var(--space-4);
   min-width: 0;
 }
+
+/* A custom range's day (day-input.tsx): a label, month · day · year selects, then help or an error, as a Field. */
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-width: 100%;
+}
+
+.dayLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-snug);
+  color: var(--color-text);
+}
+
+.dayParts {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 1fr) 4.5rem 5.5rem;
+  gap: var(--space-2);
+}
+
+.dayDescription {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-snug);
+  color: var(--color-text-muted);
+}
+
+.dayError {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-snug);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-danger-text);
+
+  & svg {
+    flex-shrink: 0;
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-top: 0.1875rem;
+  }
+}

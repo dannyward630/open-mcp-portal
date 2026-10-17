@@ -81,11 +81,39 @@ describe("A call's page", () => {
   });
 
   it("sends platform staff on a team's page to Admin for the contents", async () => {
-    const calls = mockApi(teamRoutes(null, "platform_auditor"));
-    renderApp(`/teams/${team.slug}/calls/501`);
+    // The team route never says "captured" to platform staff; the Admin record (metadata, not audited) does.
+    const staffRoutes = (captured: boolean) =>
+      teamRoutes(null, "platform_auditor", { [`GET ${teamApi}/calls/501`]: () => mcpCall({ captured: false }), "GET /v1/admin/calls/501": () => mcpCall({ captured }) });
+    const calls = mockApi(staffRoutes(true));
+    const { unmount } = renderApp(`/teams/${team.slug}/calls/501`);
     expect(await screen.findByRole("link", { name: "open this call in Admin" })).toHaveAttribute("href", "/admin/calls/501");
     expect(screen.queryByRole("button", { name: "View contents" })).toBeNull();
     expect(payloads(calls)).toHaveLength(0);
+    expect(payloads(calls, "/v1/admin/calls/501/payload")).toHaveLength(0);
+    unmount();
+
+    // Not recorded: no pointer.
+    const quiet = mockApi(staffRoutes(false));
+    renderApp(`/teams/${team.slug}/calls/501`);
+    expect(await screen.findByRole("heading", { level: 1, name: "service-status__get_status" })).toBeInTheDocument();
+    await waitFor(() => expect(quiet.some((c) => c.url === "/v1/admin/calls/501")).toBe(true));
+    expect(screen.queryByRole("link", { name: "open this call in Admin" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Contents" })).toBeNull();
+  });
+
+  it("team owners don't look the call up in Admin", async () => {
+    const calls = mockApi(teamRoutes("owner"));
+    renderApp(`/teams/${team.slug}/calls/501`);
+    expect(await screen.findByRole("button", { name: "View contents" })).toBeInTheDocument();
+    expect(calls.some((c) => c.url.startsWith("/v1/admin/"))).toBe(false);
+  });
+
+  it("explains a refusal (403) without offering to try again", async () => {
+    mockApi(teamRoutes("owner", "none", { [`GET ${teamApi}/calls/501`]: () => Reply.error(403, "forbidden", "Forbidden") }));
+    renderApp(`/teams/${team.slug}/calls/501`);
+    expect(await screen.findByRole("heading", { level: 1, name: "No access to this call" })).toBeInTheDocument();
+    expect(screen.getByText("Call records are for the team's owners and admins.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
   });
 
   it("in Admin reads the contents through the admin route", async () => {

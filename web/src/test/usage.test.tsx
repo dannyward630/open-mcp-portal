@@ -3,10 +3,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
+import { CallsChart, outcomeChartTone } from "../components/usage/charts";
 import { bucketFor, groupByProblem, nextHour, resolveRange } from "../components/usage/range";
 import { gatewayId, team, teamSummary } from "./fixtures";
 import { metrics, usageReport } from "./fixtures-operations";
-import { type Call, type Handler, mockApi, renderApp, shellRoutes } from "./harness";
+import { type Call, type Handler, mockApi, renderApp, renderBare, shellRoutes } from "./harness";
 
 const DAY = 86_400_000;
 const teamUsage = `/v1/teams/${team.slug}/usage`;
@@ -48,6 +49,18 @@ describe("usage range rules", () => {
     expect(groupByProblem("hour", resolveRange("7d", null, null, now) as { from: Date; to: Date })).toBeUndefined();
     expect(bucketFor(resolveRange("24h", null, null, now) as { from: Date; to: Date })).toBe("hour");
     expect(bucketFor(month)).toBe("day");
+  });
+});
+
+describe("calls chart colours", () => {
+  it("tells a missing connection from a rate limit (and both from tool errors)", async () => {
+    const both = metrics({ calls: 6, errors: 6, outcomes: { tool_error: 2, needs_authorization: 2, rate_limited: 2 } });
+    renderBare(<CallsChart bucket="day" report={usageReport({ totals: both, rows: [{ key: "2026-10-16T00:00:00Z", label: "2026-10-16", start: "2026-10-16T00:00:00Z", metrics: both }] })} />);
+    await screen.findByText("Needed a connection", { selector: "li" });
+    const tone = (label: string) => screen.getByText(label, { selector: "li" }).querySelector("[data-tone]")?.getAttribute("data-tone");
+    const tones = [tone("Needed a connection"), tone("Rate limited"), tone("Tool error")];
+    expect(tones).toEqual([outcomeChartTone.needs_authorization, outcomeChartTone.rate_limited, outcomeChartTone.tool_error]);
+    expect(new Set(tones).size).toBe(3);
   });
 });
 
@@ -108,7 +121,53 @@ describe("Team › Usage", () => {
     const n = requests(calls).length;
     await new Promise((r) => setTimeout(r, 50));
     expect(requests(calls)).toHaveLength(n);
-    expect(screen.getByLabelText("From (UTC)")).toHaveValue("2026-01-01");
+    const fromGroup = screen.getByRole("group", { name: "From (UTC)" });
+    expect(within(fromGroup).getByRole("combobox", { name: "From month" })).toHaveValue("01");
+    expect(within(fromGroup).getByRole("combobox", { name: "From day" })).toHaveValue("01");
+    expect(within(fromGroup).getByRole("combobox", { name: "From year" })).toHaveValue("2026");
+    expect(screen.getByRole("group", { name: "To (UTC)" })).toHaveAccessibleDescription("Choose at most 90 days.");
+  });
+
+  it("names each part of the custom dates and asks for whole UTC days", async () => {
+    const u = userEvent.setup();
+    const calls = mockApi(routes());
+    const { router, container } = renderApp(`/teams/${team.slug}/usage`);
+    await screen.findByRole("table", { name: "Usage by gateway" });
+    await router.navigate({ to: "/teams/$team/usage", params: { team: team.slug }, search: { range: "custom", from: "2026-01-30", to: "2026-03-31" } as never });
+    const to = await screen.findByRole("group", { name: "To (UTC)" });
+    for (const part of ["month", "day", "year"]) {
+      expect(screen.getByRole("combobox", { name: `From ${part}` })).toBeInTheDocument();
+      expect(within(to).getByRole("combobox", { name: `To ${part}` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("group", { name: "From (UTC)" })).toHaveAccessibleDescription("At most 90 days");
+    expect(await axe(container)).toHaveNoViolations();
+
+    // 30 January → February keeps the day within the month.
+    await u.selectOptions(screen.getByRole("combobox", { name: "From month" }), "02");
+    expect(screen.getByRole("combobox", { name: "From day" })).toHaveValue("28");
+    await waitFor(() => expect(requests(calls).some((c) => c.search.get("from") === "2026-02-28T00:00:00.000Z" && c.search.get("to") === "2026-04-01T00:00:00.000Z")).toBe(true));
+  });
+
+  it("refuses a date that doesn't exist", () => {
+    expect(resolveRange("custom", "2026-02-31", "2026-03-05").error).toMatch(/Choose a start/);
+  });
+
+  it("shows how far the totals reach in UTC, whatever the browser's time zone", async () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles"; // rolledUpTo 07:55Z is 00:55 there
+    try {
+      mockApi(routes());
+      renderApp(`/teams/${team.slug}/usage`);
+      const note = (await screen.findByText(/Includes calls up to/)).closest("p")!;
+      const time = note.querySelector("time")!;
+      expect(time).toHaveAttribute("datetime", "2026-10-16T07:55:00.000Z");
+      expect(time.textContent).toMatch(/7:55/);
+      expect(time.textContent).not.toMatch(/12:55/);
+      expect(note).toHaveTextContent(/7:55\s?AM UTC\. Totals are updated every 5 minutes; all times here are UTC\./);
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
   });
 
   it("says when there were no calls", async () => {

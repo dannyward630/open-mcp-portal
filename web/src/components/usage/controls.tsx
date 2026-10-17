@@ -4,8 +4,9 @@
  * (hourly only for up to 7 days) and, in Admin, one team's scope.
  */
 import { Field } from "@/components/ui/field/field";
-import { Input, NativeSelect } from "@/components/ui/input/input";
+import { NativeSelect } from "@/components/ui/input/input";
 import { useSearchParams } from "../../lib/url-search";
+import { DayInput } from "./day-input";
 import { type GroupBy, groupByLabels, isoDay, maxDays, maxHourlyDays, type Preset, presets, spanDays } from "./range";
 import type { UsageScope } from "./usage-dashboard";
 import u from "./usage.module.css";
@@ -58,12 +59,8 @@ export function UsageControls({ scope, preset, groupBy, allowed, range, teamOpti
       </Field>
       {preset === "custom" && (
         <>
-          <Field label="From (UTC)" className={u.control} description={`At most ${maxDays} days`}>
-            <Input type="date" value={params.get("from") ?? ""} max={params.get("to") ?? undefined} onChange={(e) => set({ from: e.target.value })} />
-          </Field>
-          <Field label="To (UTC)" className={u.control} error={rangeError}>
-            <Input type="date" value={params.get("to") ?? ""} min={params.get("from") ?? undefined} onChange={(e) => set({ to: e.target.value })} />
-          </Field>
+          <DayInput name="From" value={params.get("from") ?? ""} description={`At most ${maxDays} days`} onChange={(v) => set({ from: v || undefined })} />
+          <DayInput name="To" value={params.get("to") ?? ""} error={rangeError} onChange={(v) => set({ to: v || undefined })} />
         </>
       )}
       <Field label="Group by" className={u.control} error={groupError} description={hourlyTooLong ? `Hour: ${maxHourlyDays} days at most` : undefined}>

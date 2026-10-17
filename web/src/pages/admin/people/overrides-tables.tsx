@@ -1,4 +1,7 @@
-/* The rows of a team's overrides: the platform value, the team's choice (inherit, or its own value) and what applies. */
+/*
+ * The rows of a team's overrides: the platform value, the team's choice (inherit, or its own value) and what applies.
+ * While a typed value isn't valid, Applies says so instead of previewing it.
+ */
 import { Badge } from "@/components/ui/badge/badge";
 import { Field } from "@/components/ui/field/field";
 import { NativeSelect } from "@/components/ui/input/input";
@@ -25,6 +28,11 @@ import {
 } from "./overrides-form";
 
 type Refused = { id: string; message: string } | undefined;
+
+/** Applies while the team value is invalid: nothing to preview (the field says what's wrong). */
+function NotValid() {
+  return <span className={s.muted}>Fix the team value</span>;
+}
 
 function ModeSelect({ label, value, inherit, disabled, onChange }: { label: string; value: Mode; inherit: string; disabled?: boolean; onChange: (m: Mode) => void }) {
   return (
@@ -77,7 +85,7 @@ export function LimitsTable({ name, items, form, isAdmin, shown, refused, onChan
               )}
             </Td>
             <Td>
-              {rateText(isAdmin ? effectiveLimit(l, f) : l.effective)}
+              {isAdmin && limitError(l, f) ? <NotValid /> : rateText(isAdmin ? effectiveLimit(l, f) : l.effective)}
               {capped && (
                 <span className={s.secondary}>
                   <Badge tone="warning" size="sm">
@@ -135,7 +143,7 @@ export function PeriodsTable({ name, items, form, isAdmin, shown, refused, onCha
                 daysText(p.override)
               )}
             </Td>
-            <Td>{daysText(isAdmin ? effectivePeriod(p, f) : p.effective)}</Td>
+            <Td>{isAdmin && periodError(p, f) ? <NotValid /> : daysText(isAdmin ? effectivePeriod(p, f) : p.effective)}</Td>
           </Tr>
         );
       })}

@@ -754,3 +754,70 @@ func TestMcpHeaderValueNeverDisclosed(t *testing.T) {
 		t.Fatalf("test with the stored value = %d %+v", code, tr)
 	}
 }
+
+// TestMcpServerNoOpUpdate: a PATCH that changes nothing (the capture switch
+// or the settings resent at their current values) writes nothing: no revision
+// bump and no mcp_server.update audit entry. A real change still does both.
+func TestMcpServerNoOpUpdate(t *testing.T) {
+	e := newRegistryEnv(t)
+	base := toolsTeam + "/mcp-servers/"
+	sv := e.create(map[string]any{"slug": "service-status", "name": "Service status", "description": "Outages", "url": e.fake.URL(),
+		"authHeaderName": "X-API-Key", "authValue": "k-1234567890", "timeoutSeconds": 10}).Server
+	id := sv.Id.String()
+	updates := func() string {
+		t.Helper()
+		var n string
+		if err := e.app.Pool.QueryRow(context.Background(),
+			`SELECT count(*)::text FROM audit_log WHERE action = 'mcp_server.update' AND target_id = $1`, id).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	patch := func(s *session, body map[string]any, rev int64) apitypes.McpServer {
+		t.Helper()
+		var out apitypes.McpServer
+		code, ec := s.call("PATCH", base+id, body, &out, ifMatch(rev))
+		mustCode(t, fmt.Sprintf("patch %v", body), code, ec, 200, "")
+		return out
+	}
+
+	same := []map[string]any{
+		{"capturePayloads": false},
+		{},
+		{"name": sv.Name, "description": sv.Description, "url": sv.Url, "timeoutSeconds": sv.TimeoutSeconds, "enabled": sv.Enabled,
+			"authHeaderName": *sv.AuthHeaderName, "capturePayloads": false},
+	}
+	for _, body := range same {
+		if got := patch(e.owner, body, sv.Revision); got.Revision != sv.Revision || !got.UpdatedAt.Equal(sv.UpdatedAt) {
+			t.Fatalf("no-op %v bumped the revision: %d -> %d", body, sv.Revision, got.Revision)
+		}
+	}
+	// Editors may resend the switch at its current value: still nothing written.
+	if got := patch(e.editor, map[string]any{"capturePayloads": false}, sv.Revision); got.Revision != sv.Revision {
+		t.Fatalf("editor no-op bumped the revision: %d", got.Revision)
+	}
+	if n := updates(); n != "0" {
+		t.Fatalf("no-op updates were audited: %s", n)
+	}
+	// A no-op still checks If-Match.
+	code, ec := e.owner.call("PATCH", base+id, map[string]any{"capturePayloads": false}, nil, ifMatch(sv.Revision+1))
+	mustCode(t, "stale no-op", code, ec, 412, "revision_conflict")
+
+	// Real changes bump and audit, one entry each.
+	on := patch(e.owner, map[string]any{"capturePayloads": true}, sv.Revision)
+	if on.Revision != sv.Revision+1 || on.CapturePayloads == nil || !*on.CapturePayloads || updates() != "1" {
+		t.Fatalf("capture on = rev %d, %v, %s audit entries", on.Revision, on.CapturePayloads, updates())
+	}
+	if again := patch(e.owner, map[string]any{"capturePayloads": true}, on.Revision); again.Revision != on.Revision || updates() != "1" {
+		t.Fatalf("resending true = rev %d, %s audit entries", again.Revision, updates())
+	}
+	renamed := patch(e.editor, map[string]any{"name": "Status"}, on.Revision)
+	if renamed.Revision != on.Revision+1 || updates() != "2" {
+		t.Fatalf("rename = rev %d, %s audit entries", renamed.Revision, updates())
+	}
+	// A re-entered header value counts as a change (it is sealed again; the
+	// stored value is never compared).
+	if v := patch(e.editor, map[string]any{"authValue": "k-1234567890"}, renamed.Revision); v.Revision != renamed.Revision+1 || updates() != "3" {
+		t.Fatalf("header value = rev %d, %s audit entries", v.Revision, updates())
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -543,6 +544,9 @@ func (s *Service) insertParams(ctx context.Context, id, teamID uuid.UUID, a auth
 // also forgets when capabilities were read and reads them again from the new
 // endpoint, so nothing is approved on the strength of the old one. Audited as
 // mcp_server.update with whether the header value changed (never the value).
+// A request that changes nothing (for example the capture switch resent at its
+// current value) writes nothing: no revision bump and no audit entry, as a
+// member role change to the same role.
 func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid.UUID, in UpdateInput, expectedRevision int64) (ServerView, error) {
 	var moved bool
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
@@ -568,6 +572,9 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 			if p.AuthProviderID, p.AuthScopes, err = checkRequirement(ctx, q, in.Requirement, cur.AuthProviderID); err != nil {
 				return err
 			}
+		}
+		if unchanged(cur, p, valueChanged, in.CapturePayloads) {
+			return nil
 		}
 		ps, err := LoadProviders(ctx, q)
 		if err != nil {
@@ -705,6 +712,16 @@ func (s *Service) applyAuth(p *dbgen.UpdateMCPServerParams, cur dbgen.McpServer,
 	}
 	p.AuthHeaderName, p.AuthValueCipher, p.AuthValueHint = &name, ct, valueHint(*in.AuthValue)
 	return nil
+}
+
+// unchanged reports whether an update would leave the server as it is: the
+// same settings, no new or removed header value, and the capture switch
+// absent or at its current value.
+func unchanged(cur dbgen.McpServer, p dbgen.UpdateMCPServerParams, valueChanged bool, capture *bool) bool {
+	return !valueChanged && p.Name == cur.Name && p.Description == cur.Description && p.URL == cur.URL &&
+		p.TimeoutSeconds == cur.TimeoutSeconds && p.Enabled == cur.Enabled && equalPtr(p.AuthHeaderName, cur.AuthHeaderName) &&
+		p.AuthProviderID == cur.AuthProviderID && slices.Equal(p.AuthScopes, cur.AuthScopes) &&
+		(capture == nil || *capture == cur.CapturePayloads)
 }
 
 func setIf[T any](dst *T, v *T) {

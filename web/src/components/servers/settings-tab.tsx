@@ -19,7 +19,7 @@ import { api, ApiError, ifMatch, unwrap } from "../../api/client";
 import { authProvidersQuery } from "../../api/queries";
 import { invalidScopeText, scopesProblem } from "../providers/labels";
 import { useAuthConfig } from "../../session";
-import { captureWhat, useCaptureRetention } from "../capture";
+import { captureWhat, keptFallback, useCaptureRetention } from "../capture";
 import { ConfirmMutationDialog } from "../confirm-dialog";
 import { Switch } from "@/components/ui/switch/switch";
 import { Alert } from "@/components/ui/alert/alert";
@@ -248,7 +248,7 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
         onConfirm={() => save.mutate({ before: server, urlChanged })}
         tone="primary"
         title={`Record what's sent to ${server.name}?`}
-        description={`${captureWhat} This covers calls through every gateway that offers its capabilities, including other teams' gateways; their callers are told it records. Readable by ${server.teamName}'s owners and admins and by platform staff; every view is audited.`}
+        description={`${captureWhat} This covers calls through every gateway that offers its capabilities, including other teams' gateways; their callers are told it records. Readable by ${server.teamName}'s owners and admins and by platform staff; every view is audited. ${kept ?? keptFallback}`}
         confirmLabel="Record call contents"
       />
     </SettingsPage>

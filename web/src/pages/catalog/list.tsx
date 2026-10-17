@@ -2,13 +2,15 @@
  * Catalog (everyone signed in, with or without a team): the MCP servers
  * teams published, with the owning team, what each offers (approved
  * capabilities only) and its health. Search in ?q=, filtered by the server.
- * On a phone, what a server offers moves under its name.
+ * On a phone, what a server offers moves under its name. A server whose team records call contents carries the
+ * "Records call contents" badge, as on its page.
  */
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Library } from "lucide-react";
 import { api, type Schemas, unwrap } from "../../api/client";
 import { catalogKey } from "../../api/queries";
+import { CaptureBadge } from "../../components/capture";
 import { HealthBadge } from "../../components/servers/badges";
 import { countsText, healthLabels } from "../../components/servers/labels";
 import { CountsCell } from "../../components/servers/server-columns";
@@ -34,7 +36,23 @@ const columns = (narrow: boolean): DataTableColumn<Server>[] => [
     rowHeader: true,
     hideable: false,
     sortable: true,
-    cell: (x) => <CellText className={s.compactCell} primary={<TextLink render={link(x)}>{x.name}</TextLink>} secondary={narrow ? `${x.teamName} · ${countsText(x.counts)}` : x.teamName} />,
+    cell: (x) => (
+      <CellText
+        className={s.compactCell}
+        primary={
+          <>
+            <TextLink render={link(x)}>{x.name}</TextLink>
+            {x.capturePayloads && (
+              <>
+                {" "}
+                <CaptureBadge />
+              </>
+            )}
+          </>
+        }
+        secondary={narrow ? `${x.teamName} · ${countsText(x.counts)}` : x.teamName}
+      />
+    ),
   },
   {
     id: "description",

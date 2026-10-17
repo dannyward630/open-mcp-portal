@@ -2,18 +2,21 @@
  * One call record (/teams/$team/calls/$callId and /admin/calls/$callId): its
  * metadata, and when its contents were recorded (and the viewer may open
  * them), the Contents card that loads them only on request. Rows of every
- * call list link here.
+ * call list link here. A refusal (403: a team member below admin) is
+ * explained, with nothing to retry.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
-import { api, unwrap } from "../../api/client";
+import { ApiError, api, unwrap } from "../../api/client";
 import { isNotFound, NotFoundState } from "../not-found";
 import { PageSkeleton } from "../page-skeleton";
 import { ErrorAlert } from "@/components/ui/alert/alert";
 import { Badge } from "@/components/ui/badge/badge";
 import { Card } from "@/components/ui/card/card";
 import { DescriptionList } from "@/components/ui/description-list/description-list";
+import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Stack } from "@/components/ui/layout/layout";
 import { PageHeader } from "@/components/ui/page-header/page-header";
 import { TextLink } from "@/components/ui/text-link/text-link";
@@ -21,6 +24,7 @@ import { Time } from "@/components/ui/time/time";
 import s from "../../pages/shared.module.css";
 import { OutcomeBadge } from "./badges";
 import { CallPayloadCard, PayloadElsewhere, type PayloadScope } from "./call-payload";
+import g from "./call.module.css";
 import { CallError, principalDetail, principalName, useProviderName } from "./calls-table";
 import type { McpCall } from "./labels";
 
@@ -51,15 +55,37 @@ type Props = {
   callId: string;
   /** May open recorded contents here (team owners and admins; platform staff in Admin). */
   canViewPayload: boolean;
-  /** Why they can't, when the call was recorded (platform staff on a team's page). */
+  /**
+   * Where to open the contents instead (platform staff on a team's page, whose team record never says "captured":
+   * the caller decides when to show it). Shown in place of the Contents card when canViewPayload is false.
+   */
   elsewhere?: ReactNode;
 };
+
+/** Who reads call records, for a refusal. */
+const refusedText = {
+  team: { title: "Call records are for the team's owners and admins.", description: "Ask one of them if you need the details of this call." },
+  admin: { title: "Call records in Admin are for platform admins and auditors.", description: "Ask a platform admin if you need access." },
+};
+
+function Refused({ scope }: { scope: PayloadScope }) {
+  const t = refusedText[scope.kind];
+  return (
+    <Stack gap={6} className={s.page}>
+      <PageHeader title="No access to this call" />
+      <Card>
+        <EmptyState icon={<ShieldAlert />} title={t.title} description={t.description} />
+      </Card>
+    </Stack>
+  );
+}
 
 export function CallPage({ scope, callId, canViewPayload, elsewhere }: Props) {
   const id = Number(callId);
   const call = useQuery(callQuery(scope, id));
   if (call.isLoading) return <PageSkeleton />;
   if (isNotFound(call.error) || !(Number.isSafeInteger(id) && id > 0)) return <NotFoundState what="object" />;
+  if (call.error instanceof ApiError && call.error.status === 403) return <Refused scope={scope} />;
   if (!call.data) return <ErrorAlert error={call.error} title="Couldn't load this call" onRetry={() => void call.refetch()} />;
   const c = call.data;
   const gatewayLink =
@@ -67,7 +93,7 @@ export function CallPage({ scope, callId, canViewPayload, elsewhere }: Props) {
   return (
     <Stack gap={6} className={s.page}>
       <PageHeader
-        title={<span className={s.mono}>{c.exposedName ?? c.method}</span>}
+        title={<span className={g.title}>{c.exposedName ?? c.method}</span>}
         meta={
           <span className={s.badges}>
             <OutcomeBadge outcome={c.outcome} />
@@ -107,7 +133,7 @@ export function CallPage({ scope, callId, canViewPayload, elsewhere }: Props) {
           ]}
         />
       </Card>
-      {c.captured && (canViewPayload ? <CallPayloadCard scope={scope} callId={c.id} /> : elsewhere ? <PayloadElsewhere>{elsewhere}</PayloadElsewhere> : null)}
+      {canViewPayload ? c.captured && <CallPayloadCard scope={scope} callId={c.id} /> : elsewhere && <PayloadElsewhere>{elsewhere}</PayloadElsewhere>}
     </Stack>
   );
 }

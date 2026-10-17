@@ -55,17 +55,32 @@ describe("Gateway › Settings: rate limit and recording", () => {
 
     await u.selectOptions(mode, "custom");
     expect(screen.getByText("At most 3,000 (the platform's ceiling).")).toBeInTheDocument();
+    expect(screen.getByText("Applies now: 2,000 per minute. Your change applies after saving.")).toBeInTheDocument();
     const rate = screen.getByRole("textbox", { name: "Requests per minute" });
     await u.type(rate, "4000");
     expect(screen.getByText("At most the ceiling, 3,000 per minute.")).toBeInTheDocument();
     expect(screen.getByText("Not saved: fix the highlighted field")).toBeInTheDocument();
+    // An invalid value is never previewed.
+    expect(screen.getByText("Applies now: 2,000 per minute. Your change applies after saving.")).toBeInTheDocument();
     await u.clear(rate);
     await u.type(rate, "1500");
+    expect(screen.getByText("Applies now: 2,000 per minute. After saving: 1,500 per minute.")).toBeInTheDocument();
     await u.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(patches(calls)).toHaveLength(1));
     expect(patches(calls)[0]?.body).toEqual({ name: "Support tools", description: gateway().description, enabled: true, rateLimitPerMinute: 1500 });
     expect(patches(calls)[0]?.headers.get("If-Match")).toBe('"7"');
     expect(await screen.findByText("Rate limit now: 1,500 per minute.")).toBeInTheDocument();
+    expect(await screen.findByText("Applies now: 1,500 per minute.")).toBeInTheDocument();
+  });
+
+  it("previews going back to the inherited limit before saving", async () => {
+    const u = userEvent.setup();
+    mockApi(gatewayRoutes("owner", () => gateway({ capturePayloads: false, rateLimitPerMinute: 500, effectiveRateLimitPerMinute: 500 })));
+    renderApp(`${gwRecord}?tab=settings`);
+    const mode = await screen.findByRole("combobox", { name: "Limit" });
+    expect(screen.getByText("Applies now: 500 per minute.")).toBeInTheDocument();
+    await u.selectOptions(mode, "inherit");
+    expect(await screen.findByText("Applies now: 500 per minute. After saving: 2,000 per minute.")).toBeInTheDocument();
   });
 
   it("explains recording and asks before turning it on", async () => {
@@ -84,6 +99,7 @@ describe("Gateway › Settings: rate limit and recording", () => {
     const ask = await screen.findByRole("alertdialog", { name: "Record what's sent through Support tools?" });
     expect(ask).toHaveTextContent("[REDACTED]");
     expect(ask).toHaveTextContent("every view is audited");
+    expect(ask).toHaveTextContent("Kept for 30 days, then deleted.");
     expect(patches(calls)).toHaveLength(0);
     await u.click(within(ask).getByRole("button", { name: "Cancel" }));
     expect(patches(calls)).toHaveLength(0);
@@ -144,6 +160,7 @@ describe("Server › Settings: recording", () => {
     await u.click(screen.getByRole("button", { name: "Save settings" }));
     const ask = await screen.findByRole("alertdialog", { name: "Record what's sent to Service status?" });
     expect(ask).toHaveTextContent("including other teams' gateways");
+    expect(ask).toHaveTextContent("Kept for 30 days, then deleted.");
     await u.click(within(ask).getByRole("button", { name: "Record call contents" }));
     await waitFor(() => expect(patches(calls)[0]?.body).toMatchObject({ capturePayloads: true }));
     expect(await screen.findByText("Records call contents")).toBeInTheDocument();
@@ -207,9 +224,18 @@ describe("Telling callers that contents are recorded", () => {
   it("the catalog marks a server whose team records contents", async () => {
     mockApi({
       ...shellRoutes("none", null),
-      "GET /v1/catalog/servers": () => page([catalogServer({ capturePayloads: true })]),
+      "GET /v1/catalog/servers": () => page([catalogServer({ capturePayloads: true }), catalogServer({ id: "srv_quiet", name: "Quiet server", capturePayloads: false })]),
       [`GET /v1/catalog/servers/${serverId}`]: () => ({ server: catalogServer({ capturePayloads: true }), capabilities: [] }),
     });
+    // The list carries the same badge as the page, only on the server that records.
+    const { unmount } = renderApp("/catalog");
+    const table = await screen.findByRole("table", { name: "Published MCP servers" });
+    const recording = (await within(table).findByRole("link", { name: catalogServer().name })).closest("tr");
+    const quiet = within(table).getByRole("link", { name: "Quiet server" }).closest("tr");
+    expect(recording && within(recording).getByText("Records call contents")).toBeInTheDocument();
+    expect(quiet && within(quiet).queryByText("Records call contents")).toBeNull();
+    unmount();
+
     renderApp(`/catalog/${serverId}`);
     expect(await screen.findByText("This server's team records call contents")).toBeInTheDocument();
     expect(screen.getByText("Records call contents")).toBeInTheDocument();
