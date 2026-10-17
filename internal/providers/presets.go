@@ -38,7 +38,7 @@ var Presets = []Preset{
 		DocsURL: "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app",
 		Notes: "OAuth app tokens don't expire unless the app opts into expiring tokens. GitHub has no RFC 7009 revocation " +
 			"endpoint: disconnecting erases the token here only (people can revoke the app in their GitHub settings). " +
-			"Scopes come back comma-separated, which the gateway understands.",
+			"Scopes come back comma-separated, which the portal understands.",
 	},
 	{
 		Preset: "google", Name: "Google",

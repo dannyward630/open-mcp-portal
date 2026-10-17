@@ -41,7 +41,7 @@ describe("Admin → Internal networks", () => {
     expect(within(deployment).getByText("*.svc.cluster.local")).toBeInTheDocument();
     expect(within(deployment).getByText("Subdomains of svc.cluster.local, not svc.cluster.local itself")).toBeInTheDocument();
     expect(within(deployment).queryByRole("button", { name: /Actions for/ })).toBeNull();
-    await waitFor(() => expect(document.title).toBe("Internal networks · Admin · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Internal networks · Admin · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
 
     await u.click(screen.getByRole("button", { name: "Add network or host" }));

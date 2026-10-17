@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // DevIssuer is the issuer recorded for development-login identities.
-const DevIssuer = "open-mcp-gateway:development"
+const DevIssuer = "open-mcp-portal:development"
 
 // devAccounts are fixed local personas. Roles are granted once on first use,
 // like production bootstrap, so demotions made while testing persist.

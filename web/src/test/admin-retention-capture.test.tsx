@@ -118,7 +118,7 @@ describe("Admin → Payload capture", () => {
     expect(screen.getByText("apikey")).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Redaction patterns" });
     expect(within(table).getByText("EMP-[0-9]{6}")).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("Payload capture · Admin · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Payload capture · Admin · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
 
     await u.click(screen.getByRole("button", { name: "Add pattern" }));

@@ -100,7 +100,7 @@ const teamNav: TeamNavItem[] = [
     label: terms.serviceAccounts,
     icon: icon(Bot),
     access: (a) => a.member || a.staff,
-    keywords: ["service account", "bot", "robot", "automation", "ci", "headless", "agent", "script", "key", "keys", "rotate", "omcp_sa"],
+    keywords: ["service account", "bot", "robot", "automation", "ci", "headless", "agent", "script", "key", "keys", "rotate", "omp_sa"],
   },
   // Owners, admins and editors (as the API allows; an archived team's editors still read it), and platform staff.
   {

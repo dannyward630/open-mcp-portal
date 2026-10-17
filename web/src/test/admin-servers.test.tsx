@@ -45,7 +45,7 @@ describe("Admin → MCP servers", () => {
     const { container } = renderApp(`/admin/servers/${serverId}`);
     expect(await screen.findByRole("heading", { level: 1, name: "Service status" })).toBeInTheDocument();
     expect(screen.getByText(/The team asked to publish this server/)).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("Service status · MCP servers · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Service status · MCP servers · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
     await u.click(screen.getByRole("button", { name: "Approve…" }));
     const dialog = await screen.findByRole("dialog", { name: "Approve Service status for the catalog?" });

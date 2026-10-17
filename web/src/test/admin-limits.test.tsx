@@ -41,7 +41,7 @@ describe("Admin → Limits", () => {
     expect(within(table).getByText("Per person")).toBeInTheDocument();
     // Keys teams can't override have no ceiling.
     expect(within(table).getAllByText("Not overridable")).toHaveLength(2);
-    await waitFor(() => expect(document.title).toBe("Limits · Admin · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Limits · Admin · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
 
     await retype(u, "Default for Per person (requests per minute)", "500");

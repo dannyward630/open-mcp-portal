@@ -63,23 +63,23 @@ export function serverProblems(f: ServerForm, auth: AuthEdit, opts: { dev: boole
 
 /** Why the server refused a URL (422 url_not_allowed, details.reason), in a sentence. */
 const urlReasons: Record<string, ReactNode> = {
-  invalid: "This isn't a URL the gateway can use. Enter a full address, such as https://tools.example.com/mcp.",
+  invalid: "This isn't a URL the portal can use. Enter a full address, such as https://tools.example.com/mcp.",
   too_long: "This URL is too long. Use a shorter address.",
   userinfo: "Remove the user name and password from the URL. Send credentials in the header below instead.",
   query: "Remove the query (the part from ?). Send credentials in the header below instead.",
   fragment: "Remove the fragment (the part from #).",
   scheme: "Use an https address. Plain http works only for internal hosts a platform admin has allowed it for.",
   private_address: <PrivateAddressRefusal />,
-  blocked_address: "The gateway never connects to loopback, link-local (such as cloud metadata), multicast or broadcast addresses. Use the server's real address.",
+  blocked_address: "The portal never connects to loopback, link-local (such as cloud metadata), multicast or broadcast addresses. Use the server's real address.",
 };
 
-/** A server's refusal as field errors: a taken slug, a URL the gateway won't connect to. */
+/** A server's refusal as field errors: a taken slug, a URL the portal won't connect to. */
 export function serverFieldErrors(err: unknown): { slug?: string; url?: ReactNode } {
   if (!(err instanceof ApiError)) return {};
   if (err.code === "slug_taken") return { slug: "Another server uses this slug. Choose another." };
   if (err.code === "url_not_allowed") {
     const reason = typeof err.details?.reason === "string" ? err.details.reason : "";
-    return { url: urlReasons[reason] ?? `The gateway won't connect to this address. ${err.message}`.trim() };
+    return { url: urlReasons[reason] ?? `The portal won't connect to this address. ${err.message}`.trim() };
   }
   return {};
 }

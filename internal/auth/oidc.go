@@ -14,12 +14,12 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 const (
-	stateCookie   = "omg_oidc_state"
+	stateCookie   = "omp_oidc_state"
 	loginStateTTL = 10 * time.Minute
 	maxClaimsSize = 32 << 10
 )

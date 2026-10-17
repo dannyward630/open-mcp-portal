@@ -3,11 +3,11 @@ package httpapi
 import (
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
-	"github.com/ncecere/open-mcp-gateway/internal/calls"
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/apikeys"
+	"github.com/ncecere/open-mcp-portal/internal/calls"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // Conversions of gateways, API keys and call records to API types. An API

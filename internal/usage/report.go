@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/teams"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/teams"
 )
 
 // Groupings.

@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/apikeys"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // DefaultBatchSize is how many values one transaction re-encrypts.
@@ -176,7 +176,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box, p Peppers, o
 	}
 	var err error
 	if sum.PepperKeys, sum.OAuthTokens, err = PepperReport(ctx, dbgen.New(pool), p); err != nil {
-		return sum, fmt.Errorf("pepper report: %w (has `open-mcp-gateway migrate` run?)", err)
+		return sum, fmt.Errorf("pepper report: %w (has `open-mcp-portal migrate` run?)", err)
 	}
 	printPepper(o.Out, p, sum)
 	if o.DryRun {

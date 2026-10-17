@@ -36,7 +36,7 @@ type Props = {
 };
 
 export const identityHelp =
-  "Every call carries a token the gateway signs with the caller's name, email and teams, so the server knows who's calling. Turn it off for servers run outside the company, such as GitHub's hosted MCP server, so that personal data isn't sent to a third party.";
+  "Every call carries a token the portal signs with the caller's name, email and teams, so the server knows who's calling. Turn it off for servers run outside the company, such as GitHub's hosted MCP server, so that personal data isn't sent to a third party.";
 
 export function AuthModeFields({ team, url, urlError, value, onChange, detected, onDetected, onUseUrl, server, secret, setSecret, errors, disabled, headerFields, notes }: Props) {
   const canOAuth = oauthUsable(detected) || server?.authMode === "oauth";
@@ -51,7 +51,7 @@ export function AuthModeFields({ team, url, urlError, value, onChange, detected,
     <div className={`${m.wide} ${m.stack}`}>
       {!disabled && <DetectSignIn team={team} url={url} urlError={urlError} result={detected} onResult={onDetected} onUseUrl={onUseUrl} />}
       <RadioGroup<AuthMode>
-        legend="How the gateway authenticates"
+        legend="How the portal authenticates"
         options={options}
         value={value.mode}
         onValueChange={(mode) => onChange({ ...value, mode })}

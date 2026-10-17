@@ -20,14 +20,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
-	"github.com/ncecere/open-mcp-gateway/internal/app"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/observability"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/apikeys"
+	"github.com/ncecere/open-mcp-portal/internal/app"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/observability"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // Phase 6 (docs/phase6-operations.md): rate limits shared by replicas,
@@ -455,7 +455,7 @@ func TestPayloadCapture(t *testing.T) {
 	imageCall := e.lastCall()
 	call("support", "prompts/get", map[string]any{"name": "status__incident_summary", "arguments": map[string]any{"service": "vpn"}})
 	e.lastCall()
-	call("support", "resources/read", map[string]any{"uri": "omcp://status/status://services/email"})
+	call("support", "resources/read", map[string]any{"uri": "omp://status/status://services/email"})
 	readCall := e.lastCall()
 	if n := e.scalar(`SELECT count(*)::text || ' ' || bool_and(by_gateway AND NOT by_server)::text FROM mcp_call_payloads`); n != "5 true" {
 		t.Fatalf("captured = %s", n)
@@ -487,7 +487,7 @@ func TestPayloadCapture(t *testing.T) {
 		t.Errorf("image = %s", p.Result.Content)
 	}
 	_, p, _ = e.payload(e.owner, base+readCall+"/payload")
-	if p.Arguments.Content != `{"uri":"omcp://status/status://services/email"}` {
+	if p.Arguments.Content != `{"uri":"omp://status/status://services/email"}` {
 		t.Errorf("read arguments = %s", p.Arguments.Content)
 	}
 	// Call detail and list say captured for those who may open it.
@@ -627,10 +627,10 @@ func TestPepperRotation(t *testing.T) {
 	// A connected app's tokens, made under the old pepper.
 	raw := make([]byte, 32)
 	_, _ = rand.Read(raw)
-	access := "omat_" + base64.RawURLEncoding.EncodeToString(raw)
+	access := "ompat_" + base64.RawURLEncoding.EncodeToString(raw)
 	rolled := replica(t, pool, func(c *config.Config) { c.APIKeyPepper, c.APIKeyPepperPrevious = otherPepper, testEncryptionKey })
 	grant := e.scalar(`INSERT INTO oauth_grants (user_id, gateway_id, client_id, client_kind, client_name, resource)
-		SELECT u.id, g.id, 'omcl_rot', 'registered', 'Rot client', $1 FROM users u, gateways g WHERE u.email = 'blair@localhost' AND g.slug = 'support'
+		SELECT u.id, g.id, 'ompcl_rot', 'registered', 'Rot client', $1 FROM users u, gateways g WHERE u.email = 'blair@localhost' AND g.slug = 'support'
 		RETURNING id::text`, rolled.URL+"/mcp/support")
 	e.scalar(`INSERT INTO oauth_tokens (grant_id, kind, token_hash, resource, expires_at) VALUES ($1, 'access', $2, $3, now() + interval '1 hour')
 		RETURNING id::text`, grant, hmacHex(testEncryptionKey, "oauth:", access), rolled.URL+"/mcp/support")
@@ -718,8 +718,8 @@ func TestCallDetailAndUsageEndpoints(t *testing.T) {
 	rec := httptest.NewRecorder()
 	m.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
 	text := rec.Body.String()
-	if !strings.Contains(text, `omg_mcp_requests_total{method="tools/call",outcome="ok"}`) || !strings.Contains(text, `omg_mcp_servers{state=`) ||
-		!strings.Contains(text, "omg_db_pool_max_connections") {
+	if !strings.Contains(text, `omp_mcp_requests_total{method="tools/call",outcome="ok"}`) || !strings.Contains(text, `omp_mcp_servers{state=`) ||
+		!strings.Contains(text, "omp_db_pool_max_connections") {
 		t.Fatal("metrics missing")
 	}
 	for _, s := range []string{e.key.Key.Id.String(), "blair@localhost", e.userID("blair@localhost")} {

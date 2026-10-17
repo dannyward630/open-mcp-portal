@@ -74,7 +74,7 @@ export function MyGatewayPage() {
         title="What it offers you"
         description={
           capabilities.some((c) => isResourceKind(c.kind))
-            ? "Clients see tools and prompts as server__name, and resources as omcp://server/uri (a template's {variables} are filled in by the client). Only what you may use right now is listed."
+            ? "Clients see tools and prompts as server__name, and resources as omp://server/uri (a template's {variables} are filled in by the client). Only what you may use right now is listed."
             : "Clients see each one as server__name. Only what you may use right now is listed."
         }
       >

@@ -108,7 +108,7 @@ function ConnectionCard({ server, scope, abilities, onRun }: Props & { onRun: ()
   return (
     <Card
       title="Connection"
-      description="The gateway reaches the server over Streamable HTTP. A scheduled check keeps its health up to date."
+      description="The portal reaches the server over Streamable HTTP. A scheduled check keeps its health up to date."
       actions={
         abilities.canEdit && (
           <div className={m.actions}>

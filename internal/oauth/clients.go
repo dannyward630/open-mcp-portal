@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // Client kinds (oauth_grants.client_kind; the API's OAuthClientInfo.kind).

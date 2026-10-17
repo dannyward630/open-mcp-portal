@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ncecere/open-mcp-gateway/internal/observability"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/observability"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // The health loop re-tests every enabled server of an active team on
@@ -21,7 +21,7 @@ import (
 // replicas taking turns don't test it twice.
 
 // healthLockKey is the advisory lock of the health loop.
-const healthLockKey = "omg.mcp-health-checks"
+const healthLockKey = "omp.mcp-health-checks"
 
 // healthConcurrency bounds the servers tested at once.
 const healthConcurrency = 4

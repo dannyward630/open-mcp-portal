@@ -1,7 +1,7 @@
 // Package config resolves runtime configuration.
 //
 // Precedence: built-in defaults, then the optional YAML file named by
-// OMG_CONFIG_FILE, then environment variables. Secret-bearing settings can
+// OMP_CONFIG_FILE, then environment variables. Secret-bearing settings can
 // also be read from a file named by the matching *_FILE variable (or
 // *_file YAML key), which is how Kubernetes Secrets are mounted.
 //
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
 )
 
 type Config struct {
@@ -108,7 +108,7 @@ type Instance struct {
 }
 
 // DefaultInstanceName is the product name used when INSTANCE_NAME is unset.
-const DefaultInstanceName = "Open MCP Gateway"
+const DefaultInstanceName = "Open MCP Portal"
 
 type OIDC struct {
 	Issuer       string

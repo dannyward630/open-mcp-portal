@@ -9,12 +9,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Discovery: Test reads a server's capabilities without storing them;

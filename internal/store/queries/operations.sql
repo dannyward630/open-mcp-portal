@@ -112,10 +112,10 @@ DELETE FROM mcp_call_payloads WHERE call_id IN (SELECT call_id FROM doomed);
 
 -- name: EnableCallsPurge :exec
 -- Lets this transaction delete call records (the append-only trigger).
-SELECT set_config('omg.calls_purge', 'on', true);
+SELECT set_config('omp.calls_purge', 'on', true);
 
 -- name: EnableAuditPurge :exec
-SELECT set_config('omg.audit_purge', 'on', true);
+SELECT set_config('omp.audit_purge', 'on', true);
 
 -- name: PurgeMCPCalls :execrows
 -- One batch of call records older than their period (as for payloads, with

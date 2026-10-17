@@ -32,7 +32,7 @@ export function useStartConnection() {
     mutationFn: async (body: Schemas["ConnectStart"]) => {
       const out = unwrap(await api.POST("/v1/me/connections/start", { body }));
       const target = safeAuthorizeUrl(out.authorizeUrl);
-      if (!target) throw new Error("The gateway answered with an address your browser can't go to, so you weren't sent anywhere.");
+      if (!target) throw new Error("The portal answered with an address your browser can't go to, so you weren't sent anywhere.");
       return target;
     },
     onSuccess: (target) => redirectTo.go(target),

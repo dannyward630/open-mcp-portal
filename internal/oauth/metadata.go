@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Client ID Metadata Documents: a client_id that is an https URL names a
@@ -175,13 +175,13 @@ func (d *metadataDocs) fetchDoc(ctx context.Context, id string) (Client, time.Du
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, id, nil)
 	if err != nil {
-		return Client{}, 0, 0, docBadURL, docError("The client_id isn't a URL the gateway can fetch.")
+		return Client{}, 0, 0, docBadURL, docError("The client_id isn't a URL the portal can fetch.")
 	}
 	req.Header.Set("Accept", "application/json")
 	res, err := d.client.Do(req)
 	if err != nil {
 		if errors.Is(err, upstream.ErrBlockedAddress) {
-			return Client{}, 0, 0, docBlocked, docError("The client's metadata document is on an address the gateway doesn't fetch from " +
+			return Client{}, 0, 0, docBlocked, docError("The client's metadata document is on an address the portal doesn't fetch from " +
 				"(loopback, link-local, or an internal network no platform admin has allowed).")
 		}
 		if errors.Is(err, errDocRedirect) {
@@ -189,9 +189,9 @@ func (d *metadataDocs) fetchDoc(ctx context.Context, id string) (Client, time.Du
 			if res != nil { // the redirect itself, its body already closed
 				status = res.StatusCode
 			}
-			return Client{}, 0, status, docRedirect, docError("The client's metadata document redirects, which the gateway doesn't follow.")
+			return Client{}, 0, status, docRedirect, docError("The client's metadata document redirects, which the portal doesn't follow.")
 		}
-		return Client{}, 0, 0, docUnreachable, docError("The gateway couldn't fetch the client's metadata document at " + hostOf(id) + ".")
+		return Client{}, 0, 0, docUnreachable, docError("The portal couldn't fetch the client's metadata document at " + hostOf(id) + ".")
 	}
 	defer res.Body.Close()
 	status := res.StatusCode
@@ -206,7 +206,7 @@ func (d *metadataDocs) fetchDoc(ctx context.Context, id string) (Client, time.Du
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxDocBytes+1))
 	if err != nil {
-		return fail(docUnreadable, "The gateway couldn't read the client's metadata document.")
+		return fail(docUnreadable, "The portal couldn't read the client's metadata document.")
 	}
 	if len(body) > maxDocBytes {
 		return fail(docTooLarge, "The client's metadata document is larger than 16 KiB.")

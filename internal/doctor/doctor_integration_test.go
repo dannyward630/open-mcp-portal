@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/doctor"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/doctor"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 func find(rep doctor.Report, group, name string) (doctor.Check, bool) {
@@ -36,7 +36,7 @@ func TestDoctorHealthyInstall(t *testing.T) {
 	if !rep.OK {
 		t.Fatalf("report not ok: %+v", rep.Checks)
 	}
-	if c, _ := find(rep, "postgres", "migrations"); c.Status != doctor.OK || !strings.Contains(c.Detail, "current (version 12)") {
+	if c, _ := find(rep, "postgres", "migrations"); c.Status != doctor.OK || !strings.Contains(c.Detail, "current (version 13)") {
 		t.Errorf("migrations = %+v", c)
 	}
 	if c, _ := find(rep, "safety", "production"); c.Status != doctor.Info {

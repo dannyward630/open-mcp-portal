@@ -3,9 +3,9 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/ncecere/open-mcp-gateway/internal/auth"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
 )
 
 // meRoute is GET /v1/me: the signed-in user. With optional=true a request

@@ -459,7 +459,7 @@ export interface paths {
         /**
          * Register a remote MCP server (editors and above); reads its capabilities at once
          * @description 409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused (details.reason invalid, too_long, userinfo, query, fragment, scheme, private_address or blocked_address; private_address can be allowed by a platform admin in Internal networks). The server is created even when discovery fails; refresh then says why. requirement (optional) names an enabled auth provider (422 provider_not_found otherwise) and its scopes (400 invalid_scope, details.scope). 400 invalid_auth_header also for the reserved MCP-Gateway-Identity, MCP-Gateway-Provider and MCP-Gateway-Provider-Token.
-         *     authMode oauth (docs/phase7-upstream-oauth.md) needs oauth. The gateway runs the sign-in discovery again itself (it never trusts endpoints sent by the browser) and, for registration dcr (or auto resolving to it), registers its client before saving: 422 oauth_discovery_failed (details.problems as in DetectAuthResult) or 502 oauth_registration_failed, and nothing is saved. 422 auth_conflict when oauth is combined with a static Authorization header or a requirement (details.reason static_authorization or requirement). 422 registration_unavailable (the chosen or auto registration isn't offered; details.options). 422 client_required (manual without clientId, or without clientSecret unless tokenAuthMethod none). 422 provider_mismatch (platform_provider whose authorization and token endpoints differ from the discovered ones, or turned off). In oauth mode the first capability discovery is skipped (refresh and refreshError null, setupRequired true): someone signs in with authorizeTeamMcpServerSetup first. Audited as mcp_server.create and mcp_server.auth_update (never a secret).
+         *     authMode oauth (docs/phase7-upstream-oauth.md) needs oauth. The portal runs the sign-in discovery again itself (it never trusts endpoints sent by the browser) and, for registration dcr (or auto resolving to it), registers its client before saving: 422 oauth_discovery_failed (details.problems as in DetectAuthResult) or 502 oauth_registration_failed, and nothing is saved. 422 auth_conflict when oauth is combined with a static Authorization header or a requirement (details.reason static_authorization or requirement). 422 registration_unavailable (the chosen or auto registration isn't offered; details.options). 422 client_required (manual without clientId, or without clientSecret unless tokenAuthMethod none). 422 provider_mismatch (platform_provider whose authorization and token endpoints differ from the discovered ones, or turned off). In oauth mode the first capability discovery is skipped (refresh and refreshError null, setupRequired true): someone signs in with authorizeTeamMcpServerSetup first. Audited as mcp_server.create and mcp_server.auth_update (never a secret).
          */
         post: operations["createTeamMcpServer"];
         delete?: never;
@@ -581,8 +581,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Sign in to an oauth server as yourself so the gateway can read its capabilities (editors and above)
-         * @description Browser session only (403 session_required with an API key). Starts the connect flow of startMyConnection for the caller's own connection to this server (the server's scopes, PKCE S256, the resource parameter unless sendResource is false, a single-use state bound to this session, person and server). After the callback that connection becomes the server's setup connection (McpServer.oauth.setupConnection, audited as mcp_server.auth_update with setupBy) and the gateway reads the capabilities with it at once (mcp_server.refresh; a failure is stored as lastRefreshError). The browser returns to returnTo (default /teams/{team}/servers/{serverId}?setup=connected) or to /connect/done when the sign-in failed. 409 not_oauth (authMode isn't oauth); 409 team_archived; 422 provider_mismatch (a linked platform provider was turned off or no longer matches); 400 invalid_return_to; 429 slow_down (shared with startMyConnection).
+         * Sign in to an oauth server as yourself so the portal can read its capabilities (editors and above)
+         * @description Browser session only (403 session_required with an API key). Starts the connect flow of startMyConnection for the caller's own connection to this server (the server's scopes, PKCE S256, the resource parameter unless sendResource is false, a single-use state bound to this session, person and server). After the callback that connection becomes the server's setup connection (McpServer.oauth.setupConnection, audited as mcp_server.auth_update with setupBy) and the portal reads the capabilities with it at once (mcp_server.refresh; a failure is stored as lastRefreshError). The browser returns to returnTo (default /teams/{team}/servers/{serverId}?setup=connected) or to /connect/done when the sign-in failed. 409 not_oauth (authMode isn't oauth); 409 team_archived; 422 provider_mismatch (a linked platform provider was turned off or no longer matches); 400 invalid_return_to; 429 slow_down (shared with startMyConnection).
          */
         post: operations["authorizeTeamMcpServerSetup"];
         delete?: never;
@@ -955,7 +955,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Say whether the gateway would reach an MCP server URL now, and why (platform admins and auditors)
+         * Say whether the portal would reach an MCP server URL now, and why (platform admins and auditors)
          * @description Applies the same rule as saving and dialling, with this replica's copy of the allowlist. Resolves the host name (at most 3 seconds) but never connects. Every resolved address must be allowed.
          */
         post: operations["adminCheckNetworkUrl"];
@@ -1776,7 +1776,7 @@ export interface paths {
         post?: never;
         /**
          * Disconnect one of the caller's accounts; its tokens are erased at once
-         * @description Where the provider has a revocation endpoint the gateway also revokes the tokens there (best effort, recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again. Audited as provider_connection.revoke (reason user).
+         * @description Where the provider has a revocation endpoint the portal also revokes the tokens there (best effort, recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again. Audited as provider_connection.revoke (reason user).
          */
         delete: operations["revokeMyConnection"];
         options?: never;
@@ -2232,7 +2232,7 @@ export interface components {
         InstanceInfo: {
             /**
              * @description Product name shown in the UI and page titles
-             * @example Open MCP Gateway
+             * @example Open MCP Portal
              */
             name: string;
             /**
@@ -2508,7 +2508,7 @@ export interface components {
              */
             refreshedAt?: string | null;
             lastRefreshError?: string | null;
-            /** @description The auth provider and scopes whose user token the gateway sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride). */
+            /** @description The auth provider and scopes whose user token the portal sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride). */
             requirement?: components["schemas"]["McpServerRequirement"] | null;
             /** @description Record the arguments and results of calls to this server's capabilities through any gateway (redacted, truncated to 16 KiB per part; readable by the team's owners and admins and platform staff; kept for the captured_payloads retention period). Absent from servers before Phase 6. */
             capturePayloads?: boolean;
@@ -2786,7 +2786,7 @@ export interface components {
         /** @enum {string} */
         GatewayOwnerKind: "team" | "platform";
         /**
-         * @description Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+         * @description Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri} and resource templates as omp://{serverSlug}/{uriTemplate}
          * @enum {string}
          */
         GatewayCapabilityKind: "tool" | "prompt" | "resource" | "resource_template";
@@ -2900,7 +2900,7 @@ export interface components {
             /** @description The name the server uses */
             name: string;
             /**
-             * @description What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri} for resources and resource templates
+             * @description What clients see: {serverSlug}__{name} for tools and prompts, omp://{serverSlug}/{uri} for resources and resource templates
              * @example service-status__check_outage
              */
             exposedName: string;
@@ -2945,7 +2945,7 @@ export interface components {
             kind: components["schemas"]["GatewayCapabilityKind"];
             /** @description The name the server uses (a resource's URI, a template's URI template) */
             name: string;
-            /** @description What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and templates */
+            /** @description What clients see: {serverSlug}__{name}, or omp://{serverSlug}/{uri} for resources and templates */
             exposedName: string;
             title: string;
             description: string;
@@ -3023,7 +3023,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            /** @description The first characters of the key, to recognise it (omcp_xxxxxxxx) */
+            /** @description The first characters of the key, to recognise it (omp_xxxxxxxx) */
             prefix: string;
             /** @enum {string} */
             status: "active" | "expired" | "revoked";
@@ -3244,7 +3244,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            /** @description The first characters of the key (omcp_sa_xxxxxxxx) */
+            /** @description The first characters of the key (omp_sa_xxxxxxxx) */
             prefix: string;
             /** @enum {string} */
             status: "active" | "expired" | "revoked";
@@ -3287,7 +3287,7 @@ export interface components {
          */
         AuthProviderPresetName: "github" | "google" | "microsoft" | "atlassian" | "slack" | "gitlab";
         /**
-         * @description How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+         * @description How the portal authenticates to the token endpoint. none (a public client) requires pkce
          * @enum {string}
          */
         AuthProviderTokenAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
@@ -3555,10 +3555,10 @@ export interface components {
             lastUsedAt: string | null;
             /**
              * Format: date-time
-             * @description When the current access token expires (null; the provider gave no expiry). The gateway refreshes it before then when it has a refresh token
+             * @description When the current access token expires (null; the provider gave no expiry). The portal refreshes it before then when it has a refresh token
              */
             expiresAt: string | null;
-            /** @description The gateway holds a refresh token */
+            /** @description The portal holds a refresh token */
             refreshable: boolean;
         };
         ConnectStart: {
@@ -3615,12 +3615,12 @@ export interface components {
             expiresAt: string;
         };
         /**
-         * @description How the gateway authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
+         * @description How the portal authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
          * @enum {string}
          */
         McpServerAuthMode: "none" | "static_header" | "oauth";
         /**
-         * @description How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+         * @description How the portal got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the portal's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
          * @enum {string}
          */
         McpServerOAuthRegistration: "dcr" | "cimd" | "manual" | "platform_provider";
@@ -3636,7 +3636,7 @@ export interface components {
             name: string;
             teamSlug: string;
         };
-        /** @description The sign-in the gateway uses to read the server's capabilities and for manual tests (decision 42) */
+        /** @description The sign-in the portal uses to read the server's capabilities and for manual tests (decision 42) */
         McpServerOAuthSetupConnection: {
             /**
              * @description missing: nobody has signed in yet, or the person disconnected or was deleted. needs_reconsent: the sign-in lapsed (refresh refused, token revoked); refresh answers 409 setup_reconsent_required until an editor signs in again
@@ -3786,7 +3786,7 @@ export interface components {
             issParameterSupported: boolean;
             clientIdMetadataDocumentSupported: boolean;
         };
-        /** @description How the gateway can get a client, and what to give a manual one */
+        /** @description How the portal can get a client, and what to give a manual one */
         DetectAuthRegistration: {
             /** @description Always includes manual */
             options: components["schemas"]["McpServerOAuthRegistration"][];
@@ -3800,7 +3800,7 @@ export interface components {
              * @example https://mcp.example.com/connect/callback
              */
             redirectUri: string;
-            /** @description The gateway's Client ID Metadata Document (the client ID for cimd) */
+            /** @description The portal's Client ID Metadata Document (the client ID for cimd) */
             clientMetadataUrl: string;
         };
         DetectAuthProblem: {
@@ -3870,7 +3870,7 @@ export interface components {
             builtInDefault: components["schemas"]["RateLimitValue"];
             /**
              * Format: int64
-             * @description The most the gateway allows for any value (1000000)
+             * @description The most the portal allows for any value (1000000)
              */
             max: number;
             /**

@@ -42,7 +42,7 @@ func NewOIDCProvider(t testing.TB) *OIDCProvider {
 		t.Fatal(err)
 	}
 	p := &OIDCProvider{
-		ClientID: "omg-test", ClientSecret: "test-secret",
+		ClientID: "omp-test", ClientSecret: "test-secret",
 		codes: map[string]pendingCode{}, key: key,
 	}
 	mux := http.NewServeMux()

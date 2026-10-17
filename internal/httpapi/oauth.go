@@ -14,10 +14,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ncecere/open-mcp-gateway/internal/auth"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/oauth"
-	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
+	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/oauth"
+	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
 )
 
 const (

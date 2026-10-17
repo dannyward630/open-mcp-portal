@@ -1,5 +1,5 @@
 /*
- * The setup sign-in of a server in oauth mode (decision 42): the gateway
+ * The setup sign-in of a server in oauth mode (decision 42): the portal
  * reads the server's capabilities, and runs manual tests, with one person's
  * own sign-in. "Authorize to read its tools" (POST …/oauth/authorize-setup,
  * editors and above, browser session) sends the browser to the
@@ -25,7 +25,7 @@ export function useAuthorizeSetup(server: McpServer) {
     mutationFn: async () => {
       const out = unwrap(await api.POST("/v1/teams/{team}/mcp-servers/{serverId}/oauth/authorize-setup", { params: { path: { team: server.teamSlug, serverId: server.id } }, body: {} }));
       const target = safeAuthorizeUrl(out.authorizeUrl);
-      if (!target) throw new Error("The gateway answered with an address your browser can't go to, so you weren't sent anywhere.");
+      if (!target) throw new Error("The portal answered with an address your browser can't go to, so you weren't sent anywhere.");
       return target;
     },
     onSuccess: (target) => redirectTo.go(target),
@@ -65,7 +65,7 @@ export function SetupNotice({ server, scope, abilities, justCreated }: Props) {
   const can = canAuthorize(scope, abilities);
   return (
     <Alert tone={justCreated ? "info" : "warning"} title={title} actions={can ? <AuthorizeButton server={server} label="Authorize to read its tools" /> : undefined}>
-      The gateway reads {server.name}&apos;s tools, resources and prompts with one person&apos;s own sign-in.{" "}
+      The portal reads {server.name}&apos;s tools, resources and prompts with one person&apos;s own sign-in.{" "}
       {can
         ? `You'll sign in at ${urlHost(o.authorizationServer)} and allow ${scopesText(o.scopes, "its default access")}, then come back here, and the capabilities are read as you.`
         : "An editor, admin or owner of the team signs in to read them."}
@@ -92,7 +92,7 @@ export function SetupConnectedNotice({ server }: { server: McpServer }) {
   }
   return (
     <Alert tone="success" title={`Capabilities read as ${c.personName ?? "you"}`} onDismiss={dismiss}>
-      The gateway read {server.name}&apos;s capabilities with this sign-in, and uses it for tests and refreshes. Everyone else signs in as themselves the first time
+      The portal read {server.name}&apos;s capabilities with this sign-in, and uses it for tests and refreshes. Everyone else signs in as themselves the first time
       they call it.
     </Alert>
   );

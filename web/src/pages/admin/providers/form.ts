@@ -125,7 +125,7 @@ export function formOf(p: AuthProvider): ProviderForm {
   };
 }
 
-/** The keys a provider can't take as extra parameters (the gateway sets them). */
+/** The keys a provider can't take as extra parameters (the portal sets them). */
 export const reservedParams = ["response_type", "client_id", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method"];
 const paramKey = /^[A-Za-z0-9_.-]{1,64}$/;
 
@@ -140,7 +140,7 @@ export function parseParams(text: string, scopeParam: string): { params: Record<
     const key = line.slice(0, at).trim();
     const value = line.slice(at + 1).trim();
     if (!paramKey.test(key)) return { params, problem: `“${key}” isn't a parameter name: use letters, digits, dots, dashes and underscores.` };
-    if (reservedParams.includes(key) || key === scopeParam.trim()) return { params, problem: `The gateway sets “${key}” itself; remove it.` };
+    if (reservedParams.includes(key) || key === scopeParam.trim()) return { params, problem: `The portal sets “${key}” itself; remove it.` };
     if (key in params) return { params, problem: `“${key}” is listed twice.` };
     if (value.length > 500) return { params, problem: `“${key}”'s value is too long (at most 500 characters).` };
     params[key] = value;
@@ -234,18 +234,18 @@ export function updateBody(f: ProviderForm, secret: string): Schemas["AuthProvid
 
 /** Why the server refused an endpoint (422 url_not_allowed, details.reason). */
 const urlReasons: Record<string, string> = {
-  invalid: "This isn't an address the gateway can use.",
+  invalid: "This isn't an address the portal can use.",
   too_long: "This address is too long.",
   userinfo: "Remove the user name and password from the address.",
   query: "Remove the query (the part from ?). Add parameters under Extra authorization parameters instead.",
   fragment: "Remove the fragment (the part from #).",
   scheme: "Use an https address. Plain http works only for internal hosts a platform admin has allowed it for.",
-  private_address: "The gateway won't connect to this internal (private) address until its network is allowed in Internal networks.",
-  blocked_address: "The gateway never connects to loopback, link-local (such as cloud metadata), multicast or broadcast addresses.",
+  private_address: "The portal won't connect to this internal (private) address until its network is allowed in Internal networks.",
+  blocked_address: "The portal never connects to loopback, link-local (such as cloud metadata), multicast or broadcast addresses.",
 };
 
 const paramReasons: Record<string, string> = {
-  reserved: "The gateway sets this parameter itself; remove it.",
+  reserved: "The portal sets this parameter itself; remove it.",
   invalid: "This parameter isn't accepted: check its name and value.",
   too_many: "Use at most 10 extra parameters.",
 };

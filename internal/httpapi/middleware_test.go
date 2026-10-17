@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 func testDeps() Deps {

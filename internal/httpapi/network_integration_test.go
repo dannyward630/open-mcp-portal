@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 const networkPath = "/v1/admin/settings/network"

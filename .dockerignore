@@ -16,4 +16,4 @@ coverage.*
 *.test
 *.out
 .DS_Store
-/cmd/open-mcp-gateway/open-mcp-gateway
+/cmd/open-mcp-portal/open-mcp-portal

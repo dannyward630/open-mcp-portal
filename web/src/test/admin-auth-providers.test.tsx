@@ -34,7 +34,7 @@ describe("Admin → Auth providers", () => {
     const slack = within(table).getByText("Slack").closest("tr")!;
     expect(slack).toHaveTextContent("Disabled");
     expect(slack).toHaveTextContent("None");
-    await waitFor(() => expect(document.title).toBe("Auth providers · Admin · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Auth providers · Admin · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -105,7 +105,7 @@ describe("Admin → Auth providers", () => {
     expect(screen.getAllByText("https://mcp.example.com/connect/callback").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Copy redirect URI/ })).toBeInTheDocument();
     expect(screen.getByText("Stored, ends in 9f2e")).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("GitHub · Auth providers · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("GitHub · Auth providers · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 

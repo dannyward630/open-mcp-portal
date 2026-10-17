@@ -3,9 +3,9 @@ package registry
 import (
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 func code(err error) string {

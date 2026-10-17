@@ -3,7 +3,7 @@ package platform
 import (
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 func ptr(s string) *string { return &s }

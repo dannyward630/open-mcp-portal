@@ -1,5 +1,5 @@
 /*
- * How the gateway authenticates to an MCP server (decisions 39-45,
+ * How the portal authenticates to an MCP server (decisions 39-45,
  * docs/phase7-upstream-oauth.md): none, one static header, or each person's
  * own OAuth sign-in to the server. The words, the form as edited (Add and
  * Settings), what a save sends, and when a save sends a published server
@@ -25,7 +25,7 @@ export const authModeLabels: Record<AuthMode, string> = {
 };
 
 export const authModeHelp: Record<AuthMode, string> = {
-  none: "Calls carry only the gateway's signed identity token.",
+  none: "Calls carry only the portal's signed identity token.",
   static_header: "One header with a fixed value, such as an API key, sent with every request.",
   oauth: "Each person signs in to the server's own service once; every call carries their own token. Clients and models never see it.",
 };
@@ -92,7 +92,7 @@ export function splitChoice(c: RegistrationChoice): { registration: Registration
 /** The OAuth settings as edited. clientId empty keeps the stored one (edits); the secret is kept apart (replace-only). */
 export type OAuthForm = { registration: RegistrationChoice; clientId: string; tokenAuthMethod: TokenAuthMethod; scopes: string[]; sendResource: boolean; authorizationServer: string };
 
-/** How the gateway authenticates, as edited: the mode, the OAuth settings and the identity switch. */
+/** How the portal authenticates, as edited: the mode, the OAuth settings and the identity switch. */
 export type UpstreamForm = { mode: AuthMode; oauth: OAuthForm; sendIdentity: boolean };
 
 const blankOAuth: OAuthForm = { registration: "manual", clientId: "", tokenAuthMethod: "client_secret_post", scopes: [], sendResource: true, authorizationServer: "" };

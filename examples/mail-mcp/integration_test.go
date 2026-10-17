@@ -14,10 +14,10 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/ncecere/open-mcp-gateway/internal/app"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/app"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // The whole flow with the real gateway (in process, over a fresh database;

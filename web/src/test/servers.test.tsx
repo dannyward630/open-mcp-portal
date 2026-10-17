@@ -75,7 +75,7 @@ describe("Add MCP server", () => {
     await u.type(name, "Service Status!");
     expect(screen.getByRole("textbox", { name: "Slug" })).toHaveValue("service-status");
     await u.type(screen.getByRole("textbox", { name: "URL" }), "ftp://status.example.com/mcp");
-    // None by default; a static header is one choice of how the gateway authenticates.
+    // None by default; a static header is one choice of how the portal authenticates.
     expect(screen.getByRole("radio", { name: /^None/ })).toBeChecked();
     expect(screen.queryByRole("textbox", { name: /Header name/ })).toBeNull();
     await u.click(screen.getByRole("radio", { name: /^Static header/ }));

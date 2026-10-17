@@ -1,4 +1,4 @@
-/* The instance identity: names, theme, logo and help link come from GET /v1/auth/config; the default is "Open MCP Gateway". */
+/* The instance identity: names, theme, logo and help link come from GET /v1/auth/config; the default is "Open MCP Portal". */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -34,7 +34,7 @@ afterEach(() => {
 
 describe("instance helpers", () => {
   it("fills in defaults and builds the tagline", () => {
-    expect(defaultInstance.name).toBe("Open MCP Gateway");
+    expect(defaultInstance.name).toBe("Open MCP Portal");
     expect(instanceOf(undefined)).toEqual(defaultInstance);
     expect(instanceOf({ instance: { name: "  ", orgName: "", theme: "neutral", logoUrl: "", supportUrl: null } })).toEqual(defaultInstance);
     expect(tagline(defaultInstance)).toBe("MCP servers and tools for your teams");
@@ -58,11 +58,11 @@ describe("sign-in page", () => {
     mockApi({ "GET /v1/auth/config": () => sso(defaultInstance) });
     const { container } = render(withQuery(<SignInPage />));
     expect(await screen.findByText("Use your organization account to continue.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Open MCP Gateway" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Open MCP Portal" })).toBeInTheDocument();
     expect(screen.getByText("MCP servers and tools for your teams")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Sign in with single sign-on/ })).toHaveAttribute("href", expect.stringMatching(/^\/auth\/login\?next=/));
     // The default mark is the product's, decorative (alt ""), not an instance logo.
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/open-mcp-gateway-mark.svg");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("/open-mcp-portal-mark.svg");
     expect(container.querySelector("img")?.getAttribute("alt")).toBe("");
     expect(screen.queryByRole("link", { name: /Help/ })).toBeNull();
     expect(await axe(container)).toHaveNoViolations();
@@ -109,7 +109,7 @@ describe("app shell", () => {
     mockApi(shell(defaultInstance));
     const { unmount } = renderApp("/nowhere");
     expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open MCP Gateway" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open MCP Portal" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Help" })).toBeNull();
     await user.click(screen.getByRole("button", { name: /Account:\s*Una User/ }));
     expect(within(await screen.findByRole("menu")).queryByRole("menuitem", { name: "Help" })).toBeNull();

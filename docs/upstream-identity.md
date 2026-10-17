@@ -1,10 +1,10 @@
-# Verifying the gateway's identity token
+# Verifying Open MCP Portal's identity token
 
-When someone calls a tool, gets a prompt or reads a resource through a gateway, the gateway forwards the request to your MCP server with a short-lived **identity token**: a JWT signed by the gateway that says who is calling, through which gateway and for which tool ([decisions](decisions.md) 7 and 19). Verify it before you trust it. The token is the only credential from the caller that reaches your server. The gateway never forwards the client's own API key, service account key or OAuth token.
+When someone calls a tool, gets a prompt or reads a resource through a gateway, Open MCP Portal forwards the request to your MCP server with a short-lived **identity token**: a JWT signed by the portal that says who is calling, through which gateway and for which tool ([decisions](decisions.md) 7 and 19). Verify it before you trust it. The token is the only credential from the caller that reaches your server. The portal never forwards the client's own API key, service account key or OAuth token.
 
 The caller is either a **person** (with a personal API key, or through an MCP client they connected with OAuth sign-in) or a team **service account** (a headless agent, CI job or script; decisions 22 and 23). The `principal_type` claim says which.
 
-Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`) are served from the definitions approved in the gateway, so your server only receives calls (`tools/call`, `prompts/get`, `resources/read`). A read arrives with your own URI (the gateway strips its `omcp://{server-slug}/` prefix). Each call also performs the MCP handshake again, because the gateway is stateless.
+Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`) are served from the definitions approved in the portal, so your server only receives calls (`tools/call`, `prompts/get`, `resources/read`). A read arrives with your own URI (the portal strips its `omp://{server-slug}/` prefix). Each call also performs the MCP handshake again, because the portal is stateless.
 
 ## Where the token arrives
 
@@ -15,18 +15,20 @@ Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list
 | `oauth` (each person signs in to your server's own authorization server, [phase7-upstream-oauth.md](phase7-upstream-oauth.md)) | `MCP-Gateway-Identity: <jwt>`. `Authorization: Bearer` carries the person's own token for your server, issued for your server's URL (RFC 8707 `resource`) |
 | any mode with **Send identity** off (`sendIdentity: false`) | not sent at all: no identity header |
 
-With no static header, your server can act as an ordinary OAuth resource server that accepts bearer tokens from the gateway's JWKS. Servers can't register a static header named `MCP-Gateway-Identity`, `MCP-Gateway-Provider` or `MCP-Gateway-Provider-Token`.
+With no static header, your server can act as an ordinary OAuth resource server that accepts bearer tokens from the portal's JWKS. Servers can't register a static header named `MCP-Gateway-Identity`, `MCP-Gateway-Provider` or `MCP-Gateway-Provider-Token`.
+
+The header names keep `Gateway` although the product is now called Open MCP Portal (it was Open MCP Gateway): they are a contract with the authors of MCP servers, and they describe what reaches your server, a call relayed through a gateway (`/mcp/{slug}`). They won't change.
 
 **Send identity (decision 45).** Every server has a `sendIdentity` switch, on by default (decision 7). Turn it off for
 servers run outside the company, such as GitHub's hosted MCP server, so people's names, emails and teams aren't sent to a
 third party; the server then gets no identity token on any call. It isn't a review trigger (it sends less).
 
-**OAuth servers.** In `oauth` mode the gateway is an ordinary MCP client of your server (MCP authorization 2025-11-25):
+**OAuth servers.** In `oauth` mode the portal is an ordinary MCP client of your server (MCP authorization 2025-11-25):
 it reads your protected-resource metadata and your authorization server's metadata, and sends each person's token
 only to your server's URL, which must equal the metadata's `resource`. There is never an `MCP-Gateway-Provider` header
-or a `provider` claim. Answer `401` with a `Bearer` challenge when a token isn't valid (the gateway refreshes once and
+or a `provider` claim. Answer `401` with a `Bearer` challenge when a token isn't valid (the portal refreshes once and
 retries, then asks the person to sign in again) and `403` with `error="insufficient_scope", scope="…"` when a call needs
-more access (the gateway asks for it if your team's reviewed scopes or your `scopes_supported` include it). Scheduled
+more access (the portal asks for it if your team's reviewed scopes or your `scopes_supported` include it). Scheduled
 health checks send an unauthenticated `initialize`; your `401` challenge counts as healthy ("requires sign-in").
 
 ## What to check
@@ -34,8 +36,8 @@ health checks send an unauthenticated `initialize`; your `401` challenge counts 
 | Item | Value |
 |---|---|
 | Algorithm | `ES256` only (header `alg`), and the header `kid` names the key |
-| Keys | `GET <gateway>/.well-known/jwks.json`, a JWK Set of the key that signs now, the next key (published at least a day before it signs, `SIGNING_KEY_PREPUBLISH`) and any key retired in the last day. Cache it for up to 5 minutes (`Cache-Control: max-age=300`). Keys rotate every 30 days; a cached set normally already holds the next key, but still fetch the set again when a token has a `kid` you haven't seen (the very first key signs as soon as it exists, and so does a new key if a gateway ever finds no key to sign with) |
-| `iss` | The gateway's URL (its `APP_URL`, for example `https://mcp.example.com`) |
+| Keys | `GET <APP_URL>/.well-known/jwks.json`, a JWK Set of the key that signs now, the next key (published at least a day before it signs, `SIGNING_KEY_PREPUBLISH`) and any key retired in the last day. Cache it for up to 5 minutes (`Cache-Control: max-age=300`). Keys rotate every 30 days; a cached set normally already holds the next key, but still fetch the set again when a token has a `kid` you haven't seen (the very first key signs as soon as it exists, and so does a new key if the portal ever finds no key to sign with) |
+| `iss` | The portal's URL (its `APP_URL`, for example `https://mcp.example.com`) |
 | `aud` | **Your server's URL exactly as registered** (for example `https://status.example.com/mcp`). A token minted for another server must be rejected |
 | `exp`, `nbf`, `iat` | `exp` is 5 minutes after `iat`, and `nbf` is 30 seconds before it. Allow a little clock skew |
 
@@ -50,15 +52,15 @@ The claims:
 | `teams` | Slugs of the teams the person belongs to; for a service account, its own team only |
 | `gateway` | The gateway's slug |
 | `tool` / `prompt` | The exposed name of the tool (`tools/call`) or prompt (`prompts/get`), `{server-slug}__{name}` |
-| `resource` | The exposed URI read (`resources/read`): `omcp://{server-slug}/{your-uri}`, for example `omcp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set |
+| `resource` | The exposed URI read (`resources/read`): `omp://{server-slug}/{your-uri}`, for example `omp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set |
 | `client` | For a client connected with OAuth, the client's name as it signed in (such as `Claude Code`), with `client_verified`. Otherwise the MCP client's `clientInfo.name` when the request carried it, else the name of the API key or service account key |
 | `client_verified` | Present whenever `client` comes from an OAuth client. `true`: the client is identified by a Client ID Metadata Document, so its name is vouched for by the host that publishes it. `false`: the client registered itself (Dynamic Client Registration) and its name is **self-asserted**: anyone can register any name, so don't trust `client` for decisions in that case. Absent for API keys and service account keys (then `client` is the MCP client's or the key's own label, never verified) |
 | `provider` | The slug of the auth provider whose user token came with this call in `MCP-Gateway-Provider-Token` (see [Provider tokens](#provider-tokens)). **Absent** when the call carries no provider token |
 | `jti` | A unique ID for the token (useful in your logs) |
 
-`client` is informational: decide on `principal_type`, `sub`, `email` and `teams`, which the gateway checked. Treat `client` as a hint, and as plain self-asserted text unless `client_verified` is `true`.
+`client` is informational: decide on `principal_type`, `sub`, `email` and `teams`, which the portal checked. Treat `client` as a hint, and as plain self-asserted text unless `client_verified` is `true`.
 
-The gateway has already checked that the caller may use this tool (for a service account: its team's own gateways, with its team role `member` or `editor` for minimum roles, and platform gateways granted to its team). Your server decides what they may do with it, for example by reading `principal_type`, `sub`, `email` or `teams`.
+The portal has already checked that the caller may use this tool (for a service account: its team's own gateways, with its team role `member` or `editor` for minimum roles, and platform gateways granted to its team). Your server decides what they may do with it, for example by reading `principal_type`, `sub`, `email` or `teams`.
 
 A service account's token, for example:
 
@@ -79,7 +81,7 @@ of a capability that requires the provider arrives with:
 | Header | Value |
 |---|---|
 | `MCP-Gateway-Provider` | The provider's slug, for example `github` |
-| `MCP-Gateway-Provider-Token` | The person's access token for that provider, **bare** (no `Bearer`). The gateway refreshes it before it expires |
+| `MCP-Gateway-Provider-Token` | The person's access token for that provider, **bare** (no `Bearer`). The portal refreshes it before it expires |
 
 and the identity token gains `"provider": "github"`. Calls without a requirement (or with the override "none") never get
 these headers or the claim, and neither do discovery, tests or health checks. Service accounts can't call such
@@ -87,21 +89,21 @@ capabilities. The client and the model never see the token.
 
 1. **Verify the identity token first** (above).
 2. **Check that its `provider` claim equals `MCP-Gateway-Provider`.** A request with the headers but without the claim (or
-   with another value) did not come from the gateway for this provider: reject it.
+   with another value) did not come from the portal for this provider: reject it.
 3. **Use the token only with that provider's API**, as the person, and never log or store it.
 
-The gateway doesn't check that the provider account belongs to the person (for example by email); if that matters, ask
+The portal doesn't check that the provider account belongs to the person (for example by email); if that matters, ask
 the provider who the token belongs to and compare it with the identity token's `email` or `sub`. If the provider answers
 `401` the token was revoked: return a tool error; the person reconnects under Account › My connections.
 
 **Worked example.** [`examples/mail-mcp`](../examples/mail-mcp/README.md) is a Gmail MCP server (search, read, create
-draft) that used to need its own Google OAuth and now relies on the gateway's provider token: it verifies the identity
+draft) that used to need its own Google OAuth and now relies on the portal's provider token: it verifies the identity
 token on every request (JWKS cache with a refetch for unknown kids, `iss`, `aud`, expiry), checks the `provider` claim
 against `MCP-Gateway-Provider`, and returns a clear tool error when no token comes because the requirement isn't set.
 `make example-mail-fake` runs it against `make fake-oauth`; `make example-mail` against real Google.
 
 **Recorded call contents.** When your team (or a gateway's) turns on "Record call contents"
-([phase6-operations.md](phase6-operations.md), "Payload capture"), the gateway stores each call's arguments and your
+([phase6-operations.md](phase6-operations.md), "Payload capture"), the portal stores each call's arguments and your
 result, redacted. Headers are never stored, and the identity token, the provider token and your server's static header
 value are replaced by `[REDACTED]` wherever they appear in a result, but don't echo credentials: other secrets in your
 results are only caught by the redaction rules.
@@ -120,7 +122,7 @@ import (
 )
 
 const gatewayURL = "https://mcp.example.com"
-const myURL = "https://status.example.com/mcp" // as registered in the gateway
+const myURL = "https://status.example.com/mcp" // as registered in the portal
 
 type Identity struct {
 	PrincipalType string `json:"principal_type"` // "user" or "service_account"
@@ -177,7 +179,7 @@ func verify(r *http.Request, keys jose.JSONWebKeySet) (jwt.Claims, Identity, err
 import jwt  # pip install "pyjwt[crypto]"
 
 GATEWAY = "https://mcp.example.com"
-MY_URL = "https://status.example.com/mcp"  # as registered in the gateway
+MY_URL = "https://status.example.com/mcp"  # as registered in the portal
 
 # Caches keys; fetches the set again when it meets an unknown kid.
 jwks = jwt.PyJWKClient(f"{GATEWAY}/.well-known/jwks.json", cache_jwk_set=True, lifespan=300)
@@ -197,7 +199,7 @@ def identity(headers) -> dict:
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const GATEWAY = "https://mcp.example.com";
-const MY_URL = "https://status.example.com/mcp"; // as registered in the gateway
+const MY_URL = "https://status.example.com/mcp"; // as registered in the portal
 
 // Caches keys and fetches the set again for an unknown kid.
 const jwks = createRemoteJWKSet(new URL(`${GATEWAY}/.well-known/jwks.json`), { cacheMaxAge: 300_000 });
@@ -220,7 +222,7 @@ make fake-mcp   # go run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/j
 Register `http://127.0.0.1:8091/mcp` in a team, select its `whoami` tool in a gateway, create an API key under Account › API keys (or a key of a team service account), and call it:
 
 ```sh
-curl -s http://localhost:8088/mcp/<gateway> -H "Authorization: Bearer omcp_..." \
+curl -s http://localhost:8088/mcp/<gateway> -H "Authorization: Bearer omp_..." \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"<server>__whoami","arguments":{}}}'
 ```

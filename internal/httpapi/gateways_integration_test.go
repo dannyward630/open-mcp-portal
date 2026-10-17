@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // gwEnv is two teams with a server each: "tools" (owner user, editor alex,
@@ -233,7 +233,7 @@ func TestGatewaySelectionRules(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	want := []string{"omcp://status/status://services", "omcp://status/status://services/{service}", "status__check_outage",
+	want := []string{"omp://status/status://services", "omp://status/status://services/{service}", "status__check_outage",
 		"status__create_ticket", "status__echo", "status__incident_summary", "status__provider_token", "status__search_tickets", "status__whoami"}
 	if !slices.Equal(names, want) || optPage.NextCursor != nil {
 		t.Fatalf("options = %v, want %v", names, want)

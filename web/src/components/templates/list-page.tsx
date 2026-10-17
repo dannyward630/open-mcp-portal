@@ -82,7 +82,7 @@ export function timeColumn<T>(id: string, header: string, get: (row: T) => strin
 export type ListEmpty = { icon?: ReactNode; title: ReactNode; description?: ReactNode; action?: ReactNode };
 
 export type ListPageProps<T> = {
-  /** Stable id: remembers the column choice (localStorage "omg.columns.<id>"). */
+  /** Stable id: remembers the column choice (localStorage "omp.columns.<id>"). */
   id: string;
   /** Page heading; omit to render just the list (inside a tab or card). */
   title?: ReactNode;
@@ -155,7 +155,7 @@ export function ListPage<T>({
       getRowId={getRowId}
       rowLabel={rowLabel}
       columnsMenu
-      columnsStorageKey={`omg.columns.${id}`}
+      columnsStorageKey={`omp.columns.${id}`}
       facets={facets}
       facetValues={filters.values}
       onFacetValuesChange={filters.setValues}

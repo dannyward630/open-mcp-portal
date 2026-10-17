@@ -1,4 +1,4 @@
-# open-mcp-gateway serve: the management API, the embedded web UI, the MCP
+# open-mcp-portal serve: the management API, the embedded web UI, the MCP
 # endpoint /mcp/{slug} and the background loops, on :8088 (/healthz,
 # /readyz on the same port). One Deployment is the whole application: it
 # is stateless and every replica shares PostgreSQL (rate limit counters
@@ -8,11 +8,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: open-mcp-gateway
+  name: open-mcp-portal
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   replicas: 2
   revisionHistoryLimit: 5
@@ -23,16 +23,16 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
-      app.kubernetes.io/component: gateway
+      app.kubernetes.io/name: open-mcp-portal
+      app.kubernetes.io/component: server
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: open-mcp-gateway
-        app.kubernetes.io/component: gateway
-        app.kubernetes.io/part-of: open-mcp-gateway
+        app.kubernetes.io/name: open-mcp-portal
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: open-mcp-portal
     spec:
-      serviceAccountName: open-mcp-gateway
+      serviceAccountName: open-mcp-portal
       automountServiceAccountToken: false
       enableServiceLinks: false
       # On SIGTERM the server fails /readyz, waits SHUTDOWN_DELAY (10s) for
@@ -57,16 +57,16 @@ spec:
           nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels:
-              app.kubernetes.io/name: open-mcp-gateway
-              app.kubernetes.io/component: gateway
+              app.kubernetes.io/name: open-mcp-portal
+              app.kubernetes.io/component: server
           matchLabelKeys: [pod-template-hash]
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
-              app.kubernetes.io/name: open-mcp-gateway
-              app.kubernetes.io/component: gateway
+              app.kubernetes.io/name: open-mcp-portal
+              app.kubernetes.io/component: server
           matchLabelKeys: [pod-template-hash]
       initContainers:
         # Applies pending migrations before the new version serves traffic.
@@ -74,17 +74,17 @@ spec:
         # starting pod may run it; only the first does any work. It needs
         # only DATABASE_URL (and APP_URL, for the safety checks).
         - name: migrate
-          image: ghcr.io/ncecere/open-mcp-gateway
+          image: ghcr.io/ncecere/open-mcp-portal
           imagePullPolicy: IfNotPresent
           args: [migrate]
           envFrom:
             - configMapRef:
-                name: open-mcp-gateway-config
+                name: open-mcp-portal-config
           env:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: open-mcp-gateway-runtime
+                  name: open-mcp-portal-runtime
                   key: DATABASE_URL
           resources:
             requests:
@@ -100,14 +100,14 @@ spec:
             capabilities:
               drop: [ALL]
       containers:
-        - name: gateway
-          image: ghcr.io/ncecere/open-mcp-gateway
+        - name: portal
+          image: ghcr.io/ncecere/open-mcp-portal
           imagePullPolicy: IfNotPresent
           args: [serve]
           envFrom:
             - configMapRef:
-                name: open-mcp-gateway-config
-          # Secret values come from open-mcp-gateway-runtime (docs/deploy.md,
+                name: open-mcp-portal-config
+          # Secret values come from open-mcp-portal-runtime (docs/deploy.md,
           # "Secrets"). A missing required key stops the pod from starting
           # (CreateContainerConfigError) rather than starting half-configured.
           env:
@@ -116,38 +116,38 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: open-mcp-gateway-runtime
+                  name: open-mcp-portal-runtime
                   key: DATABASE_URL
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: open-mcp-gateway-runtime
+                  name: open-mcp-portal-runtime
                   key: ENCRYPTION_KEY
             # Only while rotating ENCRYPTION_KEY: the old key, still accepted
             # for reads.
             - name: ENCRYPTION_KEY_PREVIOUS
               valueFrom:
                 secretKeyRef:
-                  name: open-mcp-gateway-runtime
+                  name: open-mcp-portal-runtime
                   key: ENCRYPTION_KEY_PREVIOUS
                   optional: true
             - name: API_KEY_PEPPER
               valueFrom:
                 secretKeyRef:
-                  name: open-mcp-gateway-runtime
+                  name: open-mcp-portal-runtime
                   key: API_KEY_PEPPER
             # Only while rotating API_KEY_PEPPER: the old pepper, so keys and
             # connected apps keep working (keys are re-digested on use).
             - name: API_KEY_PEPPER_PREVIOUS
               valueFrom:
                 secretKeyRef:
-                  name: open-mcp-gateway-runtime
+                  name: open-mcp-portal-runtime
                   key: API_KEY_PEPPER_PREVIOUS
                   optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: open-mcp-gateway-runtime
+                  name: open-mcp-portal-runtime
                   key: OIDC_CLIENT_SECRET
             - name: GOMEMLIMIT
               valueFrom:
@@ -211,11 +211,11 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: open-mcp-gateway
+  name: open-mcp-portal
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   # One pod at a time, whatever the replica count; pods that are not ready
   # never block a node drain.
@@ -223,5 +223,5 @@ spec:
   unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
-      app.kubernetes.io/component: gateway
+      app.kubernetes.io/name: open-mcp-portal
+      app.kubernetes.io/component: server

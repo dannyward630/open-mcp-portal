@@ -8,13 +8,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // LockKey is the loop's advisory lock: one replica runs a pass at a time.
-const LockKey = "omg.retention"
+const LockKey = "omp.retention"
 
 // Pass runs one pass if no other replica is running one (ran false then).
 // Each kind is deleted in batches (one transaction each, at most MaxBatches);

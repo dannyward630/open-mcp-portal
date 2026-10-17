@@ -3,7 +3,7 @@ package authz
 import (
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
 )
 
 func TestRegistryRoles(t *testing.T) {

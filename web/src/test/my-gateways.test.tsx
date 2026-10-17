@@ -39,7 +39,7 @@ describe("My gateways", () => {
     expect(shared).toHaveTextContent("Granted to you");
     expect(within(shared).getByText("Granted to your SSO group engineering")).toBeInTheDocument();
     expect(shared).toHaveTextContent("3 capabilities");
-    await waitFor(() => expect(document.title).toBe("My gateways · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("My gateways · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -63,24 +63,24 @@ describe("My gateways", () => {
     expect(screen.getByText(/On first use the client opens your browser/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Account › Connected apps" })).toHaveAttribute("href", "/settings/connected-apps");
     expect(screen.getByRole("link", { name: "Open in your team" })).toHaveAttribute("href", `/teams/${team.slug}/gateways/${gatewayId}`);
-    await waitFor(() => expect(document.title).toBe("Support tools · My gateways · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Support tools · My gateways · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 
   it("lists resources and templates with their exposed URIs", async () => {
-    const resource = gatewayCapability({ capabilityId: "r1", kind: "resource", name: "status://services", exposedName: "omcp://service-status/status://services", title: "Services" });
+    const resource = gatewayCapability({ capabilityId: "r1", kind: "resource", name: "status://services", exposedName: "omp://service-status/status://services", title: "Services" });
     const template = gatewayCapability({
       capabilityId: "r2",
       kind: "resource_template",
       name: "status://services/{service}",
-      exposedName: "omcp://service-status/status://services/{service}",
+      exposedName: "omp://service-status/status://services/{service}",
       title: "Service status",
     });
     mockApi(routes({ [`GET /v1/me/gateways/${gatewayId}`]: () => ({ gateway: myGateway(), capabilities: [gatewayCapability(), resource, template] }) }));
     renderApp(`/gateways/${gatewayId}`);
-    expect(await screen.findByRole("listitem", { name: "resource: omcp://service-status/status://services" })).toBeInTheDocument();
-    expect(screen.getByRole("listitem", { name: "resource template: omcp://service-status/status://services/{service}" })).toBeInTheDocument();
-    expect(screen.getByText(/resources as omcp:\/\/server\/uri/)).toBeInTheDocument();
+    expect(await screen.findByRole("listitem", { name: "resource: omp://service-status/status://services" })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "resource template: omp://service-status/status://services/{service}" })).toBeInTheDocument();
+    expect(screen.getByText(/resources as omp:\/\/server\/uri/)).toBeInTheDocument();
   });
 
   it("shows the not-found page for a gateway the person can't use", async () => {

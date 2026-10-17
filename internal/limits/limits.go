@@ -32,12 +32,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/teams"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/teams"
 )
 
 // Keys.

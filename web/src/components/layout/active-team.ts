@@ -9,7 +9,7 @@ import { teamQuery } from "../../api/queries";
 import { type Me } from "../../session";
 import { isTeamRoute, type Location } from "./location";
 
-const lastTeamKey = "omg.lastTeam";
+const lastTeamKey = "omp.lastTeam";
 
 export function readLastTeam() {
   try {

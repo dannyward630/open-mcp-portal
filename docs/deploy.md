@@ -1,12 +1,12 @@
-# Deploying Open MCP Gateway
+# Deploying Open MCP Portal
 
-Open MCP Gateway is one stateless binary in one container image. It needs
+Open MCP Portal is one stateless binary in one container image. It needs
 PostgreSQL, an OIDC provider and TLS in front of it. There is no worker, cache,
 queue or object storage.
 
 | Path | What |
 |---|---|
-| [`Dockerfile`](../Dockerfile) | Image: UI built with `npm ci`, Go built with `-trimpath` and version ldflags, distroless `nonroot` runtime. Default target is the gateway; `--target fakemcp` is the demo's fake MCP server. |
+| [`Dockerfile`](../Dockerfile) | Image: UI built with `npm ci`, Go built with `-trimpath` and version ldflags, distroless `nonroot` runtime. Default target is the portal; `--target fakemcp` is the demo's fake MCP server. |
 | [`compose.demo.yaml`](../compose.demo.yaml) | Local demo: gateway, Postgres and the fake MCP server, with development sign-in. |
 | [`deploy/kubernetes/base`](../deploy/kubernetes/base) | Kustomize base: Deployment (+ migrate init container), Service, PodDisruptionBudget, NetworkPolicies, ServiceAccount and a generated ConfigMap. |
 | [`deploy/kubernetes/overlays/example`](../deploy/kubernetes/overlays/example) | Example overlay: namespace, pinned image, settings, NGINX Ingress (or Gateway API `httproute.yaml`), narrowed NetworkPolicies. |
@@ -14,11 +14,11 @@ queue or object storage.
 ## Image
 
 ```sh
-make docker                     # open-mcp-gateway:<git describe>
-docker run --rm open-mcp-gateway:<tag> version
+make docker                     # open-mcp-portal:<git describe>
+docker run --rm open-mcp-portal:<tag> version
 ```
 
-- Commands: `serve` (default), `migrate`, `doctor`, `version`. The binary is `/open-mcp-gateway`. The image has no shell.
+- Commands: `serve` (default), `migrate`, `doctor`, `version`. The binary is `/open-mcp-portal`. The image has no shell.
 - The image runs as UID/GID 65532, listens on 8088 (`LISTEN_ADDR`, default `:8088`) and needs no writable filesystem.
 - There is no `HEALTHCHECK` because distroless has no shell or curl. Orchestrators probe `/healthz` and `/readyz`, as in [Health checks](#health-checks).
 - Multi-arch: `docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION=… --build-arg COMMIT=… .`.
@@ -31,17 +31,17 @@ make demo        # docker compose -f compose.demo.yaml up --build
 ```
 
 Open <http://localhost:8090> and sign in as `admin`. Register the fake MCP server in a team as `http://127.0.0.1:8091/mcp`
-(it shares the gateway's network namespace, so the address is loopback to the gateway), build a gateway and call it at
-`http://localhost:8090/mcp/<slug>` with a personal API key. `OMG_DEMO_PORT` changes the port. `make demo-down` deletes the
+(it shares the portal's network namespace, so the address is loopback to the portal), build a gateway and call it at
+`http://localhost:8090/mcp/<slug>` with a personal API key. `OMP_DEMO_PORT` changes the port. `make demo-down` deletes the
 data.
 
-**Development only.** The demo uses development sign-in and the public example keys from `.env.example`. The gateway
+**Development only.** The demo uses development sign-in and the public example keys from `.env.example`. The portal
 accepts them only because `APP_URL` is loopback.
 
 ## Required settings and secrets
 
 Every setting is described in [`.env.example`](../.env.example). They come from environment variables or from a flat YAML
-file named by `OMG_CONFIG_FILE`. Each secret can also be read from a file named by `<NAME>_FILE`, for example
+file named by `OMP_CONFIG_FILE`. Each secret can also be read from a file named by `<NAME>_FILE`, for example
 `DATABASE_URL_FILE=/run/secrets/database-url`.
 
 | Setting | Required | Notes |
@@ -88,7 +88,7 @@ addresses stay blocked whatever the entries say. The rules are in [registry.md](
 **The NetworkPolicies must allow the same networks and ports.** The base's egress allows TCP 443 to `0.0.0.0/0` and
 `::/0`; add rules in your overlay for internal servers on other ports (plain http on 80 or 8080, `:8443`…). Many CNIs
 don't match pod addresses with `ipBlock`, so in-cluster servers (`*.svc.cluster.local`) usually need a
-`namespaceSelector`/`podSelector` egress rule for their namespace and port. If the gateway can resolve and approve an
+`namespaceSelector`/`podSelector` egress rule for their namespace and port. If the portal can resolve and approve an
 address but the policy drops it, the server's health shows `unavailable` (a timeout), not `not_allowed`.
 
 **Safety checks.** Unless `APP_URL` is a loopback address, `serve` refuses to start in any of these cases:
@@ -99,24 +99,24 @@ address but the policy drops it, the server's health shows `unavailable` (a time
 
 `serve` also requires a sign-in method. Without `DEV_AUTH`, that means OIDC. OIDC discovery runs on the first sign-in,
 not at startup, so a misconfigured issuer shows up at sign-in and in the logs. `migrate` needs only `DATABASE_URL`, and it
-applies the safety checks only when `APP_URL` is set. `open-mcp-gateway doctor` prints all of this and also checks
+applies the safety checks only when `APP_URL` is set. `open-mcp-portal doctor` prints all of this and also checks
 Postgres and the migration state:
 
 ```sh
-kubectl -n open-mcp-gateway exec deploy/open-mcp-gateway -c gateway -- /open-mcp-gateway doctor
+kubectl -n open-mcp-portal exec deploy/open-mcp-portal -c portal -- /open-mcp-portal doctor
 ```
 
 ## Kubernetes
 
 ### Secrets
 
-The base references the secret `open-mcp-gateway-runtime` by name and never contains values. Create it with your
+The base references the secret `open-mcp-portal-runtime` by name and never contains values. Create it with your
 secrets operator (an `ExternalSecret`, for example) or by hand:
 
 ```sh
-kubectl create namespace open-mcp-gateway   # or apply the overlay's namespace.yaml first
-kubectl -n open-mcp-gateway create secret generic open-mcp-gateway-runtime \
-  --from-literal=DATABASE_URL='postgres://omg:<password>@db.example.org:5432/omg?sslmode=require' \
+kubectl create namespace open-mcp-portal   # or apply the overlay's namespace.yaml first
+kubectl -n open-mcp-portal create secret generic open-mcp-portal-runtime \
+  --from-literal=DATABASE_URL='postgres://omp:<password>@db.example.org:5432/omp?sslmode=require' \
   --from-literal=ENCRYPTION_KEY="$(openssl rand -base64 32)" \
   --from-literal=API_KEY_PEPPER="$(openssl rand -base64 32)" \
   --from-literal=OIDC_CLIENT_SECRET='<from your IdP>'
@@ -124,22 +124,22 @@ kubectl -n open-mcp-gateway create secret generic open-mcp-gateway-runtime \
 
 | Key | Used by |
 |---|---|
-| `DATABASE_URL` | `migrate` init container and `gateway` |
-| `ENCRYPTION_KEY`, `API_KEY_PEPPER`, `OIDC_CLIENT_SECRET` | `gateway` (required: a missing key stops the pod with `CreateContainerConfigError`) |
-| `ENCRYPTION_KEY_PREVIOUS`, `API_KEY_PEPPER_PREVIOUS` | `gateway`, optional, only during a rotation |
+| `DATABASE_URL` | `migrate` init container and `portal` |
+| `ENCRYPTION_KEY`, `API_KEY_PEPPER`, `OIDC_CLIENT_SECRET` | `portal` (required: a missing key stops the pod with `CreateContainerConfigError`) |
+| `ENCRYPTION_KEY_PREVIOUS`, `API_KEY_PEPPER_PREVIOUS` | `portal`, optional, only during a rotation |
 
 Store `ENCRYPTION_KEY` and `API_KEY_PEPPER` in your secrets store as well. A database backup is useless without them:
 see [Backups](#backups). Secrets are not hashed into the pod template, so after changing one, run
-`kubectl -n open-mcp-gateway rollout restart deploy/open-mcp-gateway` (or use your operator's reloader).
+`kubectl -n open-mcp-portal rollout restart deploy/open-mcp-portal` (or use your operator's reloader).
 
 ### Configuration
 
-`open-mcp-gateway-config` is generated from [`base/config.env`](../deploy/kubernetes/base/config.env), so its name carries
+`open-mcp-portal-config` is generated from [`base/config.env`](../deploy/kubernetes/base/config.env), so its name carries
 a content hash and **a configuration change rolls the pods**. Merge keys in an overlay:
 
 ```yaml
 configMapGenerator:
-  - name: open-mcp-gateway-config
+  - name: open-mcp-portal-config
     behavior: merge
     literals:
       - APP_URL=https://mcp.example.org
@@ -152,18 +152,18 @@ pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `A
 
 ### What the base deploys
 
-- **Deployment `open-mcp-gateway`**: 2 replicas, `maxUnavailable: 0` / `maxSurge: 1`, spread across nodes (and, best
+- **Deployment `open-mcp-portal`**: 2 replicas, `maxUnavailable: 0` / `maxSurge: 1`, spread across nodes (and, best
   effort, zones), with a `migrate` init container. The pod runs as non-root UID 65532 with a read-only root filesystem, all
   capabilities dropped, no privilege escalation, seccomp `RuntimeDefault`, an `emptyDir` on `/tmp`, no service-account
   token and no service links. That meets the `restricted` Pod Security Standard, and the example namespace enforces it.
   Resources: requests 100m CPU / 128Mi, limits 1 CPU / 512Mi, with `GOMEMLIMIT` set from the memory limit.
-- **Service `open-mcp-gateway`**: port `http` 80 → 8088. No session affinity.
+- **Service `open-mcp-portal`**: port `http` 80 → 8088. No session affinity.
 - **PodDisruptionBudget**: `maxUnavailable: 1`. Unhealthy pods never block a drain.
-- **ServiceAccount** with `automountServiceAccountToken: false`. The gateway never calls the Kubernetes API.
+- **ServiceAccount** with `automountServiceAccountToken: false`. The portal never calls the Kubernetes API.
 - **Metrics port**: none by default. With `METRICS_ADDR=:9090`, add the container port `metrics` (commented in the
   Deployment), a Service port and a NetworkPolicy from the monitoring namespace; the example overlay does all three and
   keeps an example `ServiceMonitor` beside it. See [Metrics](#metrics).
-- **NetworkPolicies** select only the gateway pods, so the base can share a namespace:
+- **NetworkPolicies** select only the portal pods, so the base can share a namespace:
   - default deny;
   - ingress on TCP 8088 from the ingress controller's namespace (placeholder `ingress-controller`; patch it);
   - DNS to kube-dns in `kube-system`;
@@ -178,7 +178,7 @@ pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `A
   internal ones only when an allowlist entry covers them; never to loopback or link-local addresses, and never through
   an HTTP(S) proxy. Auth providers' endpoints (Admin › Auth providers) go through the same guard, so an internal
   identity provider needs an allowlist entry too. Register `<APP_URL>/connect/callback` as the redirect URI of each
-  provider's OAuth app; the ingress must route `/connect/` to the gateway like every other path.
+  provider's OAuth app; the ingress must route `/connect/` to the portal like every other path.
 
 ### Ingress
 
@@ -201,24 +201,24 @@ pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `A
 The listener opens only after Postgres answers (the process waits up to 3 minutes) and the schema is current. The startup
 probe allows 4 minutes.
 
-**Graceful shutdown.** On SIGTERM the gateway fails `/readyz` and waits `SHUTDOWN_DELAY` (10s) so endpoints and load
+**Graceful shutdown.** On SIGTERM the portal fails `/readyz` and waits `SHUTDOWN_DELAY` (10s) so endpoints and load
 balancers stop sending traffic. It then gives in-flight requests `SHUTDOWN_TIMEOUT` (125s) to finish. The pod's
 `terminationGracePeriodSeconds` (150s) must exceed the two together. Raise all three together.
 
 ## Migrations
 
-- In Kubernetes, the `migrate` init container runs `open-mcp-gateway migrate` in every new pod. A PostgreSQL advisory
+- In Kubernetes, the `migrate` init container runs `open-mcp-portal migrate` in every new pod. A PostgreSQL advisory
   lock serialises concurrent runs, so only the first pod does any work.
-- Elsewhere, run `open-mcp-gateway migrate` before `serve`, or set `MIGRATE_ON_START=true` on a single instance.
+- Elsewhere, run `open-mcp-portal migrate` before `serve`, or set `MIGRATE_ON_START=true` on a single instance.
 - `serve` refuses to start while migrations are pending. The message names the current and required versions.
 
 ## Scaling
 
-- The gateway is stateless, so scale the Deployment horizontally. All shared state is in PostgreSQL.
+- The portal is stateless, so scale the Deployment horizontally. All shared state is in PostgreSQL.
 - Background loops:
   - The MCP server health checks (`HEALTH_CHECK_INTERVAL`, default 5m), the signing-key rotation, the retention loop
     (`RETENTION_INTERVAL`, default 15m) and the usage rollup (every 5 minutes) take a PostgreSQL advisory lock, so one
-    replica runs each at a time (`omg_loop_leader` says which).
+    replica runs each at a time (`omp_loop_leader` says which).
   - Session cleanup and the deletion of old rate limit windows run on every replica. Their deletes are idempotent.
 - Each replica holds a pgx connection pool. Size Postgres `max_connections` (or a pooler) for replicas × pool size.
 - **Rate limits are shared by every replica.** The limits on `/mcp/{slug}` (Admin › Limits), the OAuth endpoints,
@@ -253,21 +253,21 @@ objects (at most `METRICS_MAX_OBJECTS`, default 200 each, then `other`) and drop
 
 | Metric | Labels |
 |---|---|
-| `omg_build_info` | `version`, `commit` |
-| `omg_mcp_requests_total`, `omg_mcp_request_duration_seconds` | `method` (MCP methods, `notification`, else `other`), `outcome` |
-| `omg_mcp_call_duration_seconds` | `gateway`, `server` |
-| `omg_mcp_rate_limited_total` | `limit` |
-| `omg_payload_captures_total`, `omg_payload_capture_errors_total`, `omg_payload_redactions_total` | `rule` (redactions) |
-| `omg_provider_token_refresh_total` | `provider`, `result` (`ok`, `refused`, `unavailable`) |
-| `omg_server_health_checks_total`, `omg_mcp_servers` | `result` / `state` (`healthy`, `failing`, `unknown`) |
-| `omg_http_requests_total`, `omg_http_request_duration_seconds` | `route` (pattern), `method`, `code` (`2xx`…) |
-| `omg_retention_deleted_total`, `omg_retention_last_success_timestamp_seconds` | `kind` |
-| `omg_usage_rollup_last_success_timestamp_seconds`, `omg_loop_leader` | `loop` |
-| `omg_db_pool_*` | |
+| `omp_build_info` | `version`, `commit` |
+| `omp_mcp_requests_total`, `omp_mcp_request_duration_seconds` | `method` (MCP methods, `notification`, else `other`), `outcome` |
+| `omp_mcp_call_duration_seconds` | `gateway`, `server` |
+| `omp_mcp_rate_limited_total` | `limit` |
+| `omp_payload_captures_total`, `omp_payload_capture_errors_total`, `omp_payload_redactions_total` | `rule` (redactions) |
+| `omp_provider_token_refresh_total` | `provider`, `result` (`ok`, `refused`, `unavailable`) |
+| `omp_server_health_checks_total`, `omp_mcp_servers` | `result` / `state` (`healthy`, `failing`, `unknown`) |
+| `omp_http_requests_total`, `omp_http_request_duration_seconds` | `route` (pattern), `method`, `code` (`2xx`…) |
+| `omp_retention_deleted_total`, `omp_retention_last_success_timestamp_seconds` | `kind` |
+| `omp_usage_rollup_last_success_timestamp_seconds`, `omp_loop_leader` | `loop` |
+| `omp_db_pool_*` | |
 
-Plus the Go and process collectors. Useful alerts: `omg_payload_capture_errors_total` increasing; no replica with
-`omg_loop_leader{loop="retention"} == 1` for an hour; `omg_mcp_servers{state="failing"} > 0`; a high rate of
-`omg_mcp_rate_limited_total`.
+Plus the Go and process collectors. Useful alerts: `omp_payload_capture_errors_total` increasing; no replica with
+`omp_loop_leader{loop="retention"} == 1` for an hour; `omp_mcp_servers{state="failing"} > 0`; a high rate of
+`omp_mcp_rate_limited_total`.
 
 ## Key rotation
 
@@ -278,7 +278,7 @@ provider connection tokens, PKCE verifiers, consent request IDs and captured pay
    `ENCRYPTION_KEY`, in the runtime secret.
 2. **Roll** every pod (`kubectl rollout restart`), and wait until no pod runs with the old configuration: new values are
    sealed with the new key, old ones still open.
-3. **Dry run.** `kubectl exec deploy/open-mcp-gateway -- /open-mcp-gateway rotate-keys --dry-run` checks that every
+3. **Dry run.** `kubectl exec deploy/open-mcp-portal -- /open-mcp-portal rotate-keys --dry-run` checks that every
    sealed value opens with one of the two keys and counts them per column. If any doesn't, it stops and names the table
    and row: find the key it was sealed with, or re-enter or delete that value.
 4. **Rotate.** `… rotate-keys` re-seals values still on the previous key in batches (`--batch-size`, default 100) with

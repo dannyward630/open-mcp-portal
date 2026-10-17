@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/config"
 )
 
 func TestSafeNext(t *testing.T) {
@@ -77,7 +77,7 @@ func TestOriginAllowed(t *testing.T) {
 }
 
 func TestSessionCookieName(t *testing.T) {
-	if SessionCookieName(true) != "__Host-omg_session" || SessionCookieName(false) != "omg_session" {
+	if SessionCookieName(true) != "__Host-omp_session" || SessionCookieName(false) != "omp_session" {
 		t.Error("cookie names changed")
 	}
 	cfg := config.Defaults()
@@ -86,7 +86,7 @@ func TestSessionCookieName(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.setSessionCookie(w, "secret")
 	c := w.Result().Cookies()[0]
-	if c.Name != "__Host-omg_session" || !c.Secure || !c.HttpOnly || c.Path != "/" || c.SameSite != http.SameSiteLaxMode || c.Domain != "" {
+	if c.Name != "__Host-omp_session" || !c.Secure || !c.HttpOnly || c.Path != "/" || c.SameSite != http.SameSiteLaxMode || c.Domain != "" {
 		t.Errorf("cookie = %+v", c)
 	}
 }

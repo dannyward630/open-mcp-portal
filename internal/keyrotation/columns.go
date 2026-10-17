@@ -22,9 +22,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ncecere/open-mcp-gateway/internal/capture"
-	"github.com/ncecere/open-mcp-gateway/internal/providers"
-	"github.com/ncecere/open-mcp-gateway/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/capture"
+	"github.com/ncecere/open-mcp-portal/internal/providers"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
 )
 
 // Column is one column of internal/secrets ciphertexts, in a table keyed by

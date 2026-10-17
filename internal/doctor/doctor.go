@@ -1,4 +1,4 @@
-// Package doctor implements `open-mcp-gateway doctor`: the configuration and
+// Package doctor implements `open-mcp-portal doctor`: the configuration and
 // production safety checks, then PostgreSQL connectivity and the migration
 // state, with timings, then key rotation: sealed values still on
 // ENCRYPTION_KEY_PREVIOUS or on neither key, and keys still on another API
@@ -15,12 +15,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/keyrotation"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/keyrotation"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // Status of one check.
@@ -129,7 +129,7 @@ func (r *runner) configuration() {
 		r.add(Check{Group: "safety", Name: "production", Status: OK, Detail: "DEV_AUTH off, APP_URL is https"})
 	}
 	if len(other) == 0 {
-		r.add(Check{Group: "configuration", Name: r.opts.Mode, Status: OK, Detail: "valid for open-mcp-gateway " + r.opts.Mode})
+		r.add(Check{Group: "configuration", Name: r.opts.Mode, Status: OK, Detail: "valid for open-mcp-portal " + r.opts.Mode})
 	}
 }
 
@@ -192,11 +192,11 @@ func (r *runner) keys(ctx context.Context, pool *pgxpool.Pool) {
 	case others > 0:
 		c.Status = Fail
 		c.Detail = fmt.Sprintf("%d sealed value(s) carry neither ENCRYPTION_KEY nor ENCRYPTION_KEY_PREVIOUS (%s)", others, strings.Join(where, "; "))
-		c.Fix = "Set the key they were sealed with as ENCRYPTION_KEY_PREVIOUS, then run open-mcp-gateway rotate-keys"
+		c.Fix = "Set the key they were sealed with as ENCRYPTION_KEY_PREVIOUS, then run open-mcp-portal rotate-keys"
 	case onPrev > 0:
 		c.Status = Info
 		c.Detail = fmt.Sprintf("%d sealed value(s) still on ENCRYPTION_KEY_PREVIOUS (%s)", onPrev, strings.Join(where, "; "))
-		c.Fix = "Run open-mcp-gateway rotate-keys, then remove ENCRYPTION_KEY_PREVIOUS"
+		c.Fix = "Run open-mcp-portal rotate-keys, then remove ENCRYPTION_KEY_PREVIOUS"
 	case prev != nil:
 		c.Status = Info
 		c.Detail = "every sealed value is on ENCRYPTION_KEY: ENCRYPTION_KEY_PREVIOUS can be removed"
@@ -233,7 +233,7 @@ func (r *runner) keys(ctx context.Context, pool *pgxpool.Pool) {
 		pc.Status = Info
 		pc.Detail = fmt.Sprintf("%d usable key(s) on API_KEY_PEPPER_PREVIOUS, %d on a pepper no longer configured, %d connected-app token(s) on another pepper",
 			previous, retired, tokens)
-		pc.Fix = "Keys move to API_KEY_PEPPER when used; open-mcp-gateway rotate-keys --dry-run lists them. Revoke keys on a retired pepper"
+		pc.Fix = "Keys move to API_KEY_PEPPER when used; open-mcp-portal rotate-keys --dry-run lists them. Revoke keys on a retired pepper"
 	case p.Previous != nil:
 		pc.Status = Info
 		pc.Detail = "every usable key is on API_KEY_PEPPER: API_KEY_PEPPER_PREVIOUS can be removed"
@@ -253,7 +253,7 @@ func (r *runner) migrations(ctx context.Context, pool *pgxpool.Pool) bool {
 	case st.Pending:
 		c.Status = Fail
 		c.Detail = fmt.Sprintf("pending: the database is at version %d, this binary has %d", st.Current, st.Latest)
-		c.Fix = "Run open-mcp-gateway migrate"
+		c.Fix = "Run open-mcp-portal migrate"
 	case st.Current > st.Latest:
 		c.Status = Info
 		c.Detail = fmt.Sprintf("the database (version %d) is newer than this binary (%d): an older binary during a rollout?", st.Current, st.Latest)
@@ -296,7 +296,7 @@ func (rep Report) WriteJSON(w io.Writer) error {
 // with fixes on indented lines below.
 func (rep Report) WriteText(w io.Writer) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "open-mcp-gateway doctor (%s; configuration checked for %s)\n\n", rep.Version, rep.Mode)
+	fmt.Fprintf(&b, "open-mcp-portal doctor (%s; configuration checked for %s)\n\n", rep.Version, rep.Mode)
 	counts := map[Status]int{}
 	for _, c := range rep.Checks {
 		counts[c.Status]++

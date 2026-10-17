@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
 )
 
 // The address rule (adapted from Grounded's internal/mcpclient, see

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 type staticPolicy struct{ p *netpolicy.Policy }

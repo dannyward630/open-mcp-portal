@@ -1,6 +1,6 @@
 /*
  * A server's user-authorization requirement (decision 26): the provider and
- * scopes whose user token the gateway sends with calls to the server's
+ * scopes whose user token the portal sends with calls to the server's
  * capabilities, and each capability's override (inherit, none, or other
  * scopes of the same provider). The rules mirror the server's
  * (api/openapi.yaml); the server still decides.

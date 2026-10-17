@@ -41,7 +41,7 @@ export function NeededAccountsCard({ caps, returnTo }: { caps: Pick<GatewayCapab
       title="Accounts it needs"
       description={
         <>
-          Some capabilities act as you on another service, or need you to sign in to their server. Connect each account once; the gateway keeps the token and sends it only to the server that needs it. See
+          Some capabilities act as you on another service, or need you to sign in to their server. Connect each account once; the portal keeps the token and sends it only to the server that needs it. See
           them all in <TextLink render={<Link to="/settings/connections" />}>Account › My connections</TextLink>.
         </>
       }

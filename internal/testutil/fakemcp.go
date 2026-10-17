@@ -31,7 +31,7 @@ import (
 // RequireHeader makes it answer 401 to requests without a header;
 // SetDescription, Hide and AddTool change what tools/list returns (change
 // detection); SetPageSize makes every list paginate. EnableGatewayTools adds
-// whoami (the identity the gateway sent) and echo, and records every tool
+// whoami (the identity the portal sent) and echo, and records every tool
 // call (ToolCalls) for gateway tests.
 type FakeMCP struct {
 	*httptest.Server
@@ -435,7 +435,7 @@ func (f *FakeMCP) server() *mcp.Server {
 			return d
 		}
 		protected := f.protect != nil
-		s.AddTool(&mcp.Tool{Name: "whoami", Title: "Who am I", Description: describe("whoami", "Shows the identity the gateway sent with this call."),
+		s.AddTool(&mcp.Tool{Name: "whoami", Title: "Who am I", Description: describe("whoami", "Shows the identity the portal sent with this call."),
 			InputSchema: map[string]any{"type": "object"}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			h := headerOf(req)
 			f.sawCall("whoami", h)
@@ -456,7 +456,7 @@ func (f *FakeMCP) server() *mcp.Server {
 			return fakeText(string(out)), nil
 		})
 		s.AddTool(&mcp.Tool{Name: "provider_token", Title: "Provider token",
-			Description: describe("provider_token", "Reports whether the gateway sent a provider token with this call (never the token itself)."),
+			Description: describe("provider_token", "Reports whether the portal sent a provider token with this call (never the token itself)."),
 			InputSchema: map[string]any{"type": "object"}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			h := headerOf(req)
 			f.sawCall("provider_token", h)

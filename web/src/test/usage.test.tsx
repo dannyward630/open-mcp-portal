@@ -85,7 +85,7 @@ describe("Team › Usage", () => {
     const table = await screen.findByRole("table", { name: "Usage by gateway" });
     expect(within(table).getByText("Support tools").closest("tr")).toHaveTextContent("850 ms");
     expect(within(table).getByText("Old gateway").closest("tr")).toHaveTextContent("Deleted");
-    await waitFor(() => expect(document.title).toBe(`Usage · ${team.name} · Open MCP Gateway`));
+    await waitFor(() => expect(document.title).toBe(`Usage · ${team.name} · Open MCP Portal`));
     expect(await axe(container)).toHaveNoViolations();
 
     // One report for the chart (by day) and one for the table (by gateway), over the same hour-aligned week.

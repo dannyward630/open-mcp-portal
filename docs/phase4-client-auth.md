@@ -28,8 +28,8 @@ resource indicators, PKCE S256, RFC 9207 `iss`), like Grounded.
 - **Clients:** Client ID Metadata Documents preferred (fetched with the SSRF guard, ≤16 KiB, no redirects, cached);
   DCR for older clients, marked **Unverified** on the consent page. Redirect URIs: https, or http on loopback
   (any port).
-- **Tokens** (*proposed*, Grounded's values): code 60 s single use; access token `omat_…` 1 h; refresh token
-  `omrt_…` 30 days, rotated on every use, reuse after 30 s revokes the connection. Opaque, stored as HMAC digests
+- **Tokens** (*proposed*, Grounded's values): code 60 s single use; access token `ompat_…` 1 h; refresh token
+  `omprt_…` 30 days, rotated on every use, reuse after 30 s revokes the connection. Opaque, stored as HMAC digests
   with `API_KEY_PEPPER`.
 - **One connection per gateway** (*proposed*): a token is bound to one gateway (`resource`), matching how
   clients add one URL per server. Access is still re-checked on every request.
@@ -48,7 +48,7 @@ resource indicators, PKCE S256, RFC 9207 `iss`), like Grounded.
 
 - Team-owned; created, edited, disabled and deleted by team **owners and admins**. Fields: name, description,
   **team role** used for minimum-role checks (*proposed*: `member` or `editor`; never owner/admin), enabled.
-- **Keys:** `omcp_sa_…`, HMAC digest, always expire (max 365 days), at most 2 active per account so keys can be
+- **Keys:** `omp_sa_…`, HMAC digest, always expire (max 365 days), at most 2 active per account so keys can be
   rotated without downtime; optionally limited to gateways like personal keys. Shown once.
 - **Access** (*proposed*): the team's own gateways (with the account's role), and platform gateways granted to the
   team (a team grant covers the team's service accounts). No direct grants to individual service accounts.
@@ -117,14 +117,14 @@ Code: `internal/oauth` (authorization server: `authorize.go`, `clients.go`, `met
   addresses; internal ones only inside the allowlist of internal networks (decision 20); loopback, link-local and
   metadata never — except with the development allowance, which also accepts a document at a plain-`http` loopback URL
   (production: https only). No proxy, no redirects, 5 s, ≤ 16 KiB, `application/json` (or `+json`), `client_id` must
-  equal the URL, cached for `max-age` clamped to 1 min–1 h (10 min default). DCR: public clients only, IDs `omcl_…`,
+  equal the URL, cached for `max-age` clamped to 1 min–1 h (10 min default). DCR: public clients only, IDs `ompcl_…`,
   10/min/address, unused registrations deleted after 30 days (on the next registration; an expired one is refused at
   once); audited `oauth.client_register` by the system with the client IP.
 - **Trusted clients.** `oauth_settings` (one row, own revision), seeded with Claude, Claude Code and VS Code. Entries
   must be https metadata-document URLs with a path (`422 invalid_client_id`, `details.index`, `details.reason`
   `not_metadata_url`/`duplicate`/`too_many`; a label over 100 characters is `400 invalid_label`). Read from the database
   on every authorization (no cache). A trusted client's first connection is still audited `oauth.consent` (`how: trusted`).
-- **Tokens.** Code `omac_` 60 s single use (deleted before any check); access `omat_` 1 h; refresh `omrt_` 30 days,
+- **Tokens.** Code `ompac_` 60 s single use (deleted before any check); access `ompat_` 1 h; refresh `omprt_` 30 days,
   rotated; reuse within 30 s gets another pair, later reuse revokes the grant (`refresh_reuse`). Stored as hex
   HMAC-SHA256 of `"oauth:" + token` under `API_KEY_PEPPER` (no previous-pepper support: rotating the pepper signs every
   client out). An access token is accepted only by `/mcp/{slug}` of its gateway (another gateway: `401 invalid_token`
@@ -143,7 +143,7 @@ Code: `internal/oauth` (authorization server: `authorize.go`, `clients.go`, `met
 **Service accounts.** Names `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$` unique per team (`409 name_taken`), at most 100 per
 team (`409 too_many_service_accounts`), role `member`|`editor` (`400 invalid_role`). Owners/admins write (platform roles
 `403` through team routes, like gateways); members and platform staff list/get; owners/admins and platform staff list
-keys. Archived teams are read-only (`409 team_archived`). Keys `omcp_sa_` + 43 characters (prefix stored `omcp_sa_` + 8),
+keys. Archived teams are read-only (`409 team_archived`). Keys `omp_sa_` + 43 characters (prefix stored `omp_sa_` + 8),
 HMAC with the pepper, 1–365 days (default 90), at most 2 active (`409 too_many_keys`), not for a turned-off account
 (`409 disabled`), optional `gatewayIds` (≤ 50 after de-duplication, each one the **account** can use now, else
 `422 gateway_not_usable`). Revoking a revoked key is a no-op. Deleting an account deletes its keys; call records keep

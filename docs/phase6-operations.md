@@ -23,7 +23,7 @@ platform admins see usage. Operators get Prometheus metrics, a key rotation proc
 | `teams` (+) | `limit_overrides jsonb`, `retention_overrides jsonb` (default `{}`; edits bump the team's revision, as the publishing override does) |
 | `gateways` (+) | `rate_limit_per_minute integer NULL` (null: inherit); `capture_payloads` (exists since `00004`) becomes live |
 | `mcp_servers` (+) | `capture_payloads boolean NOT NULL DEFAULT false` |
-| `mcp_calls` (±) | outcome `rate_limited`. The append-only trigger allows `DELETE` only when `omg.calls_purge = 'on'` (the retention transaction), like `omg.audit_purge` |
+| `mcp_calls` (±) | outcome `rate_limited`. The append-only trigger allows `DELETE` only when `omp.calls_purge = 'on'` (the retention transaction), like `omp.audit_purge` |
 | `mcp_call_payloads` | call_id (PK), occurred_at, gateway_team_id, server_team_id, by_gateway, by_server, arguments and result (sealed with `ENCRYPTION_KEY`, AAD `mcp_call_payload:<id>:<part>`), original sizes, truncated flags, redaction counts, captured_at |
 | `rate_limit_counters` (UNLOGGED) | bucket text, window_start timestamptz, count int; PK (bucket, window_start) |
 | `usage_hourly` | hour, gateway (id, slug, name, team), server (id, slug, name, team), capability_id, exposed_name, method, principal_kind, service_account_team_id, outcome → calls, latency_sum_ms, latency_buckets `int[]`, request/response bytes. `UNIQUE NULLS NOT DISTINCT` over the dimensions |
@@ -95,8 +95,8 @@ Platform roles never read payloads through team routes (SPEC §4); they use the 
      `token`, `accesstoken`, `refreshtoken`, `idtoken`, `apikey`, `authorization`, `cookie`, `setcookie`,
      `clientsecret`, `privatekey`, `sessionid`) get the value `"[REDACTED]"`.
   2. In every string, matches of the built-in rules and the admin patterns become `[REDACTED]`. Built-in rules:
-     `bearer` (`Bearer <token>`), `jwt` (`eyJ….….…`), `gateway_credentials` (`omcp_`, `omcp_sa_`, `omat_`, `omrt_`,
-     `omac_` tokens), `github` (`gh[pousr]_…`, `github_pat_…`), `gitlab` (`glpat-…`), `slack` (`xox[abprs]-…`),
+     `bearer` (`Bearer <token>`), `jwt` (`eyJ….….…`), `gateway_credentials` (`omp_`, `omp_sa_`, `ompat_`, `omprt_`,
+     `ompac_` tokens), `github` (`gh[pousr]_…`, `github_pat_…`), `gitlab` (`glpat-…`), `slack` (`xox[abprs]-…`),
      `google` (`ya29.…`, `AIza…`), `aws_access_key` (`AKIA…`/`ASIA…`), `private_key_pem`, `url_userinfo`
      (`scheme://user:pass@`).
   3. `call_secrets`: exact values the gateway handled for this call (identity JWT, provider token, the server's
@@ -109,7 +109,7 @@ Platform roles never read payloads through team routes (SPEC §4); they use the 
   from the next capture on every replica (cached 30 s; the saving replica at once). `POST …/capture/test` shows what a
   sample would become with the given or saved patterns; the sample is never stored or logged.
 - **Storage:** sealed with `ENCRYPTION_KEY` (they hold personal data); a capture failure never fails the call (logged,
-  `omg_payload_capture_errors_total`). Written in the same transaction as the call record.
+  `omp_payload_capture_errors_total`). Written in the same transaction as the call record.
 - **Visibility:** the team route answers when `{team}` owns the gateway and `by_gateway`, or owns the server and
   `by_server`, and the caller is its owner or admin; otherwise `404 payload_not_found`. `McpCall.captured` is true
   when the caller may open the payload (team views: under that team's switch; admin views: any payload).
@@ -133,9 +133,9 @@ Platform roles never read payloads through team routes (SPEC §4); they use the 
 
 - A call's period is the **shortest** of the effective periods of the teams involved (gateway's team, server's team);
   with neither, the platform period. Payloads go when their own period passes or with their call.
-- A leader-elected loop (advisory lock `omg.retention`, every `RETENTION_INTERVAL`, default 15m) deletes each kind in
+- A leader-elected loop (advisory lock `omp.retention`, every `RETENTION_INTERVAL`, default 15m) deletes each kind in
   batches (`RETENTION_BATCH_SIZE`, default 1000 rows per transaction, at most 100 batches per kind per run): payloads,
-  then calls (never newer than the usage rollup watermark), audit entries (`omg.audit_purge`), rollups. It also clears
+  then calls (never newer than the usage rollup watermark), audit entries (`omp.audit_purge`), rollups. It also clears
   expired consent requests and rate counters. Idempotent; a failing kind doesn't stop the others.
 - Each run that deleted something writes a system audit entry `retention.purge` with counts only; `last_run` (time,
   counts, errors per kind) is shown in Admin › Retention. Legal holds and dry runs are out of scope.
@@ -144,7 +144,7 @@ Platform roles never read payloads through team routes (SPEC §4); they use the 
 
 ## Usage (decision 34)
 
-- **Rollups:** a leader-elected loop (`omg.usage-rollup`, every 5 minutes) recomputes the current and previous UTC hour
+- **Rollups:** a leader-elected loop (`omp.usage-rollup`, every 5 minutes) recomputes the current and previous UTC hour
   from `mcp_calls` (delete and insert per hour, one transaction), so late commits are included and dashboards lag at
   most about five minutes (`rolledUpTo` in responses). Latency goes into fixed buckets (5, 10, 25, 50, 100, 250, 500,
   1000, 2500, 5000, 10000, 30000, 60000, 120000 ms, +Inf); p50/p95 are interpolated from merged buckets (accurate to a
@@ -165,17 +165,17 @@ key, service account or request IDs.
 
 | Metric | Labels |
 |---|---|
-| `omg_build_info` | version, commit |
-| `omg_mcp_requests_total`, `omg_mcp_request_duration_seconds` | method (fixed list, else `other`), outcome |
-| `omg_mcp_call_duration_seconds` (histogram, buckets as rollups) | gateway, server (slugs of existing objects, at most `METRICS_MAX_OBJECTS` = 200 each, else `other`; removed when deleted) |
-| `omg_mcp_rate_limited_total` | limit (the four keys) |
-| `omg_payload_captures_total`, `omg_payload_redactions_total`, `omg_payload_capture_errors_total` | rule (redactions only) |
-| `omg_provider_token_refresh_total` | provider (slug), result (`ok`, `refused`, `unavailable`) |
-| `omg_server_health_checks_total`, `omg_mcp_servers` (gauge) | result / health state |
-| `omg_http_requests_total`, `omg_http_request_duration_seconds` | route (registered pattern), method, code class |
-| `omg_retention_deleted_total`, `omg_retention_last_success_timestamp_seconds` | kind |
-| `omg_usage_rollup_last_success_timestamp_seconds`, `omg_loop_leader` | loop |
-| `omg_db_pool_*` (acquired, idle, total, max, acquire count and wait) | — |
+| `omp_build_info` | version, commit |
+| `omp_mcp_requests_total`, `omp_mcp_request_duration_seconds` | method (fixed list, else `other`), outcome |
+| `omp_mcp_call_duration_seconds` (histogram, buckets as rollups) | gateway, server (slugs of existing objects, at most `METRICS_MAX_OBJECTS` = 200 each, else `other`; removed when deleted) |
+| `omp_mcp_rate_limited_total` | limit (the four keys) |
+| `omp_payload_captures_total`, `omp_payload_redactions_total`, `omp_payload_capture_errors_total` | rule (redactions only) |
+| `omp_provider_token_refresh_total` | provider (slug), result (`ok`, `refused`, `unavailable`) |
+| `omp_server_health_checks_total`, `omp_mcp_servers` (gauge) | result / health state |
+| `omp_http_requests_total`, `omp_http_request_duration_seconds` | route (registered pattern), method, code class |
+| `omp_retention_deleted_total`, `omp_retention_last_success_timestamp_seconds` | kind |
+| `omp_usage_rollup_last_success_timestamp_seconds`, `omp_loop_leader` | loop |
+| `omp_db_pool_*` (acquired, idle, total, max, acquire count and wait) | — |
 
 Plus the Go and process collectors. Kubernetes: an optional `metrics` port in the example overlay, a NetworkPolicy
 from the monitoring namespace, and an example `ServiceMonitor` (not in the base: it needs the CRD).
@@ -189,7 +189,7 @@ from the monitoring namespace, and an example `ServiceMonitor` (not in the base:
   accepted (they expire within an hour); refresh tokens are accepted and replaced by their normal rotation.
   `pepper_id` NULL rows (made before this release) are stamped at start-up: with the current pepper's ID when no
   previous pepper is set, else with the previous one's.
-- **`open-mcp-gateway rotate-keys [--dry-run] [--batch-size 100]`**: checks that every sealed value opens with
+- **`open-mcp-portal rotate-keys [--dry-run] [--batch-size 100]`**: checks that every sealed value opens with
   `ENCRYPTION_KEY` or `ENCRYPTION_KEY_PREVIOUS` and stops, listing table and row ID, if any doesn't; then re-seals values
   still on the previous key in batches with row locks (AAD unchanged): server header values, signing keys' private keys,
   auth provider client secrets, connection tokens, PKCE verifiers, consent request IDs and captured payloads. It prints
@@ -206,7 +206,7 @@ concurrency cancels superseded runs of a branch):
 
 - **lint:** `make lint` and `actionlint`.
 - **generated:** `npm ci`, sqlc pinned, `make check-generated`.
-- **go:** Postgres 17 service, `OMG_TEST_DATABASE_URL`, `OMG_TEST_REQUIRE_DB=1 go test -race -count=1 ./...` (a new
+- **go:** Postgres 17 service, `OMP_TEST_DATABASE_URL`, `OMP_TEST_REQUIRE_DB=1 go test -race -count=1 ./...` (a new
   `make test-ci` target: `test-integration` without `deps-up`).
 - **web:** `npm ci`, typecheck, Vitest, `check:styling`, `check:size`, build.
 - **k8s:** `make k8s-validate`. **docker:** `docker build` of both targets (no push).
@@ -292,7 +292,7 @@ Backend and web UI. **No contract changes**: every operation and field in `api/o
   `name:<exposed>` or, for lists, `method:<method>`. Day buckets start at UTC midnight (the first may begin before
   `from`).
 - **Metrics:** `METRICS_ADDR` and `METRICS_MAX_OBJECTS`; a minute loop syncs the slugs of existing gateways, servers
-  and providers and drops series of deleted ones. `omg_mcp_servers` is read at scrape time (cached 30 s). Method label
+  and providers and drops series of deleted ones. `omp_mcp_servers` is read at scrape time (cached 30 s). Method label
   values include `notification`.
 - **Key rotation:** `API_KEY_PEPPER_PREVIOUS` (refused when equal to the current pepper or, off loopback, the example
   value). `rotate-keys [--dry-run] [--batch-size]` checks every column in `keyrotation.Columns` (a test fails if the

@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // Subject is who a request counts for.

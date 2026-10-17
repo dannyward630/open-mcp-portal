@@ -1,8 +1,8 @@
-# The gateway pods meet the restricted Pod Security Standard.
+# The portal pods meet the restricted Pod Security Standard.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: open-mcp-gateway
+  name: open-mcp-portal
   labels:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest

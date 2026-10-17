@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 type fakeClock struct {

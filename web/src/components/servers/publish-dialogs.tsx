@@ -24,7 +24,7 @@ import { authModeOf } from "./upstream-auth";
 
 const maxNote = 2000;
 
-/** What the server receives with each call: how the gateway authenticates (sign-in, identity) and, without OAuth, the callers' accounts. */
+/** What the server receives with each call: how the portal authenticates (sign-in, identity) and, without OAuth, the callers' accounts. */
 function ServerReceives({ server, scope }: { server: McpServer; scope: ServerScope }) {
   return (
     <section aria-label="What the server receives">
@@ -253,7 +253,7 @@ function ApproveChecks({ server }: { server: McpServer }) {
   if (server.health.status === "unknown") {
     return (
       <Alert tone="warning" title="Not checked yet">
-        The gateway hasn't checked this endpoint's health yet, so it's not known whether it answers.
+        The portal hasn't checked this endpoint's health yet, so it's not known whether it answers.
       </Alert>
     );
   }

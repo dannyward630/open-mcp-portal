@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // Two stores on one database (two replicas) share their counters; old

@@ -30,7 +30,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
+	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
 )
 
 // DefaultMaxResponseBytes caps one HTTP response from a server.
@@ -123,7 +123,7 @@ func (c *Client) open(ctx context.Context, t Target) (*session, error) {
 	}
 	ex := &exchange{}
 	hc, done := c.httpClient(t, ex)
-	client := mcp.NewClient(&mcp.Implementation{Name: "open-mcp-gateway", Title: "Open MCP Gateway", Version: buildinfo.Version}, &mcp.ClientOptions{
+	client := mcp.NewClient(&mcp.Implementation{Name: "open-mcp-portal", Title: "Open MCP Portal", Version: buildinfo.Version}, &mcp.ClientOptions{
 		Logger: slog.New(slog.DiscardHandler),
 		// No roots, sampling or elicitation: the gateway can't answer a
 		// remote server's questions.

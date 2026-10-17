@@ -52,7 +52,7 @@ describe("A call's page", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "service-status__get_status" })).toBeInTheDocument();
     expect(screen.getByText("Contents recorded")).toBeInTheDocument();
     expect(screen.getByText(/Viewing the contents is recorded in the audit log/)).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe(`Call 501 · ${team.name} · Open MCP Gateway`));
+    await waitFor(() => expect(document.title).toBe(`Call 501 · ${team.name} · Open MCP Portal`));
     expect(await axe(container)).toHaveNoViolations();
     // Nothing is fetched (or audited) until the person asks.
     expect(payloads(live)).toHaveLength(0);
@@ -125,7 +125,7 @@ describe("A call's page", () => {
     });
     renderApp("/admin/calls/501");
     expect(await screen.findByRole("link", { name: "Support tools" })).toHaveAttribute("href", `/admin/gateways/${gatewayId}`);
-    await waitFor(() => expect(document.title).toBe("Call 501 · Calls · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Call 501 · Calls · Open MCP Portal"));
     await u.click(screen.getByRole("button", { name: "View contents" }));
     expect(await screen.findByText("the gateway and the server")).toBeInTheDocument();
     expect(screen.getByText(/Nothing was received/)).toBeInTheDocument();

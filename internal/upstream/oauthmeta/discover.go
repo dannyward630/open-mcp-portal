@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Bounds of discovery (docs/phase7-upstream-oauth.md, "Setup by discovery").
@@ -224,7 +224,7 @@ func (s *session) send(ctx context.Context, purpose, method, rawURL string, body
 	for k, v := range header {
 		req.Header[k] = v
 	}
-	req.Header.Set("User-Agent", "open-mcp-gateway/"+buildinfo.Version)
+	req.Header.Set("User-Agent", "open-mcp-portal/"+buildinfo.Version)
 	res, err := s.hc.Do(req)
 	if err != nil {
 		switch {
@@ -262,7 +262,7 @@ func (s *session) send(ctx context.Context, purpose, method, rawURL string, body
 func InitializeBody() []byte {
 	b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
 		"protocolVersion": ProtocolVersion, "capabilities": map[string]any{},
-		"clientInfo": map[string]any{"name": "open-mcp-gateway", "version": buildinfo.Version}}})
+		"clientInfo": map[string]any{"name": "open-mcp-portal", "version": buildinfo.Version}}})
 	return b
 }
 
@@ -323,7 +323,7 @@ func (f *Fetcher) Discover(ctx context.Context, rawURL string, opt Options) Resu
 			res.SuggestedURL = prm.Resource
 			res.problem(ProblemResourceMismatch, true, fmt.Sprintf("The server identifies itself as %s; register it with exactly that URL.", prm.Resource))
 		} else {
-			res.problem(ProblemResourceMismatch, true, fmt.Sprintf("The protected-resource metadata is for %s, not this URL, so the gateway can't use it.", prm.Resource))
+			res.problem(ProblemResourceMismatch, true, fmt.Sprintf("The protected-resource metadata is for %s, not this URL, so the portal can't use it.", prm.Resource))
 			return res
 		}
 	}
@@ -414,7 +414,7 @@ func AuthorizationServerMetadataURLs(issuer string) []string {
 func (s *session) authorizationServer(ctx context.Context, identifier string) {
 	res := s.res
 	if _, err := s.f.Client.NormalizeURL(ctx, identifier); err != nil {
-		res.problem(ProblemEndpointNotAllowed, true, "The authorization server "+identifier+" isn't an https URL the gateway may reach.")
+		res.problem(ProblemEndpointNotAllowed, true, "The authorization server "+identifier+" isn't an https URL the portal may reach.")
 		return
 	}
 	for _, c := range AuthorizationServerMetadataURLs(identifier) {
@@ -449,7 +449,7 @@ func (s *session) checkServer(ctx context.Context, md *ServerMetadata) {
 			continue
 		}
 		if _, err := s.f.Client.NormalizeURL(ctx, e.url); err != nil {
-			res.problem(ProblemEndpointNotAllowed, true, fmt.Sprintf("The %s endpoint %s isn't an https URL the gateway may reach.", e.name, e.url))
+			res.problem(ProblemEndpointNotAllowed, true, fmt.Sprintf("The %s endpoint %s isn't an https URL the portal may reach.", e.name, e.url))
 		}
 	}
 	if md.RegistrationEndpoint == "" {

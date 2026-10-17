@@ -16,15 +16,15 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/teams"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream/oauthmeta"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/teams"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/upstream/oauthmeta"
 )
 
 // Upstream OAuth (docs/phase7-upstream-oauth.md; decisions 39-45): a server
@@ -121,7 +121,7 @@ type OAuthSettings struct {
 func (s *Service) SetOAuth(o OAuthSettings) {
 	o.AppURL = strings.TrimRight(o.AppURL, "/")
 	if o.InstanceName == "" {
-		o.InstanceName = "Open MCP Gateway"
+		o.InstanceName = "Open MCP Portal"
 	}
 	s.oauth = o
 }
@@ -498,7 +498,7 @@ func (s *Service) register(ctx context.Context, plan *oauthPlan, serverName stri
 			code = re.Code
 		}
 		s.log.InfoContext(ctx, "upstream client registration failed", "endpoint", md.RegistrationEndpoint, "error", code)
-		e := apperr.New(http.StatusBadGateway, "oauth_registration_failed", "The authorization server refused to register the gateway's client ("+code+")")
+		e := apperr.New(http.StatusBadGateway, "oauth_registration_failed", "The authorization server refused to register the portal's client ("+code+")")
 		e.Details = map[string]any{"code": code}
 		return e
 	}

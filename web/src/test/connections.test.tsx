@@ -36,7 +36,7 @@ describe("Account › My connections", () => {
     const g = within(table).getByText("Google").closest("tr")!;
     expect(g).toHaveTextContent("Needs reconnecting");
     expect(g).toHaveTextContent("Not used yet");
-    await waitFor(() => expect(document.title).toBe("My connections · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("My connections · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 

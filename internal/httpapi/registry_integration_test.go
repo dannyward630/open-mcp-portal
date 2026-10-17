@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // testEncryptionKey is ENCRYPTION_KEY in tests (32 bytes, base64).
@@ -684,7 +684,7 @@ func TestMcpPolicyChangeKeepsPending(t *testing.T) {
 // clear: every response and audit row is searched for it.
 func TestMcpHeaderValueNeverDisclosed(t *testing.T) {
 	e := newRegistryEnv(t)
-	const first, second = "omg-SENTINEL-first-0123456789", "omg-SENTINEL-second-9876543210"
+	const first, second = "omp-SENTINEL-first-0123456789", "omp-SENTINEL-second-9876543210"
 	e.fake.RequireHeader("Authorization", first)
 	base := toolsTeam + "/mcp-servers"
 	var bodies []string

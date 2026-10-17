@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
 )
 
 type envelope struct {

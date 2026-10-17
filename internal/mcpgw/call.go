@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ncecere/open-mcp-gateway/internal/calls"
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/identity"
-	"github.com/ncecere/open-mcp-gateway/internal/oauth"
-	"github.com/ncecere/open-mcp-gateway/internal/providers"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/calls"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/identity"
+	"github.com/ncecere/open-mcp-portal/internal/oauth"
+	"github.com/ncecere/open-mcp-portal/internal/providers"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // callParams are tools/call and prompts/get parameters.

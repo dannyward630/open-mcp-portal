@@ -56,7 +56,7 @@ func TestSPAHandler(t *testing.T) {
 func TestSPAIndexPersonalised(t *testing.T) {
 	page := `<!doctype html>
 <html lang="en" data-brand="neutral">
-  <head><title>Open MCP Gateway</title><script type="module" src="/assets/app-1.js"></script></head>
+  <head><title>Open MCP Portal</title><script type="module" src="/assets/app-1.js"></script></head>
   <body><div id="root"></div></body>
 </html>`
 	assets := fstest.MapFS{"index.html": {Data: []byte(page)}, "assets/app-1.js": {Data: []byte("x")}}

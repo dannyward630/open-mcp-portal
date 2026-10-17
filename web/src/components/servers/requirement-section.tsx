@@ -40,7 +40,7 @@ export function RequirementFields({ server, value, onChange, errors, disabled, r
       <p className={s.muted}>{requirementHelp}</p>
       <Switch
         label="Requires a connection"
-        description="Callers connect their own account with a provider before these capabilities run. Without it, calls carry only the gateway's identity token."
+        description="Callers connect their own account with a provider before these capabilities run. Without it, calls carry only the portal's identity token."
         disabled={disabled}
         checked={value.on}
         onCheckedChange={(on) => onChange({ ...value, on, providerId: on && !value.providerId ? (list[0]?.id ?? "") : value.providerId })}

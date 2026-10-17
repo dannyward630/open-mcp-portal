@@ -2,12 +2,12 @@ GO      ?= go
 SQLC    ?= $(shell command -v sqlc 2>/dev/null || echo $(HOME)/go/bin/sqlc)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-PKG     := github.com/ncecere/open-mcp-gateway
+PKG     := github.com/ncecere/open-mcp-portal
 LDFLAGS := -s -w -X $(PKG)/internal/buildinfo.Version=$(VERSION) -X $(PKG)/internal/buildinfo.Commit=$(COMMIT)
 
 # Integration tests create one database per test on this server (a role
 # allowed to create databases); they skip when it is unreachable.
-export OMG_TEST_DATABASE_URL ?= postgres://omg:omg-dev-only@127.0.0.1:55442/postgres?sslmode=disable
+export OMP_TEST_DATABASE_URL ?= postgres://omp:omp-dev-only@127.0.0.1:55442/postgres?sslmode=disable
 
 # Kubernetes tooling, installed on first use into bin/k8s-tools/<version>/.
 KUSTOMIZE_VERSION   ?= v5.8.1
@@ -38,16 +38,16 @@ check-generated: generate ## Fail if generated code is stale
 	@test -z "$$(git ls-files --others --exclude-standard -- internal/store/dbgen internal/httpapi/apitypes web/src/api)" || \
 		(echo "untracked generated files: run 'make generate' and commit" && exit 1)
 
-build: ## Build bin/open-mcp-gateway (run `make web` first to include the UI)
-	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/open-mcp-gateway ./cmd/open-mcp-gateway
+build: ## Build bin/open-mcp-portal (run `make web` first to include the UI)
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/open-mcp-portal ./cmd/open-mcp-portal
 
 run: ## Run `serve` locally on 127.0.0.1:8088 using .env (created from .env.example)
 	@test -f .env || cp .env.example .env
-	set -a && . ./.env && set +a && $(GO) run ./cmd/open-mcp-gateway serve
+	set -a && . ./.env && set +a && $(GO) run ./cmd/open-mcp-portal serve
 
 migrate: ## Apply migrations using .env
 	@test -f .env || cp .env.example .env
-	set -a && . ./.env && set +a && $(GO) run ./cmd/open-mcp-gateway migrate
+	set -a && . ./.env && set +a && $(GO) run ./cmd/open-mcp-portal migrate
 
 dev-seed: ## Seed a local install (make run + make fake-mcp): team demo, a published server and two gateways
 	python3 scripts/dev-seed.py
@@ -59,7 +59,7 @@ fake-oauth: ## Run a fake OAuth provider on http://127.0.0.1:8092 for delegated 
 	$(GO) run ./cmd/fakeoauth
 
 # The Gmail MCP example (examples/mail-mcp): MAIL_PROVIDER is the auth
-# provider's slug in the gateway, MAIL_AUDIENCE the server's URL as registered.
+# provider's slug in the portal, MAIL_AUDIENCE the server's URL as registered.
 MAIL_PROVIDER ?= google
 MAIL_AUDIENCE ?= http://127.0.0.1:8093/mcp
 
@@ -77,8 +77,8 @@ test: ## All Go tests; integration tests skip when Postgres is unreachable
 
 test-integration: deps-up test-ci ## All Go tests with Postgres required (fails instead of skipping)
 
-test-ci: ## test-integration without deps-up (CI's Postgres service; OMG_TEST_DATABASE_URL)
-	OMG_TEST_REQUIRE_DB=1 $(GO) test -race -count=1 ./...
+test-ci: ## test-integration without deps-up (CI's Postgres service; OMP_TEST_DATABASE_URL)
+	OMP_TEST_REQUIRE_DB=1 $(GO) test -race -count=1 ./...
 
 lint: ## go vet and gofmt check
 	$(GO) vet ./...
@@ -101,10 +101,10 @@ web-test: ## Type-check and test the web UI
 web-dev: ## Run the Vite dev server on :5175 (proxies the API to `make run` on :8088)
 	cd web && npm run dev
 
-docker: ## Build the container image open-mcp-gateway:<git describe>
-	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t open-mcp-gateway:$(VERSION) .
+docker: ## Build the container image open-mcp-portal:<git describe>
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t open-mcp-portal:$(VERSION) .
 
-demo: ## Try it in Docker: gateway + Postgres + fake MCP server on http://localhost:8090 (OMG_DEMO_PORT; dev sign-in)
+demo: ## Try it in Docker: portal + Postgres + fake MCP server on http://localhost:8090 (OMP_DEMO_PORT; dev sign-in)
 	docker compose -f compose.demo.yaml up --build
 
 demo-down: ## Stop the demo and delete its data

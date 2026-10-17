@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ncecere/open-mcp-gateway/internal/calls"
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/providers"
-	"github.com/ncecere/open-mcp-gateway/internal/registry"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/calls"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/providers"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Delegated credentials at call time (docs/phase5-delegated-credentials.md

@@ -1,5 +1,5 @@
 /*
- * How the gateway authenticates to a server, in words, for its Overview and
+ * How the portal authenticates to a server, in words, for its Overview and
  * for review (decisions 39-45): the mode, and for OAuth the authorization
  * server (its host flagged when it isn't the server's), issuer,
  * registration, scopes and the resource parameter; what the server receives
@@ -30,12 +30,12 @@ function registrationText(o: OAuthConfig) {
 function sentText(server: McpServer) {
   const identity = sendsIdentity(server);
   const mode = authModeOf(server);
-  if (mode === "oauth") return `The caller's own token in Authorization: Bearer${identity ? ", and the gateway's identity token in MCP-Gateway-Identity" : ""}.`;
+  if (mode === "oauth") return `The caller's own token in Authorization: Bearer${identity ? ", and the portal's identity token in MCP-Gateway-Identity" : ""}.`;
   if (mode === "static_header") {
     const where = server.authHeaderName?.toLowerCase() === "authorization" ? "MCP-Gateway-Identity" : "Authorization: Bearer";
-    return `The static ${server.authHeaderName ?? ""} header${identity ? `, and the gateway's identity token in ${where}` : ""}.`;
+    return `The static ${server.authHeaderName ?? ""} header${identity ? `, and the portal's identity token in ${where}` : ""}.`;
   }
-  return identity ? "The gateway's identity token in Authorization: Bearer." : "Nothing: no credentials and no identity token.";
+  return identity ? "The portal's identity token in Authorization: Bearer." : "Nothing: no credentials and no identity token.";
 }
 
 /** The rows that describe the server's authentication (shared by the card and the review dialogs). */
@@ -63,7 +63,7 @@ export function signInItems(server: McpServer): DescriptionEntry[] {
         ]
       : []),
     { label: "Sent with each call", value: sentText(server) },
-    { label: "Identity token", value: sendsIdentity(server) ? "Sent: the caller's name, email and teams" : "Not sent: the server doesn't learn who's calling from the gateway" },
+    { label: "Identity token", value: sendsIdentity(server) ? "Sent: the caller's name, email and teams" : "Not sent: the server doesn't learn who's calling from the portal" },
   ];
 }
 
@@ -81,7 +81,7 @@ export function SignInCard({ server, scope, abilities }: { server: McpServer; sc
   return (
     <Card
       title="Sign-in"
-      description={`Each person signs in to ${server.name}'s own service once. The gateway keeps their tokens and sends each one only to this server.`}
+      description={`Each person signs in to ${server.name}'s own service once. The portal keeps their tokens and sends each one only to this server.`}
       actions={canAuthorize(scope, abilities) && active ? <AuthorizeButton server={server} label="Re-authorize as me" variant="secondary" /> : undefined}
     >
       <DescriptionList

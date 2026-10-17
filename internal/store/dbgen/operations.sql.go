@@ -79,7 +79,7 @@ func (q *Queries) DeleteUsageHour(ctx context.Context, hour time.Time) (int64, e
 }
 
 const enableAuditPurge = `-- name: EnableAuditPurge :exec
-SELECT set_config('omg.audit_purge', 'on', true)
+SELECT set_config('omp.audit_purge', 'on', true)
 `
 
 func (q *Queries) EnableAuditPurge(ctx context.Context) error {
@@ -88,7 +88,7 @@ func (q *Queries) EnableAuditPurge(ctx context.Context) error {
 }
 
 const enableCallsPurge = `-- name: EnableCallsPurge :exec
-SELECT set_config('omg.calls_purge', 'on', true)
+SELECT set_config('omp.calls_purge', 'on', true)
 `
 
 // Lets this transaction delete call records (the append-only trigger).

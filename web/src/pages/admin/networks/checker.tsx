@@ -1,5 +1,5 @@
 /*
- * The URL checker: would the gateway reach this MCP server URL now, and why.
+ * The URL checker: would the portal reach this MCP server URL now, and why.
  * The server resolves the host (briefly) without connecting and judges every
  * address against the saved list, as a connection would.
  */
@@ -23,7 +23,7 @@ export function UrlChecker() {
     mutationFn: async (u: string) => unwrap(await api.POST("/v1/admin/settings/network/check", { body: { url: u } })),
   });
   return (
-    <Card title="Check a URL" description="Whether the gateway would connect to an MCP server URL now, with the saved list. The host is looked up but never contacted.">
+    <Card title="Check a URL" description="Whether the portal would connect to an MCP server URL now, with the saved list. The host is looked up but never contacted.">
       <Form
         noValidate
         className={n.checkForm}

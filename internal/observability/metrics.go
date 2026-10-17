@@ -23,7 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
+	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
 )
 
 // callBuckets are the usage rollups' latency buckets, in seconds.
@@ -34,76 +34,76 @@ var httpBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30
 
 var (
 	BuildInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "omg_build_info",
+		Name: "omp_build_info",
 		Help: "Always 1: the binary's version and commit.",
 	}, []string{"version", "commit"})
 
 	MCPRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "omg_mcp_requests_total",
+		Name: "omp_mcp_requests_total",
 		Help: "Requests to /mcp/{slug} that passed gateway resolution, by MCP method (fixed list, else other) and outcome.",
 	}, []string{"method", "outcome"})
 	MCPRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "omg_mcp_request_duration_seconds",
+		Name:    "omp_mcp_request_duration_seconds",
 		Help:    "Time to answer /mcp/{slug} requests, by MCP method and outcome.",
 		Buckets: callBuckets,
 	}, []string{"method", "outcome"})
 	MCPCallDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "omg_mcp_call_duration_seconds",
+		Name:    "omp_mcp_call_duration_seconds",
 		Help:    "Latency of forwarded calls by gateway and server slug (bounded by METRICS_MAX_OBJECTS, else other).",
 		Buckets: callBuckets,
 	}, []string{"gateway", "server"})
 	MCPRateLimited = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "omg_mcp_rate_limited_total",
+		Name: "omp_mcp_rate_limited_total",
 		Help: "Requests to /mcp/{slug} refused by a rate limit, by limit.",
 	}, []string{"limit"})
 
 	PayloadCaptures = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "omg_payload_captures_total",
+		Name: "omp_payload_captures_total",
 		Help: "Calls whose arguments and result were captured.",
 	})
 	PayloadRedactions = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "omg_payload_redactions_total",
+		Name: "omp_payload_redactions_total",
 		Help: "Values redacted in captured payloads, by rule (built-in rule name, sensitive_keys, call_secrets or pattern).",
 	}, []string{"rule"})
 	PayloadCaptureErrors = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "omg_payload_capture_errors_total",
+		Name: "omp_payload_capture_errors_total",
 		Help: "Captures that failed (the call itself was served and recorded).",
 	})
 
 	ProviderTokenRefresh = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "omg_provider_token_refresh_total",
+		Name: "omp_provider_token_refresh_total",
 		Help: "Refreshes of people's provider tokens by provider slug and result (ok, refused, unavailable).",
 	}, []string{"provider", "result"})
 
 	ServerHealthChecks = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "omg_server_health_checks_total",
+		Name: "omp_server_health_checks_total",
 		Help: "Scheduled health checks of MCP servers by result (healthy, failing).",
 	}, []string{"result"})
 
 	HTTPRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "omg_http_requests_total",
+		Name: "omp_http_requests_total",
 		Help: "HTTP requests by route pattern, method and status class (2xx, 3xx, 4xx, 5xx).",
 	}, []string{"route", "method", "code"})
 	HTTPRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "omg_http_request_duration_seconds",
+		Name:    "omp_http_request_duration_seconds",
 		Help:    "HTTP request latency by route pattern, method and status class.",
 		Buckets: httpBuckets,
 	}, []string{"route", "method", "code"})
 
 	RetentionDeleted = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "omg_retention_deleted_total",
+		Name: "omp_retention_deleted_total",
 		Help: "Rows deleted by the retention loop, by kind.",
 	}, []string{"kind"})
 	RetentionLastSuccess = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "omg_retention_last_success_timestamp_seconds",
+		Name: "omp_retention_last_success_timestamp_seconds",
 		Help: "When this replica last purged a kind without error (Unix time).",
 	}, []string{"kind"})
 	UsageRollupLastSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "omg_usage_rollup_last_success_timestamp_seconds",
+		Name: "omp_usage_rollup_last_success_timestamp_seconds",
 		Help: "When this replica last completed the usage rollup (Unix time).",
 	})
 	LoopLeader = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "omg_loop_leader",
+		Name: "omp_loop_leader",
 		Help: "1 when this replica led the loop's latest run (retention, usage_rollup), else 0.",
 	}, []string{"loop"})
 )

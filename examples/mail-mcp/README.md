@@ -1,8 +1,8 @@
-# Gmail MCP server behind Open MCP Gateway
+# Gmail MCP server behind Open MCP Portal
 
 This is a reference MCP server with three Gmail tools. It shows how to adapt a server that used to run its own Google
-OAuth so that it relies on the gateway's **delegated credentials**
-([phase5-delegated-credentials.md](../../docs/phase5-delegated-credentials.md)). The gateway signs the person in,
+OAuth so that it relies on the portal's **delegated credentials**
+([phase5-delegated-credentials.md](../../docs/phase5-delegated-credentials.md)). The portal signs the person in,
 asks for their consent at Google once, keeps and refreshes their token, and forwards it with each call that needs it.
 The server stores no tokens, sessions or client secret.
 
@@ -18,18 +18,18 @@ headers, attachment names and the plain-text body (else the HTML part with its t
 
 Files: `main.go` (flags and wiring), `identity.go` (identity token verification and the HTTP guard), `tools.go`
 (the MCP tools and provider checks), `gmail.go` (the Gmail REST client), `fakegmail.go` (an in-memory Gmail for local
-runs and tests), `smoke.py` (an end-to-end check against a dev gateway).
+runs and tests), `smoke.py` (an end-to-end check against a dev portal).
 
 ## What changed compared with a server that runs its own OAuth
 
-| | Before: the server runs its own OAuth | After: behind the gateway |
+| | Before: the server runs its own OAuth | After: behind Open MCP Portal |
 |---|---|---|
-| Sign-in | The server is an OAuth client of Google, with its own `/login` and `/callback`, a client secret and a session store | None. The gateway signs the person in and runs the Google consent (`<APP_URL>/connect/callback`) |
-| Tokens | Stored, encrypted and refreshed by the server | None stored. Every call brings a fresh access token in `MCP-Gateway-Provider-Token`, and the gateway refreshes it |
-| Who is calling | Google's userinfo, or the server's own session | The gateway's signed **identity token** (`sub`, `email`, `teams`, `tool`, `provider`) |
-| First use | The server sends the person to its login page | The gateway answers the client with `-32042` and a consent link. The person connects, then runs the tool again |
-| Revocation | A disconnect page in the server | Account › My connections in the gateway |
-| Access control | Your own rules | The gateway decides who may call which tool. The server can still check `email`, `teams` or `sub` |
+| Sign-in | The server is an OAuth client of Google, with its own `/login` and `/callback`, a client secret and a session store | None. The portal signs the person in and runs the Google consent (`<APP_URL>/connect/callback`) |
+| Tokens | Stored, encrypted and refreshed by the server | None stored. Every call brings a fresh access token in `MCP-Gateway-Provider-Token`, and the portal refreshes it |
+| Who is calling | Google's userinfo, or the server's own session | The portal's signed **identity token** (`sub`, `email`, `teams`, `tool`, `provider`) |
+| First use | The server sends the person to its login page | The portal answers the client with `-32042` and a consent link. The person connects, then runs the tool again |
+| Revocation | A disconnect page in the server | Account › My connections in the portal |
+| Access control | Your own rules | The portal decides who may call which tool. The server can still check `email`, `teams` or `sub` |
 
 Code-wise, the change is small:
 
@@ -37,8 +37,8 @@ Code-wise, the change is small:
 // Before: look up the person's stored token, refresh it, maybe redirect to /login.
 tok, err := tokenStore.Get(session.UserID) // + oauth2.Config.TokenSource(...) + refresh + persistence
 
-// After: verify the gateway's identity token (Guard, once per HTTP request) and take the token it forwarded.
-id := IdentityFrom(r.Context())               // verified: iss, aud, exp, ES256 signature from the gateway's JWKS
+// After: verify the portal's identity token (Guard, once per HTTP request) and take the token it forwarded.
+id := IdentityFrom(r.Context())               // verified: iss, aud, exp, ES256 signature from the portal's JWKS
 if id.Provider != "google" || r.Header.Get("MCP-Gateway-Provider") != "google" { /* refuse */ }
 token := r.Header.Get("MCP-Gateway-Provider-Token") // bare access token, never logged or stored
 ```
@@ -47,7 +47,7 @@ Delete the OAuth client, the callback route, the token table and the refresh job
 
 ## What a forwarded call carries
 
-A `tools/call` that the gateway forwards carries these headers (when the server registered no static `Authorization`
+A `tools/call` that the portal forwards carries these headers (when the server registered no static `Authorization`
 header):
 
 ```http
@@ -62,7 +62,7 @@ The identity token's claims include
 `{"iss":"https://mcp.example.com","aud":"https://mail.example.com/mcp","principal_type":"user","sub":"…","email":"pat@example.com","teams":["support"],"gateway":"mail","tool":"mail__search_messages","provider":"google","jti":"…","iat":…,"nbf":…,"exp":…}`.
 The full list is in [upstream-identity.md](../../docs/upstream-identity.md).
 
-The gateway doesn't send an identity token with discovery (refresh), tests or health checks, and it never sends the
+The portal doesn't send an identity token with discovery (refresh), tests or health checks, and it never sends the
 provider headers with them.
 
 ## How the server checks a request
@@ -73,16 +73,16 @@ provider headers with them.
 2. **No token:** only discovery may proceed (`server/discover`, `initialize`, `notifications/initialized`, `ping` and the
    `*/list` methods). Anything else, including `tools/call`, gets **401**. So do provider headers without an identity
    token. To lock discovery down as well, start the server with `-discovery-key <secret>` and register
-   `X-Discovery-Key: <secret>` as the server's static header in the gateway. The gateway then sends the header on every
+   `X-Discovery-Key: <secret>` as the server's static header in the portal. The portal then sends the header on every
    request, discovery included.
-3. **Verify the JWT:** `alg` must be `ES256` and `kid` must name a key in the gateway's JWKS (`-jwks`). The key set is
+3. **Verify the JWT:** `alg` must be `ES256` and `kid` must name a key in the portal's JWKS (`-jwks`). The key set is
    cached for 5 minutes and fetched again for an unknown `kid`, at most once every 10 seconds. If the JWKS can't be
-   fetched, keys already cached keep working. The token must also have `iss` = `-issuer` (the gateway's `APP_URL`),
+   fetched, keys already cached keep working. The token must also have `iss` = `-issuer` (the portal's `APP_URL`),
    `aud` = `-audience` (this server's URL **exactly as registered**), and current `exp`/`nbf`/`iat` (30 s leeway).
    `exp`, `iat`, `sub` and `principal_type` are required, and the token may live at most 15 minutes. Any failure gets
    **401**.
 4. **Provider headers:** if `MCP-Gateway-Provider` or `MCP-Gateway-Provider-Token` is present, the header must equal
-   the token's `provider` claim, else **401** (the headers didn't come from the gateway).
+   the token's `provider` claim, else **401** (the headers didn't come from the portal).
 5. **In each tool (`tools.go`):**
    - A `service_account` principal gets a tool error.
    - No provider token gets the tool error *"no Google account token came with this call … set the requirement to
@@ -140,11 +140,11 @@ The fake Gmail accepts any bearer token. Its search understands plain words, `fr
    `https://www.googleapis.com/auth/gmail.readonly` and `https://www.googleapis.com/auth/gmail.compose`.
 3. **OAuth client.** Under *Credentials › Create credentials › OAuth client ID*, choose *Web application* and add the
    authorized redirect URI **`<APP_URL>/connect/callback`**, for example `https://mcp.example.com/connect/callback`.
-   The gateway shows this URI on the provider record and on the preset. Keep the client ID and secret.
-4. **Add the provider in the gateway** (platform admin). Go to Admin › Auth providers › New, choose the **Google**
+   The portal shows this URI on the provider record and on the preset. Keep the client ID and secret.
+4. **Add the provider in the portal** (platform admin). Go to Admin › Auth providers › New, choose the **Google**
    preset (it fills in the endpoints, `access_type=offline`, `prompt=consent` and `include_granted_scopes=true`), set
    the slug to `google` (or pass your slug with `-provider`), and paste the client ID and secret.
-5. **Run the server** where the gateway can reach it, over https in production (a private address must be on the
+5. **Run the server** where the portal can reach it, over https in production (a private address must be on the
    gateway's internal-network allowlist; see [registry.md](../../docs/registry.md#security)):
 
    ```sh
@@ -166,7 +166,7 @@ The fake Gmail accepts any bearer token. Its search understands plain words, `fr
    `/mcp` to sign in. The first mail tool call answers with a consent link. After you connect, run the tool again.
    Account › My connections shows the Google account and lets you disconnect it.
 
-Use full scope URLs. They are the names Google's token response returns, so the gateway can tell that they were granted.
+Use full scope URLs. They are the names Google's token response returns, so the portal can tell that they were granted.
 
 ## Adapting it to Microsoft Graph (Outlook)
 
@@ -174,7 +174,7 @@ Only the Gmail client and the scope names change:
 
 - **Provider:** use the *Microsoft Entra ID* preset. Register an app in Entra ID with the redirect URI
   `<APP_URL>/connect/callback`, and add the delegated Graph permissions `Mail.Read` (for search and read) and
-  `Mail.ReadWrite` (for drafts) plus `offline_access`, so the gateway gets a refresh token. Set the requirement to
+  `Mail.ReadWrite` (for drafts) plus `offline_access`, so the portal gets a refresh token. Set the requirement to
   `Mail.Read offline_access`, and override `create_draft` to `Mail.ReadWrite offline_access`.
 - **API:** the base is `https://graph.microsoft.com/v1.0/me/messages`:
   - search: `GET /me/messages?$search="from:alice"&$top=25&$select=id,from,subject,receivedDateTime,bodyPreview`

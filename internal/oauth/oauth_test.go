@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 type staticPolicy struct{ p *netpolicy.Policy }
@@ -243,7 +243,7 @@ func TestRequestShapes(t *testing.T) {
 		}
 	}
 	tok := newToken(AccessPrefix)
-	if !IsAccessToken(tok) || IsAccessToken(tok+"x") || IsAccessToken(newToken(RefreshPrefix)) || IsAccessToken("omat_"+strings.Repeat("!", 43)) {
+	if !IsAccessToken(tok) || IsAccessToken(tok+"x") || IsAccessToken(newToken(RefreshPrefix)) || IsAccessToken("ompat_"+strings.Repeat("!", 43)) {
 		t.Error("token shapes")
 	}
 	s.pepper = []byte("pepper")
@@ -259,7 +259,7 @@ func TestValidateTrusted(t *testing.T) {
 		t.Fatalf("validateTrusted = %+v %v", got, err)
 	}
 	for _, bad := range [][]TrustedClient{
-		{{ClientID: "omcl_abc"}}, {{ClientID: "https://claude.ai"}}, {{ClientID: "https://claude.ai/"}}, {{ClientID: "http://claude.ai/x"}},
+		{{ClientID: "ompcl_abc"}}, {{ClientID: "https://claude.ai"}}, {{ClientID: "https://claude.ai/"}}, {{ClientID: "http://claude.ai/x"}},
 		{{ClientID: "https://claude.ai/x"}, {ClientID: "https://claude.ai/x"}}, {{ClientID: "https://claude.ai/x?y"}},
 		{{ClientID: "https://claude.ai/x", Label: "a\nb"}}, {{ClientID: "https://claude.ai/x", Label: strings.Repeat("a", 101)}},
 		make([]TrustedClient, MaxTrustedClients+1),

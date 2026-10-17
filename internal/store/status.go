@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
-	"github.com/ncecere/open-mcp-gateway/migrations"
+	"github.com/ncecere/open-mcp-portal/migrations"
 )
 
 // MigrationState compares the database's schema with the migrations built

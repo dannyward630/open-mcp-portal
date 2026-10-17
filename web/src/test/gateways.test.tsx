@@ -124,7 +124,7 @@ describe("Gateway › Overview and Connect", () => {
     await u.click(screen.getByRole("tab", { name: "Cursor" }));
     expect((await screen.findByText(/"mcpServers"/)).textContent).not.toContain("Authorization");
     await u.click(screen.getByRole("tab", { name: "Claude Code" }));
-    await waitFor(() => expect(document.title).toBe("Support tools · Gateways · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Support tools · Gateways · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
 
     // The API-key variants stay a switch away (headless use), with a placeholder.
@@ -143,11 +143,11 @@ describe("Gateway › Overview and Connect", () => {
     await u.click(screen.getByRole("tab", { name: "VS Code" }));
     const vscode = await screen.findByText(/"promptString"/);
     expect(vscode.textContent).toContain('"password": true');
-    expect(vscode.textContent).toContain('"Authorization": "Bearer ${input:omcp-key}"');
+    expect(vscode.textContent).toContain('"Authorization": "Bearer ${input:omp-key}"');
     expect(vscode.textContent).toContain('"url": "https://mcp.example.com/mcp/support-tools"');
     await u.click(screen.getByRole("tab", { name: "Cursor" }));
     expect((await screen.findByText(/"mcpServers"/)).textContent).toContain('"Authorization": "Bearer <YOUR_API_KEY>"');
-    expect(document.body.textContent).not.toMatch(/omcp_[A-Za-z0-9]{12,}/);
+    expect(document.body.textContent).not.toMatch(/omp_[A-Za-z0-9]{12,}/);
   });
 
   it("shows platform staff who aren't members who can connect instead of snippets", async () => {

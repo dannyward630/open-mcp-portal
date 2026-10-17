@@ -14,7 +14,7 @@ import styles from "./layout.module.css";
 
 export type Mode = "workspace" | "admin";
 
-const lastHrefKey = (userId: string, mode: Mode) => `omg.lastHref.${userId}.${mode}`;
+const lastHrefKey = (userId: string, mode: Mode) => `omp.lastHref.${userId}.${mode}`;
 
 const defaultHref: Record<Mode, string> = { workspace: "/", admin: "/admin" };
 

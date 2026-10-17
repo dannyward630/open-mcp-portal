@@ -3,7 +3,7 @@ package authz
 import (
 	"net/http"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
 )
 
 // Rules of the MCP server registry (SPEC.md §7 phase 2, docs/registry.md):

@@ -19,9 +19,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // OAuth sign-in for MCP clients (docs/phase4-client-auth.md,
@@ -223,7 +223,7 @@ func exchange(t *testing.T, app *testApp, clientID, code string, p pkce, extra u
 	status, out, hdr := tokenCall(t, app, "/oauth/token", form)
 	access, _ := out["access_token"].(string)
 	refresh, _ := out["refresh_token"].(string)
-	if status != 200 || !strings.HasPrefix(access, "omat_") || !strings.HasPrefix(refresh, "omrt_") || out["token_type"] != "Bearer" ||
+	if status != 200 || !strings.HasPrefix(access, "ompat_") || !strings.HasPrefix(refresh, "omprt_") || out["token_type"] != "Bearer" ||
 		out["expires_in"] != float64(3600) || hdr.Get("Cache-Control") != "no-store" {
 		t.Fatalf("exchange = %d %v", status, out)
 	}
@@ -478,7 +478,7 @@ func TestOAuthFlowWithMetadataDocument(t *testing.T) {
 		"resource": {app.URL + "/mcp/support"}})
 	access, _ := out["access_token"].(string)
 	refresh, _ := out["refresh_token"].(string)
-	if status != 200 || !strings.HasPrefix(access, "omat_") || !strings.HasPrefix(refresh, "omrt_") {
+	if status != 200 || !strings.HasPrefix(access, "ompat_") || !strings.HasPrefix(refresh, "omprt_") {
 		t.Fatalf("exchange = %d %v", status, out)
 	}
 	if n := e.scalar(`SELECT count(*)::text FROM audit_log WHERE action = 'oauth.consent' AND metadata->>'how' = 'allowed'`); n != "1" {
@@ -589,7 +589,7 @@ func TestOAuthFlowWithMetadataDocument(t *testing.T) {
 				t.Errorf("%s contains a token", what)
 			}
 		}
-		if strings.Contains(text, "omat_") || strings.Contains(text, "omrt_") {
+		if strings.Contains(text, "ompat_") || strings.Contains(text, "omprt_") {
 			t.Errorf("%s contains a token prefix", what)
 		}
 	}
@@ -604,7 +604,7 @@ func TestOAuthTrustedRegisteredAndConnectedApps(t *testing.T) {
 	status, out, _ := jsonPost(t, app, "/oauth/register", map[string]any{"client_name": "Old Client", "redirect_uris": []string{testRedirect},
 		"client_uri": "https://old.example.com"})
 	dcr, _ := out["client_id"].(string)
-	if status != 201 || !strings.HasPrefix(dcr, "omcl_") || out["token_endpoint_auth_method"] != "none" {
+	if status != 201 || !strings.HasPrefix(dcr, "ompcl_") || out["token_endpoint_auth_method"] != "none" {
 		t.Fatalf("register = %d %v", status, out)
 	}
 	status, out, _ = jsonPost(t, app, "/oauth/register", map[string]any{"redirect_uris": []string{"http://evil.example/cb"}})

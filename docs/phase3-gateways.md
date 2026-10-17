@@ -143,13 +143,13 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
   `bad_request`. Initialize and ping are not recorded. `mcp_calls` is append-only (trigger, like `audit_log`).
 - **Identity JWT.** Adds `nbf` (iat − 30 s). `prompts/get` carries `prompt` instead of `tool`. `client` falls back to the
   API key's name. A replica caches the active key for 1 minute; the rotation loop (advisory lock
-  `omg.signing-key-rotation`) checks hourly. The first key on an empty table is created on first use or at start-up
+  `omp.signing-key-rotation`) checks hourly. The first key on an empty table is created on first use or at start-up
   and signs at once. After that the loop creates the next key (state `next`: published in the JWKS, not signing) at
   least `SIGNING_KEY_PREPUBLISH` (default 24h, 0–7 days) before the active key has signed for 30 days, and promotes it
   once the active key is due and the next key has been published that long (a late next key delays the rotation).
   Verifiers should still refetch the JWKS for an unknown `kid`. Retiring keys stay published for 1 day, then their
   private key is erased (migration `00005_signing_key_next`).
-- **API keys.** `omcp_` + 43 URL-safe characters; HMAC-SHA256 with `API_KEY_PEPPER` (32 bytes base64, required by
+- **API keys.** `omp_` + 43 URL-safe characters; HMAC-SHA256 with `API_KEY_PEPPER` (32 bytes base64, required by
   `serve`, the `.env.example` value refused off loopback). Revoking a revoked key is a no-op `200`.
 - **API key scopes** (follow-up; migration `00006_gateway_resources_key_scopes`, table `api_key_gateways`).
   `ApiKeyCreate.gatewayIds` (optional, at most 50, `400 too_many_gateways` beyond; duplicates collapse) limits a key to
@@ -177,9 +177,9 @@ Kinds `resource` and `resource_template` are selectable under the same rules as 
 servers; approved capabilities of published servers), with the same availability, minimum roles and re-checks.
 
 - **Exposed URIs** (*proposed default*): a resource `status://services` of server `status` is
-  `omcp://status/status://services`; a template gets the same literal prefix before the original template, so its
-  RFC 6570 variables are unchanged: `omcp://status/status://services/{service}`. Server slugs can't contain `/` or
-  `:`, so the slug always ends at the first `/` after `omcp://`. Exposed URIs share the name-clash rule with names.
+  `omp://status/status://services`; a template gets the same literal prefix before the original template, so its
+  RFC 6570 variables are unchanged: `omp://status/status://services/{service}`. Server slugs can't contain `/` or
+  `:`, so the slug always ends at the first `/` after `omp://`. Exposed URIs share the name-clash rule with names.
 - **Supported templates:** RFC 6570 level 1 simple `{var}` and level 2 reserved `{+var}` expressions, one variable
   each. Templates with any other operator (`{#…}`, `{/…}`, `{?…}`, `{.…}`, `{;…}`, `{&…}`), several variables or
   modifiers aren't offered by gateway-options, and selecting one is `422 capability_not_selectable` with reason

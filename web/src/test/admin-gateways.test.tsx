@@ -105,7 +105,7 @@ describe("Admin → a platform gateway › Access", () => {
     expect(within(table).getByText("engineering")).toBeInTheDocument();
     expect(screen.getByText(/A team grant covers everyone on the team now, and people who join later/)).toBeInTheDocument();
     expect(screen.getByText(/uses the groups claim your identity provider sends at sign-in/)).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("Access · Company tools · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Access · Company tools · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // The lock is exclusive, released by release, and taken on a connection
@@ -27,15 +27,15 @@ func TestTryAdvisoryLockOutsideThePool(t *testing.T) {
 		held = append(held, c)
 	}
 
-	release, ok, err := store.TryAdvisoryLockText(ctx, pool, "omg.test-lock")
+	release, ok, err := store.TryAdvisoryLockText(ctx, pool, "omp.test-lock")
 	if err != nil || !ok {
 		t.Fatalf("first lock: ok=%v err=%v (with the pool exhausted)", ok, err)
 	}
-	if _, again, err := store.TryAdvisoryLockText(ctx, pool, "omg.test-lock"); err != nil || again {
+	if _, again, err := store.TryAdvisoryLockText(ctx, pool, "omp.test-lock"); err != nil || again {
 		t.Fatalf("second lock: ok=%v err=%v, want not taken", again, err)
 	}
 	release()
-	release2, ok, err := store.TryAdvisoryLockText(ctx, pool, "omg.test-lock")
+	release2, ok, err := store.TryAdvisoryLockText(ctx, pool, "omp.test-lock")
 	if err != nil || !ok {
 		t.Fatalf("after release: ok=%v err=%v", ok, err)
 	}

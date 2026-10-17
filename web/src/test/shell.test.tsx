@@ -32,7 +32,7 @@ describe("app shell", () => {
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Home");
     expect(screen.getByRole("button", { name: /Current workspace:\s*Platform Tools/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Account:\s*Una User/ })).toBeInTheDocument();
-    expect(document.title).toBe("Home · Open MCP Gateway");
+    expect(document.title).toBe("Home · Open MCP Portal");
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -116,8 +116,8 @@ describe("app shell", () => {
     await u.click(within(portal).getByRole("link", { name: "Admin" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/teams"));
     // Only groups opened or closed by hand are remembered.
-    expect(JSON.parse(localStorage.getItem("omg.adminNavOpen") ?? "[]")).toEqual(["Catalog"]);
-    expect(JSON.parse(localStorage.getItem("omg.adminNavClosed") ?? "[]")).toEqual(["Records"]);
+    expect(JSON.parse(localStorage.getItem("omp.adminNavOpen") ?? "[]")).toEqual(["Catalog"]);
+    expect(JSON.parse(localStorage.getItem("omp.adminNavClosed") ?? "[]")).toEqual(["Records"]);
     expect(within(nav).getByRole("button", { name: "Records" })).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -128,7 +128,7 @@ describe("app shell", () => {
     await waitFor(() => expect(crumbs).toHaveTextContent("Platform Tools"));
     await waitFor(() => expect(crumbs).toHaveTextContent("Team settings"));
     expect(crumbs).toHaveTextContent("Audit log");
-    await waitFor(() => expect(document.title).toBe("Audit log · Team settings · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Audit log · Team settings · Open MCP Portal"));
 
     await router.navigate({ href: "/admin/audit" });
     expect(await screen.findByText("Read-only")).toBeInTheDocument();

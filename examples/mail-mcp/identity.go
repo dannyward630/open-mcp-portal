@@ -46,7 +46,7 @@ type Identity struct {
 var (
 	errNoToken    = errors.New("no identity token")
 	errMalformed  = errors.New("identity token is not an ES256 JWT with one kid")
-	errUnknownKey = errors.New("identity token kid is not in the gateway's JWKS")
+	errUnknownKey = errors.New("identity token kid is not in the portal's JWKS")
 	errSignature  = errors.New("identity token signature does not verify")
 	errClaims     = errors.New("identity token claims are not acceptable")
 )

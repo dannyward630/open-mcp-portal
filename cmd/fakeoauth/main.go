@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 func main() {

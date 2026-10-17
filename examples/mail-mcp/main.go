@@ -1,5 +1,5 @@
 // Command mail-mcp is a reference MCP server for Gmail that runs behind Open
-// MCP Gateway and relies on the gateway's delegated credentials
+// MCP Portal and relies on the gateway's delegated credentials
 // (docs/phase5-delegated-credentials.md) instead of running its own OAuth:
 // the gateway signs the person in, holds their Google token, refreshes it,
 // and forwards it with each call in MCP-Gateway-Provider-Token. See
@@ -33,11 +33,11 @@ import (
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8093", "listen address")
-	gateway := flag.String("gateway", "http://localhost:8088", "the gateway's URL (its APP_URL); sets -issuer and -jwks when they are empty")
+	gateway := flag.String("gateway", "http://localhost:8088", "Open MCP Portal's URL (its APP_URL); sets -issuer and -jwks when they are empty")
 	issuer := flag.String("issuer", "", "the identity token's required iss (default: -gateway)")
-	jwks := flag.String("jwks", "", "the gateway's JWKS URL (default: -gateway + /.well-known/jwks.json)")
-	audience := flag.String("audience", "", "this server's URL exactly as registered in the gateway (default: http://<addr>/mcp)")
-	provider := flag.String("provider", "google", "the auth provider slug the gateway must send tokens for")
+	jwks := flag.String("jwks", "", "the portal's JWKS URL (default: -gateway + /.well-known/jwks.json)")
+	audience := flag.String("audience", "", "this server's URL exactly as registered in the portal (default: http://<addr>/mcp)")
+	provider := flag.String("provider", "google", "the auth provider slug the portal must send tokens for")
 	gmailAPI := flag.String("gmail-api", "https://gmail.googleapis.com", "the Gmail API origin")
 	fakeGmail := flag.Bool("fake-gmail", false, "serve a fake Gmail API at /fake-gmail on this server and use it")
 	maxBody := flag.Int("max-body-chars", 20000, "read_message cuts bodies to this many characters")

@@ -6,7 +6,7 @@ import type { Schemas } from "../api/client";
 import { apiKey, myGateway } from "./fixtures";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
-const secret = "omcp_ab12cd34_0123456789abcdefghijklmnopqrstuv";
+const secret = "omp_ab12cd34_0123456789abcdefghijklmnopqrstuv";
 const created: Schemas["ApiKeyCreated"] = { key: apiKey({ id: "new-key", name: "CI runner", lastUsedAt: null }), secret };
 
 const routes = (extra: Record<string, Handler> = {}): Record<string, Handler> => ({
@@ -23,7 +23,7 @@ describe("API keys", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "API keys" })).toBeInTheDocument();
     const table = await screen.findByRole("table", { name: "API keys" });
     const active = (await within(table).findByText("Claude Code on my laptop")).closest("tr")!;
-    expect(active).toHaveTextContent("omcp_ab12cd34…");
+    expect(active).toHaveTextContent("omp_ab12cd34…");
     expect(active).toHaveTextContent("Active");
     // Expiry in days with the exact date as its tooltip, never "next week".
     expect(within(active).getByText("in 7 days")).toHaveAttribute("title", expect.stringMatching(/\d{4}/));
@@ -35,7 +35,7 @@ describe("API keys", () => {
     expect(revoked).toHaveTextContent("—");
     // Revoked keys can't be revoked again: no row menu.
     expect(within(revoked).queryByRole("button", { name: /Actions for/ })).toBeNull();
-    await waitFor(() => expect(document.title).toBe("API keys · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("API keys · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 

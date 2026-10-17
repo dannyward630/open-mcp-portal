@@ -41,9 +41,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Lifetimes.
@@ -65,13 +65,13 @@ const (
 	ClientUnusedTTL = 30 * 24 * time.Hour
 )
 
-// Token prefixes: they tell tokens from API keys (omcp_) at a glance and in
+// Token prefixes: they tell tokens from API keys (omp_) at a glance and in
 // secret scanners.
 const (
-	AccessPrefix  = "omat_"
-	RefreshPrefix = "omrt_"
-	codePrefix    = "omac_"
-	clientPrefix  = "omcl_"
+	AccessPrefix  = "ompat_"
+	RefreshPrefix = "omprt_"
+	codePrefix    = "ompac_"
+	clientPrefix  = "ompcl_"
 	// tokenBytes of randomness in every token and code (256 bits).
 	tokenBytes = 32
 )

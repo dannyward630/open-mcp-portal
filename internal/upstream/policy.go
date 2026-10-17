@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
 )
 
 // NetworkPolicy supplies the allowlist in force (internal/registry keeps a

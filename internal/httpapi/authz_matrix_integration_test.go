@@ -13,11 +13,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/auth"
-	"github.com/ncecere/open-mcp-gateway/internal/capture"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/capture"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // The authorization matrix. Every operation in api/openapi.yaml is
@@ -157,7 +157,7 @@ func (e *matrixEnv) newServiceAccount(teamID string) string {
 // newServiceAccountKey inserts a key of a service account.
 func (e *matrixEnv) newServiceAccountKey(saID string) string {
 	return e.exec(`INSERT INTO service_account_keys (service_account_id, name, prefix, digest, expires_at)
-		VALUES ($1, 'k', 'omcp_sa_matrix00', encode(sha256($2::bytea), 'hex'), now() + interval '1 day') RETURNING id::text`,
+		VALUES ($1, 'k', 'omp_sa_matrix00', encode(sha256($2::bytea), 'hex'), now() + interval '1 day') RETURNING id::text`,
 		saID, fmt.Sprintf("sa-key-%d", e.next()))
 }
 
@@ -243,7 +243,7 @@ func newMatrixEnv(t *testing.T) *matrixEnv {
 		e.exec(`INSERT INTO gateway_grants (gateway_id, subject_kind, user_id) VALUES ($1, 'user', $2) RETURNING id::text`, e.platformGateway, e.userIDs[c])
 	}
 	e.oauthClient = e.exec(`INSERT INTO oauth_clients (client_id, client_name, redirect_uris)
-		VALUES ('omcl_' || repeat('m', 43), 'Matrix client', ARRAY['http://127.0.0.1/callback']) RETURNING client_id`)
+		VALUES ('ompcl_' || repeat('m', 43), 'Matrix client', ARRAY['http://127.0.0.1/callback']) RETURNING client_id`)
 	e.spareUser = e.newUser("spare@example.com", "none")
 	e.spareTeam = e.newTeam("spare", "Spare Team").slug
 	e.provider = e.newProvider()
@@ -356,7 +356,7 @@ func (c *mctx) apiKey() string {
 	}
 	n := c.e.next()
 	return c.e.exec(`INSERT INTO api_keys (user_id, name, prefix, digest, expires_at)
-		VALUES ($1, 'k', 'omcp_matrix00', encode(sha256($2::bytea), 'hex'), now() + interval '1 day') RETURNING id::text`,
+		VALUES ($1, 'k', 'omp_matrix00', encode(sha256($2::bytea), 'hex'), now() + interval '1 day') RETURNING id::text`,
 		owner, fmt.Sprintf("matrix-%d", n))
 }
 
@@ -371,7 +371,7 @@ func (c *mctx) oauthGrant(mine bool) string {
 		owner = c.e.userIDs[cMember]
 	}
 	return c.e.exec(`INSERT INTO oauth_grants (user_id, gateway_id, client_id, client_kind, client_name, resource)
-		VALUES ($1, $2, $3, 'registered', 'Matrix client', 'x') RETURNING id::text`, owner, c.e.platformGateway, fmt.Sprintf("omcl_matrix_%d", c.e.next()))
+		VALUES ($1, $2, $3, 'registered', 'Matrix client', 'x') RETURNING id::text`, owner, c.e.platformGateway, fmt.Sprintf("ompcl_matrix_%d", c.e.next()))
 }
 
 // serviceAccount is a fresh service account of the team when the call is

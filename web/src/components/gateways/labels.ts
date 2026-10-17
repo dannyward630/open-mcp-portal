@@ -38,7 +38,7 @@ export const gatewayKindLabels: Record<GatewayKind, { one: string; many: string;
   resource_template: { one: "resource template", many: "resource templates", title: "Templates" },
 };
 
-/** Resources and templates are exposed as URIs (omcp://{server}/{uri}); tools and prompts by name. */
+/** Resources and templates are exposed as URIs (omp://{server}/{uri}); tools and prompts by name. */
 export const isResourceKind = (k: GatewayKind) => k === "resource" || k === "resource_template";
 
 /** "3 capabilities". */

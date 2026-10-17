@@ -23,7 +23,7 @@ describe("signing in", () => {
       },
     });
     const { container } = renderApp("/");
-    expect(await screen.findByRole("heading", { level: 1, name: "Open MCP Gateway" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Open MCP Portal" })).toBeInTheDocument();
     expect(screen.getByText("Choose an account to continue.")).toBeInTheDocument();
     const dev = screen.getByRole("region", { name: "Development accounts" });
     const accounts = within(dev).getAllByRole("button");
@@ -102,7 +102,7 @@ describe("the session page", () => {
     let fail = true;
     mockApi({ ...shellRoutes(), "GET /v1/me": () => (fail ? Reply.error(500, "internal", "Something broke.") : meFor()) });
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Open MCP Gateway isn't responding" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Open MCP Portal isn't responding" })).toBeInTheDocument();
     fail = false;
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Welcome, Una" })).toBeInTheDocument();

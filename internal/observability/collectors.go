@@ -22,13 +22,13 @@ type PoolCollector struct {
 func NewPoolCollector(pool *pgxpool.Pool) *PoolCollector {
 	d := func(name, help string) *prometheus.Desc { return prometheus.NewDesc(name, help, nil, nil) }
 	c := &PoolCollector{
-		acquired:    d("omg_db_pool_acquired_connections", "PostgreSQL connections in use."),
-		idle:        d("omg_db_pool_idle_connections", "Idle PostgreSQL connections in the pool."),
-		total:       d("omg_db_pool_connections", "PostgreSQL connections in the pool (in use, idle and opening)."),
-		max:         d("omg_db_pool_max_connections", "The pool's connection limit."),
-		acquires:    d("omg_db_pool_acquires_total", "Connections acquired from the pool."),
-		acquireWait: d("omg_db_pool_empty_acquires_total", "Acquires that had to wait because no connection was idle."),
-		wait:        d("omg_db_pool_acquire_wait_seconds_total", "Total time spent acquiring connections."),
+		acquired:    d("omp_db_pool_acquired_connections", "PostgreSQL connections in use."),
+		idle:        d("omp_db_pool_idle_connections", "Idle PostgreSQL connections in the pool."),
+		total:       d("omp_db_pool_connections", "PostgreSQL connections in the pool (in use, idle and opening)."),
+		max:         d("omp_db_pool_max_connections", "The pool's connection limit."),
+		acquires:    d("omp_db_pool_acquires_total", "Connections acquired from the pool."),
+		acquireWait: d("omp_db_pool_empty_acquires_total", "Acquires that had to wait because no connection was idle."),
+		wait:        d("omp_db_pool_acquire_wait_seconds_total", "Total time spent acquiring connections."),
 	}
 	if pool != nil {
 		c.stat = pool.Stat
@@ -60,7 +60,7 @@ func (c *PoolCollector) Collect(ch chan<- prometheus.Metric) {
 	counter(c.wait, s.AcquireDuration().Seconds())
 }
 
-// ServerStateCollector is omg_mcp_servers: enabled MCP servers by the
+// ServerStateCollector is omp_mcp_servers: enabled MCP servers by the
 // state of their latest health check (healthy, failing, unknown), read at
 // scrape time (at most every 30 seconds).
 type ServerStateCollector struct {
@@ -75,7 +75,7 @@ type ServerStateCollector struct {
 // NewServerStateCollector returns the collector (nil pool: describe only).
 func NewServerStateCollector(pool *pgxpool.Pool) *ServerStateCollector {
 	return &ServerStateCollector{pool: pool,
-		desc: prometheus.NewDesc("omg_mcp_servers", "Enabled MCP servers by health state of their latest check (healthy, failing, unknown).",
+		desc: prometheus.NewDesc("omp_mcp_servers", "Enabled MCP servers by health state of their latest check (healthy, failing, unknown).",
 			[]string{"state"}, nil)}
 }
 

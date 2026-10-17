@@ -57,7 +57,7 @@ WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 mi
 
 -- name: LockSigningKeys :exec
 -- Serialises key creation and rotation across replicas (transaction lock).
-SELECT pg_advisory_xact_lock(hashtextextended('omg.signing-keys', 0));
+SELECT pg_advisory_xact_lock(hashtextextended('omp.signing-keys', 0));
 
 -- name: GetActiveSigningKey :one
 SELECT * FROM signing_keys WHERE state = 'active';

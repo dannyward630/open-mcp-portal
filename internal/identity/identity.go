@@ -39,10 +39,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // Timings.
@@ -65,10 +65,10 @@ const (
 )
 
 // rotationLockKey is the advisory lock of the rotation loop. Creating and
-// rotating keys also takes the transaction lock omg.signing-keys
+// rotating keys also takes the transaction lock omp.signing-keys
 // (LockSigningKeys), which is a different key so the loop can't block on
 // itself.
-const rotationLockKey = "omg.signing-key-rotation"
+const rotationLockKey = "omp.signing-key-rotation"
 
 // Headers that carry the token (decision 19).
 const (

@@ -5,17 +5,17 @@
 #   per-server maximum), so reads must be allowed for longer than nginx's
 #   60s default. Responses are plain JSON today; SSE relays are planned, so
 #   response buffering is already off and the timeout has headroom.
-# - Body size: MCP requests are capped at 1 MiB by the gateway.
+# - Body size: MCP requests are capped at 1 MiB by the portal.
 # - No sticky sessions: /mcp/{slug} is stateless; any replica serves any
 #   request. Browser sessions live in PostgreSQL.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: open-mcp-gateway
+  name: open-mcp-portal
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: open-mcp-portal
   annotations:
     cert-manager.io/cluster-issuer: example-issuer
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
@@ -26,7 +26,7 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts: [mcp.example.org]
-      secretName: open-mcp-gateway-tls
+      secretName: open-mcp-portal-tls
   rules:
     - host: mcp.example.org
       http:
@@ -35,6 +35,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: open-mcp-gateway
+                name: open-mcp-portal
                 port:
                   name: http

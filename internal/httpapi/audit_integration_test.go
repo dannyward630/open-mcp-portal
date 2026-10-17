@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
 )
 
 // auditPage reads one page of an audit log with the given filters.

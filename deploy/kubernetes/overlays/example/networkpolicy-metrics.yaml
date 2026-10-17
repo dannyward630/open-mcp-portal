@@ -4,16 +4,16 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: open-mcp-gateway-metrics
+  name: open-mcp-portal-metrics
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
-      app.kubernetes.io/component: gateway
+      app.kubernetes.io/name: open-mcp-portal
+      app.kubernetes.io/component: server
   policyTypes: [Ingress]
   ingress:
     - from:

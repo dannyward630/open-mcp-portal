@@ -10,7 +10,7 @@ type Role = Schemas["TeamRole"];
 const base = `/v1/teams/${team.slug}/service-accounts`;
 const list = `/teams/${team.slug}/service-accounts`;
 const record = `${list}/${serviceAccountId}`;
-const secret = "omcp_sa_ab12cd34_0123456789abcdefghijklmnopqrstuv";
+const secret = "omp_sa_ab12cd34_0123456789abcdefghijklmnopqrstuv";
 const platformGatewayId = "78787878-7878-4787-8787-787878787878";
 /** What the account can use: its team's gateway (one capability with its role) and a platform gateway granted to the team. */
 const accountGateways = [
@@ -42,7 +42,7 @@ describe("Team › Service accounts list", () => {
     expect(within(row).getByRole("link", { name: "ci-release-bot" })).toHaveAttribute("href", record);
     expect(screen.queryByRole("button", { name: "Create service account" })).toBeNull();
     expect(screen.getByText("Members can view the team's service accounts. Admins and owners can create and manage them and their keys.")).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("Service accounts · Platform Tools · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Service accounts · Platform Tools · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -114,7 +114,7 @@ describe("Service account › Overview", () => {
     expect(screen.getByText(/A grant of a platform gateway to Platform Tools covers its service accounts/)).toBeInTheDocument();
     // Its own endpoint, not the team's gateway list.
     expect(calls.some((c) => c.url === `/v1/teams/${team.slug}/gateways`)).toBe(false);
-    await waitFor(() => expect(document.title).toBe("ci-release-bot · Service accounts · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("ci-release-bot · Service accounts · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -189,7 +189,7 @@ describe("Service account › Keys", () => {
     const calls = mockApi(routes("owner", serviceAccount(), [serviceAccountKey()], { [`POST ${base}/${serviceAccountId}/keys`]: () => new Reply(201, { data: created }) }));
     const { container } = renderApp(`${record}?tab=keys`);
     const table = await screen.findByRole("table", { name: "Keys of ci-release-bot" });
-    expect((await within(table).findByText("GitHub Actions")).closest("tr")).toHaveTextContent("omcp_sa_ab12cd34…");
+    expect((await within(table).findByText("GitHub Actions")).closest("tr")).toHaveTextContent("omp_sa_ab12cd34…");
     expect(screen.getByText(/at most 2 active keys/)).toHaveTextContent("create a new key, deploy it where the old one is used, then revoke the old one");
     expect(await axe(container)).toHaveNoViolations();
 
@@ -249,7 +249,7 @@ describe("Service account › Keys", () => {
   });
 
   it("allows at most two active keys: Create is off and the rotation is explained", async () => {
-    const two = [serviceAccountKey(), serviceAccountKey({ id: "k2", name: "New runner", prefix: "omcp_sa_zz99yy88" })];
+    const two = [serviceAccountKey(), serviceAccountKey({ id: "k2", name: "New runner", prefix: "omp_sa_zz99yy88" })];
     mockApi(routes("owner", serviceAccount({ activeKeyCount: 2 }), two));
     renderApp(`${record}?tab=keys`);
     expect(await screen.findByText("2 active keys: the most it can have")).toBeInTheDocument();

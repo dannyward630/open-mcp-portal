@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Open MCP Gateway API
+  title: Open MCP Portal API
   version: 0.1.0
   description: 'Management API. Browser sessions authenticate with a cookie; writes need the session''s `X-CSRF-Token`
     (from `GET /v1/me`) and a same-origin `Origin`. Success responses are `{"data": ...}` and errors `{"error":
@@ -34,7 +34,7 @@ tags:
   description: OAuth apps of third-party services (GitHub, Google, ...) that platform admins configure so tools can
     act with a person's own account (docs/phase5-delegated-credentials.md)
 - name: connections
-  description: A person's connected third-party accounts (tokens the gateway holds for them) and the consent links
+  description: A person's connected third-party accounts (tokens the portal holds for them) and the consent links
     that create them. The browser routes /connect/{provider} (web app) and /connect/callback are outside this
     contract, like /oauth/*.
 - name: limits
@@ -805,7 +805,7 @@ paths:
         provider_not_found otherwise) and its scopes (400 invalid_scope, details.scope). 400 invalid_auth_header also
         for the reserved MCP-Gateway-Identity, MCP-Gateway-Provider and MCP-Gateway-Provider-Token.
 
-        authMode oauth (docs/phase7-upstream-oauth.md) needs oauth. The gateway runs the sign-in discovery again itself
+        authMode oauth (docs/phase7-upstream-oauth.md) needs oauth. The portal runs the sign-in discovery again itself
         (it never trusts endpoints sent by the browser) and, for registration dcr (or auto resolving to it), registers
         its client before saving: 422 oauth_discovery_failed (details.problems as in DetectAuthResult) or 502
         oauth_registration_failed, and nothing is saved. 422 auth_conflict when oauth is combined with a static
@@ -1051,13 +1051,13 @@ paths:
       - mcp-servers
       - connections
       operationId: authorizeTeamMcpServerSetup
-      summary: Sign in to an oauth server as yourself so the gateway can read its capabilities (editors and above)
+      summary: Sign in to an oauth server as yourself so the portal can read its capabilities (editors and above)
       description: >-
         Browser session only (403 session_required with an API key). Starts the connect flow of startMyConnection
         for the caller's own connection to this server (the server's scopes, PKCE S256, the resource parameter
         unless sendResource is false, a single-use state bound to this session, person and server). After the
         callback that connection becomes the server's setup connection (McpServer.oauth.setupConnection, audited
-        as mcp_server.auth_update with setupBy) and the gateway reads the capabilities with it at once
+        as mcp_server.auth_update with setupBy) and the portal reads the capabilities with it at once
         (mcp_server.refresh; a failure is stored as lastRefreshError). The browser returns to returnTo (default
         /teams/{team}/servers/{serverId}?setup=connected) or to /connect/done when the sign-in failed. 409 not_oauth
         (authMode isn't oauth); 409 team_archived; 422 provider_mismatch (a linked platform provider was turned off
@@ -1698,7 +1698,7 @@ paths:
       tags:
       - admin
       operationId: adminCheckNetworkUrl
-      summary: Say whether the gateway would reach an MCP server URL now, and why (platform admins and auditors)
+      summary: Say whether the portal would reach an MCP server URL now, and why (platform admins and auditors)
       description: Applies the same rule as saving and dialling, with this replica's copy of the allowlist. Resolves
         the host name (at most 3 seconds) but never connects. Every resolved address must be allowed.
       requestBody:
@@ -3402,7 +3402,7 @@ paths:
       - connections
       operationId: revokeMyConnection
       summary: Disconnect one of the caller's accounts; its tokens are erased at once
-      description: Where the provider has a revocation endpoint the gateway also revokes the tokens there (best effort,
+      description: Where the provider has a revocation endpoint the portal also revokes the tokens there (best effort,
         recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again.
         Audited as provider_connection.revoke (reason user).
       responses:
@@ -4576,7 +4576,7 @@ components:
       properties:
         name:
           type: string
-          example: Open MCP Gateway
+          example: Open MCP Portal
           description: Product name shown in the UI and page titles
         orgName:
           type: string
@@ -5152,7 +5152,7 @@ components:
           allOf:
           - $ref: '#/components/schemas/McpServerRequirement'
           nullable: true
-          description: The auth provider and scopes whose user token the gateway sends with calls to this server's
+          description: The auth provider and scopes whose user token the portal sends with calls to this server's
             capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride).
         capturePayloads:
           type: boolean
@@ -5790,8 +5790,8 @@ components:
       - prompt
       - resource
       - resource_template
-      description: Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri}
-        and resource templates as omcp://{serverSlug}/{uriTemplate}
+      description: Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri}
+        and resource templates as omp://{serverSlug}/{uriTemplate}
     Gateway:
       type: object
       required:
@@ -5998,7 +5998,7 @@ components:
           description: The name the server uses
         exposedName:
           type: string
-          description: 'What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri}
+          description: 'What clients see: {serverSlug}__{name} for tools and prompts, omp://{serverSlug}/{uri}
             for resources and resource templates'
           example: service-status__check_outage
         title:
@@ -6101,7 +6101,7 @@ components:
           description: The name the server uses (a resource's URI, a template's URI template)
         exposedName:
           type: string
-          description: 'What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and templates'
+          description: 'What clients see: {serverSlug}__{name}, or omp://{serverSlug}/{uri} for resources and templates'
         title:
           type: string
         description:
@@ -6276,7 +6276,7 @@ components:
           type: string
         prefix:
           type: string
-          description: The first characters of the key, to recognise it (omcp_xxxxxxxx)
+          description: The first characters of the key, to recognise it (omp_xxxxxxxx)
         status:
           type: string
           enum:
@@ -6761,7 +6761,7 @@ components:
           type: string
         prefix:
           type: string
-          description: The first characters of the key (omcp_sa_xxxxxxxx)
+          description: The first characters of the key (omp_sa_xxxxxxxx)
         status:
           type: string
           enum:
@@ -6857,7 +6857,7 @@ components:
       - client_secret_basic
       - client_secret_post
       - none
-      description: How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+      description: How the portal authenticates to the token endpoint. none (a public client) requires pkce
     AuthProviderTokenResponseFormat:
       type: string
       enum:
@@ -7415,11 +7415,11 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: When the current access token expires (null; the provider gave no expiry). The gateway refreshes
+          description: When the current access token expires (null; the provider gave no expiry). The portal refreshes
             it before then when it has a refresh token
         refreshable:
           type: boolean
-          description: The gateway holds a refresh token
+          description: The portal holds a refresh token
     ConnectStart:
       type: object
       required:
@@ -7536,7 +7536,7 @@ components:
       - none
       - static_header
       - oauth
-      description: 'How the gateway authenticates to the server (decision 39). none: only the identity token, in
+      description: 'How the portal authenticates to the server (decision 39). none: only the identity token, in
         Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to
         MCP-Gateway-Identity when that header is Authorization. oauth: each person''s own token from the server''s
         authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes
@@ -7548,8 +7548,8 @@ components:
       - cimd
       - manual
       - platform_provider
-      description: 'How the gateway got its OAuth client at the authorization server. dcr: registered automatically
-        (RFC 7591). cimd: the gateway''s Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a
+      description: 'How the portal got its OAuth client at the authorization server. dcr: registered automatically
+        (RFC 7591). cimd: the portal''s Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a
         public client), offered only when APP_URL is public https and the authorization server supports it. manual:
         a client the team created at the authorization server (client ID and secret entered). platform_provider:
         the client of a platform auth provider whose authorization and token endpoints equal the discovered ones'
@@ -7582,7 +7582,7 @@ components:
           type: string
     McpServerOAuthSetupConnection:
       type: object
-      description: The sign-in the gateway uses to read the server's capabilities and for manual tests (decision 42)
+      description: The sign-in the portal uses to read the server's capabilities and for manual tests (decision 42)
       required:
       - status
       - personId
@@ -7893,7 +7893,7 @@ components:
           type: boolean
     DetectAuthRegistration:
       type: object
-      description: How the gateway can get a client, and what to give a manual one
+      description: How the portal can get a client, and what to give a manual one
       required:
       - options
       - recommended
@@ -7926,7 +7926,7 @@ components:
           example: https://mcp.example.com/connect/callback
         clientMetadataUrl:
           type: string
-          description: The gateway's Client ID Metadata Document (the client ID for cimd)
+          description: The portal's Client ID Metadata Document (the client ID for cimd)
     DetectAuthProblem:
       type: object
       required:
@@ -8113,7 +8113,7 @@ components:
         max:
           type: integer
           format: int64
-          description: The most the gateway allows for any value (1000000)
+          description: The most the portal allows for any value (1000000)
         cappedTeams:
           type: integer
           format: int64

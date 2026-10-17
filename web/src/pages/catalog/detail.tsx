@@ -71,7 +71,7 @@ export function CatalogServerPage() {
       <Alert tone="info">{gatewaysNote}</Alert>
       {server.authMode === "oauth" && (
         <Alert tone="info" title={`Each person signs in to ${server.name}`}>
-          {`The first time someone calls it, their AI client shows a link to sign in to ${server.name}'s own service, once. The gateway then sends their own token with each call. ${serviceAccountsCant}`}
+          {`The first time someone calls it, their AI client shows a link to sign in to ${server.name}'s own service, once. The portal then sends their own token with each call. ${serviceAccountsCant}`}
         </Alert>
       )}
       {server.capturePayloads && (

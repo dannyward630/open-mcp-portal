@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
 )
 
 func mustParse(t *testing.T, raw string) *url.URL {

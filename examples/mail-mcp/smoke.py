@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test of the mail MCP example against a local development gateway.
+"""Smoke test of the mail MCP example against a local development portal (Open MCP Portal).
 
 Sets up (idempotently) and leaves in place, so you can try it:
   - auth provider "google-dev" pointing at the fake OAuth provider (make fake-oauth)
@@ -203,7 +203,7 @@ def main():
     if server is None:
         created = s.must("POST", f"/v1/teams/{TEAM}/mcp-servers", {
             "slug": SERVER, "name": "Mail (Gmail)", "url": args.mcp, "requirement": requirement,
-            "description": "Gmail through the gateway's delegated Google token (examples/mail-mcp)"})
+            "description": "Gmail through the portal's delegated Google token (examples/mail-mcp)"})
         server = created["server"]
         if created.get("refreshError"):
             sys.exit(f"FAIL discovery: {created['refreshError']}; is make example-mail-fake running?")
@@ -278,7 +278,7 @@ def main():
         check(res.get("isError") and "user authorization requirement" in text, "no requirement -> tool error explaining it", out)
         print(f"      {text[:110]}…")
 
-        # Straight to the example, bypassing the gateway.
+        # Straight to the example, bypassing the portal.
         check(direct(args.mcp, {}) == 401, "direct tools/call without identity token -> 401")
         check(direct(args.mcp, {"MCP-Gateway-Provider": PROVIDER, "MCP-Gateway-Provider-Token": "stolen"}) == 401,
               "direct tools/call with only provider headers -> 401")

@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
-	"github.com/ncecere/open-mcp-gateway/internal/usage"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/usage"
 )
 
 type fixture struct {

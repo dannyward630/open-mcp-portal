@@ -169,11 +169,11 @@ describe("the picker with many options", () => {
     source: "catalog",
     kind: "resource",
     name: "wiki://pages",
-    exposedName: "omcp://wiki/wiki://pages",
+    exposedName: "omp://wiki/wiki://pages",
     title: "Pages",
     description: "Every page.",
   });
-  const template = gatewayOption({ ...resource, capabilityId: "f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2", kind: "resource_template", name: "wiki://pages/{id}", exposedName: "omcp://wiki/wiki://pages/{id}", title: "Page" });
+  const template = gatewayOption({ ...resource, capabilityId: "f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2", kind: "resource_template", name: "wiki://pages/{id}", exposedName: "omp://wiki/wiki://pages/{id}", title: "Page" });
   const all = [...many, gatewayOptions[3]!, resource, template];
 
   it("loads more by cursor, filters by server and kind, and keeps the selection through paging and search", async () => {
@@ -189,9 +189,9 @@ describe("the picker with many options", () => {
     await u.click(await screen.findByRole("checkbox", { name: "service-status__tool_120" }));
     expect(calls.some((c) => c.url.endsWith("/gateway-options") && c.search.get("cursor") === "100")).toBe(true);
     // Resources show with their exposed URIs; the template filter asks the server.
-    expect(await screen.findByRole("checkbox", { name: "omcp://wiki/wiki://pages" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "omp://wiki/wiki://pages" })).toBeInTheDocument();
     await u.click(screen.getByRole("button", { name: "Templates" }));
-    await u.click(await screen.findByRole("checkbox", { name: "omcp://wiki/wiki://pages/{id}" }));
+    await u.click(await screen.findByRole("checkbox", { name: "omp://wiki/wiki://pages/{id}" }));
     await waitFor(() => expect(screen.queryByRole("checkbox", { name: "service-status__tool_000" })).toBeNull());
     await u.click(screen.getByRole("button", { name: "All" }));
 
@@ -205,7 +205,7 @@ describe("the picker with many options", () => {
     await u.click(screen.getByRole("checkbox", { name: "Selected only" }));
     await u.clear(screen.getByRole("searchbox", { name: "Search capabilities" }));
     expect(await screen.findByRole("checkbox", { name: "service-status__tool_120" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "omcp://wiki/wiki://pages/{id}" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "omp://wiki/wiki://pages/{id}" })).toBeChecked();
     expect(screen.getByText("3 of at most 200 selected")).toBeInTheDocument();
 
     await u.click(screen.getByRole("button", { name: "Save selection" }));

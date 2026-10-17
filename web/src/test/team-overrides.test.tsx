@@ -142,7 +142,7 @@ describe("Team settings › Limits & retention", () => {
     const retention = await screen.findByRole("table", { name: "Retention that applies" });
     expect(within(retention).getByText("Recorded call contents").closest("tr")).toHaveTextContent("30 days");
     expect(screen.queryByRole("textbox")).toBeNull();
-    await waitFor(() => expect(document.title).toBe(`Limits & retention · Team settings · Open MCP Gateway`));
+    await waitFor(() => expect(document.title).toBe(`Limits & retention · Team settings · Open MCP Portal`));
     expect(await axe(container)).toHaveNoViolations();
   });
 });

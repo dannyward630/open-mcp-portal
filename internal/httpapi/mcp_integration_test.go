@@ -15,9 +15,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // The /mcp/{slug} runtime, end to end with the official SDK's client.
@@ -240,7 +240,7 @@ func TestMCPEndToEnd(t *testing.T) {
 	}
 	for name, values := range seen[0].Header {
 		for _, v := range values {
-			if strings.Contains(v, key.Secret) || strings.Contains(v, "omcp_") {
+			if strings.Contains(v, key.Secret) || strings.Contains(v, "omp_") {
 				t.Fatalf("the client's key reached the server in %s", name)
 			}
 		}
@@ -292,7 +292,7 @@ func TestMCPEndToEnd(t *testing.T) {
 	if code != 401 || hdr.Get("WWW-Authenticate") != `Bearer resource_metadata="`+e.app.URL+`/.well-known/oauth-protected-resource/mcp/support"` {
 		t.Fatalf("no key = %d %q %v", code, hdr.Get("WWW-Authenticate"), out)
 	}
-	code, hdr, _ = rawMCP(t, e.app, "POST", "support", "omcp_"+strings.Repeat("x", 43), rpc(1, "tools/list", nil), nil)
+	code, hdr, _ = rawMCP(t, e.app, "POST", "support", "omp_"+strings.Repeat("x", 43), rpc(1, "tools/list", nil), nil)
 	if code != 401 || !strings.Contains(hdr.Get("WWW-Authenticate"), `error="invalid_token"`) {
 		t.Fatalf("bad key = %d %q", code, hdr.Get("WWW-Authenticate"))
 	}
@@ -557,7 +557,7 @@ func TestMCPRechecksBeforeEveryCall(t *testing.T) {
 func TestAPIKeys(t *testing.T) {
 	e := newGwEnv(t, nil)
 	k := newKey(t, e.member, "Claude Code on my laptop")
-	if !strings.HasPrefix(k.Secret, "omcp_") || len(k.Secret) != 48 || k.Key.Prefix != k.Secret[:13] || k.Key.Status != "active" ||
+	if !strings.HasPrefix(k.Secret, "omp_") || len(k.Secret) != len("omp_")+43 || k.Key.Prefix != k.Secret[:len("omp_")+8] || k.Key.Status != "active" ||
 		k.Key.ExpiresAt == nil || k.Key.ExpiresAt.Sub(time.Now()) < 89*24*time.Hour {
 		t.Fatalf("key = %+v", k)
 	}

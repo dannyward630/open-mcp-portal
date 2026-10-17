@@ -3,10 +3,10 @@ package gateways
 import "testing"
 
 func TestExposedURI(t *testing.T) {
-	if got := ExposedURI("status", "status://services"); got != "omcp://status/status://services" {
+	if got := ExposedURI("status", "status://services"); got != "omp://status/status://services" {
 		t.Fatalf("ExposedURI = %q", got)
 	}
-	if got := Exposed("resource_template", "status", "status://services/{service}"); got != "omcp://status/status://services/{service}" {
+	if got := Exposed("resource_template", "status", "status://services/{service}"); got != "omp://status/status://services/{service}" {
 		t.Fatalf("Exposed template = %q", got)
 	}
 	if got := Exposed("tool", "status", "echo"); got != "status__echo" {
@@ -16,13 +16,13 @@ func TestExposedURI(t *testing.T) {
 		in, slug, orig string
 		ok             bool
 	}{
-		{"omcp://status/status://services", "status", "status://services", true},
-		{"omcp://status/file:///a/b", "status", "file:///a/b", true},
-		{"omcp://status/", "", "", false},
-		{"omcp://status", "", "", false},
-		{"omcp://Bad_Slug/x://y", "", "", false},
+		{"omp://status/status://services", "status", "status://services", true},
+		{"omp://status/file:///a/b", "status", "file:///a/b", true},
+		{"omp://status/", "", "", false},
+		{"omp://status", "", "", false},
+		{"omp://Bad_Slug/x://y", "", "", false},
 		{"status://services", "", "", false},
-		{"OMCP://status/x://y", "", "", false},
+		{"OMP://status/x://y", "", "", false},
 	} {
 		slug, orig, ok := SplitExposedURI(c.in)
 		if ok != c.ok || slug != c.slug || orig != c.orig {

@@ -15,13 +15,13 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/migrations"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/migrations"
 )
 
 // migrationLockKey is the pg_advisory_lock key that serialises migrations
 // across replicas and a Kubernetes migration Job.
-const migrationLockKey int64 = 0x6f6d670000000001 // ASCII "omg" + 1
+const migrationLockKey int64 = 0x6f6d700000000001 // ASCII "omp" + 1
 
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = errors.New("not found")
@@ -35,7 +35,7 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if cfg.ConnConfig.RuntimeParams == nil {
 		cfg.ConnConfig.RuntimeParams = map[string]string{}
 	}
-	cfg.ConnConfig.RuntimeParams["application_name"] = "open-mcp-gateway"
+	cfg.ConnConfig.RuntimeParams["application_name"] = "open-mcp-portal"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err

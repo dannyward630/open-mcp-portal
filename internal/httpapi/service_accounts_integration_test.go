@@ -12,8 +12,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // Service accounts (docs/phase4-client-auth.md; decisions 22 and 23):
@@ -116,7 +116,7 @@ func TestServiceAccountsManagement(t *testing.T) {
 
 	// Keys: at most two active (rotation), always expiring, shown once.
 	k1 := createSAKey(t, e.owner, id, map[string]any{"name": "deploy"})
-	if !strings.HasPrefix(k1.Secret, "omcp_sa_") || len(k1.Secret) != 51 || k1.Key.Prefix != k1.Secret[:16] || k1.Key.Status != "active" ||
+	if !strings.HasPrefix(k1.Secret, "omp_sa_") || len(k1.Secret) != len("omp_sa_")+43 || k1.Key.Prefix != k1.Secret[:len("omp_sa_")+8] || k1.Key.Status != "active" ||
 		k1.Key.ExpiresAt.Sub(time.Now()) < 89*24*time.Hour || len(k1.Key.Gateways) != 0 || k1.Key.CreatedByName == nil {
 		t.Fatalf("key = %+v", k1)
 	}

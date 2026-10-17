@@ -113,9 +113,9 @@ describe("navigation lists", () => {
 describe("breadcrumb helpers", () => {
   it("titles the page with the last two crumbs, most specific first", () => {
     // Home is the way back, not the page: a not-found page is titled by itself.
-    expect(documentTitle([{ label: "Home" }, { label: "Page not found" }], "Open MCP Gateway")).toBe("Page not found \u00b7 Open MCP Gateway");
-    expect(documentTitle([{ label: "Platform Tools" }, { label: "Team settings" }, { label: "Members" }], "Open MCP Gateway")).toBe("Members · Team settings · Open MCP Gateway");
-    expect(documentTitle([{ label: "Home" }], "Open MCP Gateway")).toBe("Home · Open MCP Gateway");
+    expect(documentTitle([{ label: "Home" }, { label: "Page not found" }], "Open MCP Portal")).toBe("Page not found \u00b7 Open MCP Portal");
+    expect(documentTitle([{ label: "Platform Tools" }, { label: "Team settings" }, { label: "Members" }], "Open MCP Portal")).toBe("Members · Team settings · Open MCP Portal");
+    expect(documentTitle([{ label: "Home" }], "Open MCP Portal")).toBe("Home · Open MCP Portal");
   });
 
   it("collapses the middle of a long trail on a phone", () => {
@@ -147,6 +147,6 @@ describe("workspace sidebar", () => {
     await router.navigate({ to: "/" });
     await screen.findByRole("heading", { level: 1, name: "Welcome, Una" });
     expect(screen.getByRole("button", { name: /Current workspace:\s*Platform Tools/ })).toBeInTheDocument();
-    expect(localStorage.getItem("omg.lastTeam")).toBe(team.slug);
+    expect(localStorage.getItem("omp.lastTeam")).toBe(team.slug);
   });
 });

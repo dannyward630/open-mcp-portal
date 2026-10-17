@@ -3,10 +3,10 @@ package buildinfo
 
 import "fmt"
 
-// Set with -ldflags "-X github.com/ncecere/open-mcp-gateway/internal/buildinfo.Version=..."
+// Set with -ldflags "-X github.com/ncecere/open-mcp-portal/internal/buildinfo.Version=..."
 var (
-	Version = "dev"
+	Version = "0.1.0"
 	Commit  = "unknown"
 )
 
-func String() string { return fmt.Sprintf("open-mcp-gateway %s (%s)", Version, Commit) }
+func String() string { return fmt.Sprintf("open-mcp-portal %s (%s)", Version, Commit) }

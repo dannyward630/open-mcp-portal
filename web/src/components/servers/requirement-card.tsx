@@ -26,7 +26,7 @@ function useOverrides(server: McpServer, scope: ServerScope) {
 export function RequirementSummary({ server, scope }: { server: McpServer; scope: ServerScope }) {
   const overrides = useOverrides(server, scope);
   const r = server.requirement;
-  if (!r) return <p className={s.muted}>None: calls carry only the gateway&apos;s signed identity token, never a person&apos;s account.</p>;
+  if (!r) return <p className={s.muted}>None: calls carry only the portal&apos;s signed identity token, never a person&apos;s account.</p>;
   return (
     <DescriptionList
       dividers

@@ -12,7 +12,7 @@ import type { Schemas } from "../api/client";
 
 export type Instance = Schemas["InstanceInfo"];
 
-export const defaultInstance: Instance = { name: "Open MCP Gateway", orgName: "", theme: "neutral", logoUrl: null, supportUrl: null };
+export const defaultInstance: Instance = { name: "Open MCP Portal", orgName: "", theme: "neutral", logoUrl: null, supportUrl: null };
 
 /** The instance from an auth config response, with defaults for anything missing. */
 export function instanceOf(config: { instance?: Partial<Instance> | null } | undefined): Instance {

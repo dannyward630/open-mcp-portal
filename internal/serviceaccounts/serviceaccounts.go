@@ -9,7 +9,7 @@
 // It may use the team's own gateways and platform gateways granted to its
 // team.
 //
-// Keys are "omcp_sa_" and 43 random URL-safe characters (32 bytes), stored
+// Keys are "omp_sa_" and 43 random URL-safe characters (32 bytes), stored
 // only as HMAC-SHA256 digests keyed with API_KEY_PEPPER (like personal
 // keys, internal/apikeys), shown once. They always expire (at most 365
 // days); an account has at most MaxActiveKeys active keys so a key can be
@@ -33,19 +33,19 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/teams"
+	"github.com/ncecere/open-mcp-portal/internal/apikeys"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/teams"
 )
 
 // KeyPrefix starts every service account key.
-const KeyPrefix = "omcp_sa_"
+const KeyPrefix = "omp_sa_"
 
 // Limits.
 const (
@@ -54,9 +54,9 @@ const (
 	// MaxActiveKeys is how many active keys an account may have (two, to
 	// rotate without downtime).
 	MaxActiveKeys = 2
-	// prefixLen is how much of a key is stored in the clear: "omcp_sa_" and 8.
+	// prefixLen is how much of a key is stored in the clear: "omp_sa_" and 8.
 	prefixLen = len(KeyPrefix) + 8
-	// secretLen is the length of a key: "omcp_sa_" and 43 characters.
+	// secretLen is the length of a key: "omp_sa_" and 43 characters.
 	secretLen = len(KeyPrefix) + 43
 )
 

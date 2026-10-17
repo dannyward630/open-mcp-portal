@@ -90,7 +90,7 @@ func TestSafetyChecks(t *testing.T) {
 		{"lookalike host", func(c *Config) { c.AppURL, c.DevAuth = "http://localhost.example.com", true }, "serve",
 			[]string{"DEV_AUTH", "must use https"}},
 		{"all at once", func(c *Config) {
-			c.AppURL, c.DevAuth, c.EncryptionKey = "http://omg.example.com", true, ex["ENCRYPTION_KEY"]
+			c.AppURL, c.DevAuth, c.EncryptionKey = "http://omp.example.com", true, ex["ENCRYPTION_KEY"]
 		}, "serve", []string{"ENCRYPTION_KEY", "DEV_AUTH", "must use https"}},
 	}
 	for _, tc := range cases {

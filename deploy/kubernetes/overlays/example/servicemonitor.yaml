@@ -5,17 +5,17 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: open-mcp-gateway
-  namespace: open-mcp-gateway
+  name: open-mcp-portal
+  namespace: open-mcp-portal
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/part-of: open-mcp-portal
     release: prometheus
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
-      app.kubernetes.io/component: gateway
+      app.kubernetes.io/name: open-mcp-portal
+      app.kubernetes.io/component: server
   endpoints:
     - port: metrics
       path: /metrics

@@ -1,5 +1,5 @@
 /*
- * Profile (/settings/profile), from the account menu: who the person is as the gateway knows them, their teams and
+ * Profile (/settings/profile), from the account menu: who the person is as the portal knows them, their teams and
  * their SSO groups. It is reachable for everyone, including people in no team. Nothing here is edited: the name, email
  * and groups come from the sign-in.
  */

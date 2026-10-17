@@ -98,7 +98,7 @@ describe("Add server › Detect sign-in", () => {
     const calls = mockApi(routes(() => detectDcr()));
     renderApp(`/teams/${team.slug}/servers?form=new`);
     await fillAndDetect(u, "https://wiki.example.com/mcp");
-    expect(await screen.findByText(/Automatic: the gateway registers itself \(dynamic client registration\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Automatic: the portal registers itself \(dynamic client registration\)/)).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Automatic: register a client" })).toBeChecked();
     expect(screen.queryByRole("textbox", { name: "Client ID" })).toBeNull();
     expect(screen.getByRole("checkbox", { name: "wiki.read" })).toBeChecked();
@@ -172,6 +172,6 @@ describe("Add server › Detect sign-in", () => {
     expect(screen.getByText(/The issuer doesn't match\./)).toBeInTheDocument();
     reply = Reply.error(502, "oauth_registration_failed", "registration failed");
     await u.click(screen.getByRole("button", { name: "Add server" }));
-    expect(await screen.findByText("The authorization server refused to register the gateway")).toBeInTheDocument();
+    expect(await screen.findByText("The authorization server refused to register the portal")).toBeInTheDocument();
   });
 });

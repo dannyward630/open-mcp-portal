@@ -4,19 +4,19 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Resources and resource templates (docs/phase3-gateways.md, "Resources").
 //
-// Clients see a resource's URI as omcp://{serverSlug}/{originalUri}, and a
+// Clients see a resource's URI as omp://{serverSlug}/{originalUri}, and a
 // template as the same literal prefix before the original template, so its
 // RFC 6570 variables are unchanged. A read strips the prefix, finds the
 // server by slug, and is allowed only for the URI of a selected resource or
 // a URI matching a selected template.
 
 // ExposedScheme starts every exposed resource URI.
-const ExposedScheme = "omcp://"
+const ExposedScheme = "omp://"
 
 // IsResourceKind reports whether kind is a resource or resource template.
 func IsResourceKind(kind string) bool {
@@ -24,7 +24,7 @@ func IsResourceKind(kind string) bool {
 }
 
 // ExposedURI is the URI (or URI template) clients see for a server's
-// resource (or template): omcp://{serverSlug}/{original}.
+// resource (or template): omp://{serverSlug}/{original}.
 func ExposedURI(serverSlug, original string) string {
 	return ExposedScheme + serverSlug + "/" + original
 }

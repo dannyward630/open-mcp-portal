@@ -55,7 +55,7 @@ describe("Catalog", () => {
     expect(screen.getAllByRole("button", { name: /Definition/ })).toHaveLength(2);
     // Not on the owning team: no link to its page.
     expect(screen.queryByRole("link", { name: /Open in your team/ })).toBeNull();
-    await waitFor(() => expect(document.title).toBe("Service status · Catalog · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Service status · Catalog · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 

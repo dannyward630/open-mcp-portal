@@ -8,12 +8,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ncecere/open-mcp-gateway/internal/capture"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/limits"
-	"github.com/ncecere/open-mcp-gateway/internal/retention"
-	"github.com/ncecere/open-mcp-gateway/internal/usage"
+	"github.com/ncecere/open-mcp-portal/internal/capture"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/limits"
+	"github.com/ncecere/open-mcp-portal/internal/retention"
+	"github.com/ncecere/open-mcp-portal/internal/usage"
 )
 
 // Phase 6 operations (docs/phase6-operations.md): rate limits, payload

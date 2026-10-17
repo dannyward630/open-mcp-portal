@@ -1,4 +1,4 @@
-# Try Open MCP Gateway on your own machine (docs/deploy.md, "Demo"):
+# Try Open MCP Portal on your own machine (docs/deploy.md, "Demo"):
 #
 #   docker compose -f compose.demo.yaml up --build     # or: make demo
 #
@@ -7,8 +7,8 @@
 #
 #   http://127.0.0.1:8091/mcp
 #
-# (it shares the gateway container's network, so it is a loopback address
-# to the gateway, which development mode allows), build a gateway from its
+# (it shares the portal container's network, so it is a loopback address
+# to the portal, which development mode allows), build a gateway from its
 # tools and connect an MCP client to http://localhost:8090/mcp/<slug> with a
 # personal API key.
 #
@@ -17,35 +17,35 @@
 # is a loopback address, and the port is published on 127.0.0.1 only. Never
 # expose it or reuse it for a real install: see docs/deploy.md.
 #
-# Another port: OMG_DEMO_PORT=8095 docker compose -f compose.demo.yaml up
+# Another port: OMP_DEMO_PORT=8095 docker compose -f compose.demo.yaml up
 # Start again from scratch: docker compose -f compose.demo.yaml down -v
-name: open-mcp-gateway-demo
+name: open-mcp-portal-demo
 
 services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_USER: omg
-      POSTGRES_PASSWORD: omg-demo-only
-      POSTGRES_DB: omg
+      POSTGRES_USER: omp
+      POSTGRES_PASSWORD: omp-demo-only
+      POSTGRES_DB: omp
     volumes: [postgres:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U omg -d omg"]
+      test: ["CMD-SHELL", "pg_isready -U omp -d omp"]
       interval: 3s
       timeout: 5s
       retries: 30
 
-  gateway:
+  portal:
     build: .
-    image: ${OMG_IMAGE:-open-mcp-gateway:demo}
+    image: ${OMP_IMAGE:-open-mcp-portal:demo}
     command: ["serve"]
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      APP_URL: http://localhost:${OMG_DEMO_PORT:-8090}
+      APP_URL: http://localhost:${OMP_DEMO_PORT:-8090}
       LISTEN_ADDR: 0.0.0.0:8088
-      DATABASE_URL: postgres://omg:omg-demo-only@postgres:5432/omg?sslmode=disable
+      DATABASE_URL: postgres://omp:omp-demo-only@postgres:5432/omp?sslmode=disable
       MIGRATE_ON_START: "true"
       # The public example values from .env.example: refused off loopback.
       ENCRYPTION_KEY: 94cwGQfaKGZdfF4A04/lGwT/LMSckeFIpgC3FO3lnm8=
@@ -54,21 +54,21 @@ services:
       LOG_FORMAT: text
       LOG_LEVEL: info
       SHUTDOWN_DELAY: 0s
-    ports: ["127.0.0.1:${OMG_DEMO_PORT:-8090}:8088"]
+    ports: ["127.0.0.1:${OMP_DEMO_PORT:-8090}:8088"]
     read_only: true
     restart: unless-stopped
 
-  # The fake MCP server (cmd/fakemcp) inside the gateway's network namespace:
-  # 127.0.0.1:8091 for the gateway, not published on the host. It verifies
-  # the gateway's identity tokens against the gateway's JWKS.
+  # The fake MCP server (cmd/fakemcp) inside the portal's network namespace:
+  # 127.0.0.1:8091 for the portal, not published on the host. It verifies
+  # the portal's identity tokens against the portal's JWKS.
   fakemcp:
     build:
       context: .
       target: fakemcp
-    image: ${OMG_FAKEMCP_IMAGE:-open-mcp-gateway-fakemcp:demo}
+    image: ${OMP_FAKEMCP_IMAGE:-open-mcp-portal-fakemcp:demo}
     command: ["-addr", "127.0.0.1:8091", "-jwks", "http://127.0.0.1:8088/.well-known/jwks.json"]
-    network_mode: "service:gateway"
-    depends_on: [gateway]
+    network_mode: "service:portal"
+    depends_on: [portal]
     read_only: true
     restart: unless-stopped
 

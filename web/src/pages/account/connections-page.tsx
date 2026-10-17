@@ -53,7 +53,7 @@ export function MyConnectionsPage() {
         owner={{ self: true }}
         canDisconnect
         title={terms.myConnections}
-        description="Accounts you connected so tools can act as you on another service, such as creating a GitHub issue. The gateway keeps the tokens and sends them only to the server that needs them; your AI client and its model never see them."
+        description="Accounts you connected so tools can act as you on another service, such as creating a GitHub issue. The portal keeps the tokens and sends them only to the server that needs them; your AI client and its model never see them."
         primaryAction={connect}
         emptyAction={connect}
         notices={

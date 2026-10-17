@@ -1,11 +1,11 @@
-// Command open-mcp-gateway runs Open MCP Gateway, a self-hosted gateway that
+// Command open-mcp-portal runs Open MCP Portal, a self-hosted portal that
 // gives a company's people and agents governed access to its MCP servers.
 //
-//	open-mcp-gateway serve     HTTP API, embedded UI and background loops
-//	open-mcp-gateway migrate   apply database migrations and exit
-//	open-mcp-gateway doctor    check the configuration, Postgres and migrations
-//	open-mcp-gateway rotate-keys  re-encrypt stored secrets with ENCRYPTION_KEY
-//	open-mcp-gateway version   print the version
+//	open-mcp-portal serve     HTTP API, embedded UI and background loops
+//	open-mcp-portal migrate   apply database migrations and exit
+//	open-mcp-portal doctor    check the configuration, Postgres and migrations
+//	open-mcp-portal rotate-keys  re-encrypt stored secrets with ENCRYPTION_KEY
+//	open-mcp-portal version   print the version
 package main
 
 import (
@@ -20,16 +20,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/app"
-	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/doctor"
-	"github.com/ncecere/open-mcp-gateway/internal/keyrotation"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/app"
+	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/doctor"
+	"github.com/ncecere/open-mcp-portal/internal/keyrotation"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store"
 )
 
-const usage = `usage: open-mcp-gateway <command>
+const usage = `usage: open-mcp-portal <command>
 
 commands:
   serve     HTTP API, embedded UI and background loops
@@ -42,7 +42,7 @@ commands:
   version   print the version
 
 Configuration comes from environment variables and the optional YAML file
-named by OMG_CONFIG_FILE. See .env.example.
+named by OMP_CONFIG_FILE. See .env.example.
 `
 
 // errChecksFailed makes `doctor` exit non-zero after printing its report.
@@ -50,7 +50,7 @@ var errChecksFailed = errors.New("some checks failed")
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "open-mcp-gateway:", err)
+		fmt.Fprintln(os.Stderr, "open-mcp-portal:", err)
 		os.Exit(1)
 	}
 }
@@ -101,16 +101,16 @@ func newLogger(w io.Writer, level, format string) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(w, opts))
 }
 
-// runDoctor implements `open-mcp-gateway doctor [flags]`. It uses the same
+// runDoctor implements `open-mcp-portal doctor [flags]`. It uses the same
 // configuration as the other commands, so in a pod (the image has no shell):
-// kubectl exec deploy/open-mcp-gateway -- /open-mcp-gateway doctor
+// kubectl exec deploy/open-mcp-portal -- /open-mcp-portal doctor
 func runDoctor(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	mode := fs.String("mode", "serve", "process mode whose configuration is validated: serve or migrate")
 	timeout := fs.Duration("timeout", 10*time.Second, "time limit of each check")
 	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), "usage: open-mcp-gateway doctor [--json] [--mode serve|migrate] [--timeout 10s]\n\n"+
+		fmt.Fprint(fs.Output(), "usage: open-mcp-portal doctor [--json] [--mode serve|migrate] [--timeout 10s]\n\n"+
 			"Checks the configuration (including the production safety checks), then\n"+
 			"PostgreSQL and the migration state. Exits 1 if any check fails.\n\n")
 		fs.PrintDefaults()
@@ -144,23 +144,23 @@ func runDoctor(args []string, stdout io.Writer) error {
 	return nil
 }
 
-// runRotateKeys implements `open-mcp-gateway rotate-keys [--dry-run]
+// runRotateKeys implements `open-mcp-portal rotate-keys [--dry-run]
 // [--batch-size 100]` (docs/deploy.md "Key rotation"): it checks that every
 // sealed value opens with ENCRYPTION_KEY or ENCRYPTION_KEY_PREVIOUS (and
 // stops, naming table and row, if any doesn't), re-seals values still on
 // the previous key, and lists keys still on another API key pepper.
-// Idempotent and safe while the gateway serves.
+// Idempotent and safe while the portal serves.
 func runRotateKeys(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("rotate-keys", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "check and count; write nothing")
 	batch := fs.Int("batch-size", keyrotation.DefaultBatchSize, "values re-encrypted per transaction (1-10000)")
 	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), "usage: open-mcp-gateway rotate-keys [--dry-run] [--batch-size 100]\n\n"+
+		fmt.Fprint(fs.Output(), "usage: open-mcp-portal rotate-keys [--dry-run] [--batch-size 100]\n\n"+
 			"Re-encrypts every stored secret (server header values, signing keys, auth\n"+
 			"provider client secrets, connection tokens, PKCE verifiers, consent request\n"+
 			"IDs, captured payloads) from ENCRYPTION_KEY_PREVIOUS to ENCRYPTION_KEY, and\n"+
 			"lists keys still on API_KEY_PEPPER_PREVIOUS. Uses the same configuration as\n"+
-			"serve. Safe to run while the gateway serves and to run again.\n\n")
+			"serve. Safe to run while the portal serves and to run again.\n\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); errors.Is(err, flag.ErrHelp) {
@@ -213,7 +213,7 @@ func runRotateKeys(args []string, stdout io.Writer) error {
 	if st, err := store.Migrations(ctx, pool); err != nil {
 		return fmt.Errorf("migration state: %w", err)
 	} else if st.Pending {
-		return fmt.Errorf("the database is at migration %d but this binary needs %d: run `open-mcp-gateway migrate` first", st.Current, st.Latest)
+		return fmt.Errorf("the database is at migration %d but this binary needs %d: run `open-mcp-portal migrate` first", st.Current, st.Latest)
 	}
 	sum, err := keyrotation.Run(ctx, pool, box, peppers, keyrotation.Options{DryRun: *dryRun, BatchSize: *batch, Out: stdout})
 	if err != nil {

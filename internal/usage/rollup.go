@@ -1,7 +1,7 @@
 // Package usage keeps hourly rollups of call records and reports usage
 // (docs/phase6-operations.md "Usage", decision 34).
 //
-// A leader-elected loop (advisory lock omg.usage-rollup, every 5 minutes)
+// A leader-elected loop (advisory lock omp.usage-rollup, every 5 minutes)
 // recomputes the current and previous UTC hour from mcp_calls (delete and
 // insert per hour, one transaction each), so late commits are included and
 // reports lag at most about five minutes. After an outage it catches up from
@@ -18,12 +18,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // LockKey is the rollup loop's advisory lock.
-const LockKey = "omg.usage-rollup"
+const LockKey = "omp.usage-rollup"
 
 // Interval is how often the rollup runs.
 const Interval = 5 * time.Minute

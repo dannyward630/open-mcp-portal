@@ -1,27 +1,27 @@
-# NetworkPolicies for the gateway pods only (podSelector on the
-# open-mcp-gateway labels), so the base can share a namespace. Once any
+# NetworkPolicies for the portal pods only (podSelector on the
+# open-mcp-portal labels), so the base can share a namespace. Once any
 # policy selects a pod, everything not allowed by some policy is denied;
-# open-mcp-gateway-default-deny makes that explicit.
+# open-mcp-portal-default-deny makes that explicit.
 #
 # Overlays commonly patch:
-#   open-mcp-gateway-ingress         the ingress controller's namespace
+#   open-mcp-portal-ingress         the ingress controller's namespace
 #                                    (placeholder: ingress-controller)
-#   open-mcp-gateway-egress-postgres narrow TCP 5432 to where Postgres runs
-#   open-mcp-gateway-egress-dns      if cluster DNS is not kube-dns in
+#   open-mcp-portal-egress-postgres narrow TCP 5432 to where Postgres runs
+#   open-mcp-portal-egress-dns      if cluster DNS is not kube-dns in
 #                                    kube-system
 # and add egress for MCP servers or an OIDC provider on ports other than
-# 443 (open-mcp-gateway-egress-https allows TCP 443 only).
+# 443 (open-mcp-portal-egress-https allows TCP 443 only).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: open-mcp-gateway-default-deny
+  name: open-mcp-portal-default-deny
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/name: open-mcp-portal
   policyTypes: [Ingress, Egress]
 ---
 # Traffic from the ingress controller (or Gateway API implementation) to the
@@ -30,16 +30,16 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: open-mcp-gateway-ingress
+  name: open-mcp-portal-ingress
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
-      app.kubernetes.io/component: gateway
+      app.kubernetes.io/name: open-mcp-portal
+      app.kubernetes.io/component: server
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -53,14 +53,14 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: open-mcp-gateway-egress-dns
+  name: open-mcp-portal-egress-dns
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/name: open-mcp-portal
   policyTypes: [Egress]
   egress:
     - to:
@@ -82,14 +82,14 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: open-mcp-gateway-egress-postgres
+  name: open-mcp-portal-egress-postgres
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
+      app.kubernetes.io/name: open-mcp-portal
   policyTypes: [Egress]
   egress:
     - to:
@@ -103,7 +103,7 @@ spec:
           port: 5432
 ---
 # HTTPS to anywhere: upstream MCP servers and the OIDC provider. The
-# gateway's own SSRF guard still applies whatever this allows: outside
+# portal's own SSRF guard still applies whatever this allows: outside
 # development it connects to public addresses, and to internal ones only
 # when the allowlist (UPSTREAM_ALLOWED_NETWORKS or Admin › Internal
 # networks) covers them, never to loopback or link-local ones, and it never
@@ -115,15 +115,15 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: open-mcp-gateway-egress-https
+  name: open-mcp-portal-egress-https
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: open-mcp-gateway
-      app.kubernetes.io/component: gateway
+      app.kubernetes.io/name: open-mcp-portal
+      app.kubernetes.io/component: server
   policyTypes: [Egress]
   egress:
     - to:

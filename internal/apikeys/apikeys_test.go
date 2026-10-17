@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 func TestKeyShapeAndDigest(t *testing.T) {
@@ -13,7 +13,7 @@ func TestKeyShapeAndDigest(t *testing.T) {
 	if !LooksLikeKey(good) {
 		t.Fatal("valid key refused")
 	}
-	for _, bad := range []string{"", "omcp_short", "sk_" + strings.Repeat("a", 45), good + "x", strings.Replace(good, "a", "!", 1)} {
+	for _, bad := range []string{"", "omp_short", "sk_" + strings.Repeat("a", 45), good + "x", strings.Replace(good, "a", "!", 1)} {
 		if LooksLikeKey(bad) {
 			t.Errorf("%q accepted", bad)
 		}

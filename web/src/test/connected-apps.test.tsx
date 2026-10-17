@@ -27,7 +27,7 @@ describe("Account › Connected apps", () => {
     expect(unverified).toHaveTextContent("Old gateway");
     expect(unverified).toHaveTextContent("Deleted");
     expect(unverified).toHaveTextContent("Not used yet");
-    await waitFor(() => expect(document.title).toBe("Connected apps · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Connected apps · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
   });
 

@@ -1,6 +1,6 @@
 package authz
 
-import "github.com/ncecere/open-mcp-gateway/internal/apperr"
+import "github.com/ncecere/open-mcp-portal/internal/apperr"
 
 // Rules of gateways (docs/decisions.md, decisions 13, 16 and 17;
 // docs/phase3-gateways.md): a team's owners and admins create, change and

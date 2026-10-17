@@ -1,7 +1,7 @@
 // Package apikeys manages personal API keys (docs/decisions.md, decision
 // 15): the credential MCP clients send to /mcp/{slug} in Phase 3.
 //
-// A key is "omcp_" followed by 43 random URL-safe characters (32 bytes).
+// A key is "omp_" followed by 43 random URL-safe characters (32 bytes).
 // Only its HMAC-SHA256 digest, keyed with API_KEY_PEPPER, is stored, with
 // its first characters (the prefix) so people can recognise it. The key is
 // shown once, when it is created. Keys always expire, are limited to
@@ -32,17 +32,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // Prefix starts every key.
-const Prefix = "omcp_"
+const Prefix = "omp_"
 
 // Limits.
 const (
@@ -54,9 +54,9 @@ const (
 	// DefaultDays and MaxDays bound a key's lifetime.
 	DefaultDays = 90
 	MaxDays     = 365
-	// prefixLen is how much of a key is stored in the clear: "omcp_" and 8.
+	// prefixLen is how much of a key is stored in the clear: "omp_" and 8.
 	prefixLen = len(Prefix) + 8
-	// secretLen is the length of a key: "omcp_" and 43 characters.
+	// secretLen is the length of a key: "omp_" and 43 characters.
 	secretLen = len(Prefix) + 43
 )
 

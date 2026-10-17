@@ -105,7 +105,7 @@ export function failureText(r: { errorClass?: ErrorClass; httpStatus?: number })
   return r.httpStatus ? `${what} (HTTP ${r.httpStatus})` : what;
 }
 
-/** The gateway's own wording for each error class: it says no more than the class label does. */
+/** The portal's own wording for each error class: it says no more than the class label does. */
 const genericMessages: RegExp[] = [
   /^The server refused the credentials \(HTTP \d+\)\.?$/,
   /^The server answered 404: check the URL\.?$/,

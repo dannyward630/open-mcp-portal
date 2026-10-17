@@ -51,8 +51,8 @@ function registrationOptions(detected: DetectResult | undefined, server: McpServ
   const out: RadioOption<RegistrationChoice>[] = [];
   const offered = reg ? reg.options : server?.oauth ? [server.oauth.registration] : [];
   if (offered.includes("cimd"))
-    out.push({ value: "cimd", label: "Automatic: the gateway's client metadata document", description: "A public client whose ID is the gateway's own address. Nothing to create." });
-  if (offered.includes("dcr")) out.push({ value: "dcr", label: "Automatic: register a client", description: `The gateway registers its own client at ${host} when you save.` });
+    out.push({ value: "cimd", label: "Automatic: the portal's client metadata document", description: "A public client whose ID is the portal's own address. Nothing to create." });
+  if (offered.includes("dcr")) out.push({ value: "dcr", label: "Automatic: register a client", description: `The portal registers its own client at ${host} when you save.` });
   const providers = reg ? reg.matchingProviders : server?.oauth?.platformProvider ? [server.oauth.platformProvider] : [];
   for (const p of providers) {
     out.push({
@@ -82,7 +82,7 @@ export function OAuthFields({ value, onChange, detected, server, secret, setSecr
     <>
       <RadioGroup<RegistrationChoice>
         legend="Client"
-        description="How the gateway gets its OAuth client at the authorization server."
+        description="How the portal gets its OAuth client at the authorization server."
         options={registrationOptions(detected, server)}
         value={value.registration}
         onValueChange={(registration) => set({ registration })}
@@ -107,7 +107,7 @@ export function OAuthFields({ value, onChange, detected, server, secret, setSecr
           >
             <Input type="password" autoComplete="new-password" maxLength={2000} disabled={disabled} value={secret} onChange={(e) => setSecret(e.target.value)} />
           </Field>
-          <Field label="Token method" description="How the gateway proves it's the client when it asks for tokens.">
+          <Field label="Token method" description="How the portal proves it's the client when it asks for tokens.">
             <NativeSelect disabled={disabled} value={value.tokenAuthMethod} onChange={(e) => set({ tokenAuthMethod: e.target.value as TokenAuthMethod })}>
               {methodChoices.map((x) => (
                 <option key={x} value={x}>
@@ -130,7 +130,7 @@ export function OAuthFields({ value, onChange, detected, server, secret, setSecr
         </Field>
       )}
       {servers.length > 1 && (
-        <Field label="Authorization server" description="The server lists several. The detection read the first; the gateway checks the one you choose when you save.">
+        <Field label="Authorization server" description="The server lists several. The detection read the first; the portal checks the one you choose when you save.">
           <NativeSelect disabled={disabled} value={value.authorizationServer || servers[0]} onChange={(e) => set({ authorizationServer: e.target.value })}>
             {servers.map((x) => (
               <option key={x} value={x}>

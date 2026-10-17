@@ -1499,7 +1499,7 @@ type ApiKey struct {
 	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
 	Name       string             `json:"name"`
 
-	// Prefix The first characters of the key, to recognise it (omcp_xxxxxxxx)
+	// Prefix The first characters of the key, to recognise it (omp_xxxxxxxx)
 	Prefix    string       `json:"prefix"`
 	RevokedAt *time.Time   `json:"revokedAt,omitempty"`
 	Status    ApiKeyStatus `json:"status"`
@@ -1685,7 +1685,7 @@ type AuthProvider struct {
 	// Example: github
 	Slug string `json:"slug"`
 
-	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	// TokenAuthMethod How the portal authenticates to the token endpoint. none (a public client) requires pkce
 	TokenAuthMethod AuthProviderTokenAuthMethod `json:"tokenAuthMethod"`
 
 	// TokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
@@ -1771,7 +1771,7 @@ type AuthProviderPreset struct {
 	ScopeParam     string                           `json:"scopeParam"`
 	ScopeSeparator AuthProviderPresetScopeSeparator `json:"scopeSeparator"`
 
-	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	// TokenAuthMethod How the portal authenticates to the token endpoint. none (a public client) requires pkce
 	TokenAuthMethod AuthProviderTokenAuthMethod `json:"tokenAuthMethod"`
 
 	// TokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
@@ -1809,7 +1809,7 @@ type AuthProviderSummary struct {
 	Slug string `json:"slug"`
 }
 
-// AuthProviderTokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+// AuthProviderTokenAuthMethod How the portal authenticates to the token endpoint. none (a public client) requires pkce
 type AuthProviderTokenAuthMethod string
 
 // AuthProviderTokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
@@ -1841,7 +1841,7 @@ type AuthProviderUpdate struct {
 	ScopeParam     *string                           `json:"scopeParam,omitempty"`
 	ScopeSeparator *AuthProviderUpdateScopeSeparator `json:"scopeSeparator,omitempty"`
 
-	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	// TokenAuthMethod How the portal authenticates to the token endpoint. none (a public client) requires pkce
 	TokenAuthMethod *AuthProviderTokenAuthMethod `json:"tokenAuthMethod,omitempty"`
 
 	// TokenResponseFormat standard: RFC 6749 (access_token, refresh_token, expires_in, scope at the top level). slack_authed_user: Slack's user-token response, where they are under authed_user
@@ -2113,7 +2113,7 @@ type ConnectRequestCapability struct {
 	// ExposedName Example: github-tools__create_issue
 	ExposedName string `json:"exposedName"`
 
-	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri} and resource templates as omp://{serverSlug}/{uriTemplate}
 	Kind  GatewayCapabilityKind `json:"kind"`
 	Title string                `json:"title"`
 }
@@ -2171,11 +2171,11 @@ type DetectAuthProblem struct {
 // DetectAuthProblemCode blocking ones stop oauth mode: resource_mismatch (the metadata's resource isn't this URL; see suggestedUrl), metadata_not_found, invalid_metadata, issuer_mismatch, no_pkce (S256 not listed, so the MCP spec says not to proceed), endpoint_not_allowed (an endpoint isn't https or is refused by the address rules). Informational: no_resource_metadata (found by the well-known fallback), several_authorization_servers (the first is used unless another is chosen), no_registration (enter a client), no_refresh (refresh_token not in grant_types_supported)
 type DetectAuthProblemCode string
 
-// DetectAuthRegistration How the gateway can get a client, and what to give a manual one
+// DetectAuthRegistration How the portal can get a client, and what to give a manual one
 type DetectAuthRegistration struct {
 	CimdUnavailableReason *DetectAuthRegistrationCimdUnavailableReason `json:"cimdUnavailableReason"`
 
-	// ClientMetadataUrl The gateway's Client ID Metadata Document (the client ID for cimd)
+	// ClientMetadataUrl The portal's Client ID Metadata Document (the client ID for cimd)
 	ClientMetadataUrl string `json:"clientMetadataUrl"`
 
 	// MatchingProviders Enabled platform providers whose authorization and token endpoints equal the discovered ones
@@ -2184,7 +2184,7 @@ type DetectAuthRegistration struct {
 	// Options Always includes manual
 	Options []McpServerOAuthRegistration `json:"options"`
 
-	// Recommended How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+	// Recommended How the portal got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the portal's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
 	Recommended McpServerOAuthRegistration `json:"recommended"`
 
 	// RedirectUri Register this callback with a manual client
@@ -2368,12 +2368,12 @@ type GatewayCapability struct {
 	CapabilityId openapi_types.UUID `json:"capabilityId"`
 	Description  string             `json:"description"`
 
-	// ExposedName What clients see: {serverSlug}__{name} for tools and prompts, omcp://{serverSlug}/{uri} for resources and resource templates
+	// ExposedName What clients see: {serverSlug}__{name} for tools and prompts, omp://{serverSlug}/{uri} for resources and resource templates
 	//
 	// Example: service-status__check_outage
 	ExposedName string `json:"exposedName"`
 
-	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri} and resource templates as omp://{serverSlug}/{uriTemplate}
 	Kind GatewayCapabilityKind `json:"kind"`
 
 	// MinRole Team gateways only; the lowest team role that may use it (null = every member)
@@ -2399,7 +2399,7 @@ type GatewayCapability struct {
 	UnavailableReason *GatewayUnavailableReason `json:"unavailableReason,omitempty"`
 }
 
-// GatewayCapabilityKind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+// GatewayCapabilityKind Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri} and resource templates as omp://{serverSlug}/{uriTemplate}
 type GatewayCapabilityKind string
 
 // GatewayCapabilitySelection defines model for GatewayCapabilitySelection.
@@ -2455,10 +2455,10 @@ type GatewayOption struct {
 	CapabilityId openapi_types.UUID `json:"capabilityId"`
 	Description  string             `json:"description"`
 
-	// ExposedName What clients see: {serverSlug}__{name}, or omcp://{serverSlug}/{uri} for resources and templates
+	// ExposedName What clients see: {serverSlug}__{name}, or omp://{serverSlug}/{uri} for resources and templates
 	ExposedName string `json:"exposedName"`
 
-	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri} and resource templates as omp://{serverSlug}/{uriTemplate}
 	Kind GatewayCapabilityKind `json:"kind"`
 
 	// Name The name the server uses (a resource's URI, a template's URI template)
@@ -2538,7 +2538,7 @@ type InstanceInfo struct {
 
 	// Name Product name shown in the UI and page titles
 	//
-	// Example: Open MCP Gateway
+	// Example: Open MCP Portal
 	Name string `json:"name"`
 
 	// OrgName Organisation name (empty when not configured)
@@ -2718,7 +2718,7 @@ type McpServer struct {
 	// AuthHeaderName The static header sent with every request (absent: none)
 	AuthHeaderName *string `json:"authHeaderName,omitempty"`
 
-	// AuthMode How the gateway authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
+	// AuthMode How the portal authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
 	AuthMode *McpServerAuthMode `json:"authMode,omitempty"`
 
 	// AuthValueHint Last 4 characters of the header value, or empty
@@ -2758,7 +2758,7 @@ type McpServer struct {
 	// RefreshedAt When capabilities were last read (null; never)
 	RefreshedAt *time.Time `json:"refreshedAt,omitempty"`
 
-	// Requirement The auth provider and scopes whose user token the gateway sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride).
+	// Requirement The auth provider and scopes whose user token the portal sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride).
 	Requirement *McpServerRequirement `json:"requirement,omitempty"`
 
 	// Revision Increases on every change. Send it back in If-Match.
@@ -2785,7 +2785,7 @@ type McpServer struct {
 // McpServerTransport defines model for McpServer.Transport.
 type McpServerTransport string
 
-// McpServerAuthMode How the gateway authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
+// McpServerAuthMode How the portal authenticates to the server (decision 39). none: only the identity token, in Authorization: Bearer. static_header: one static header (authHeaderName); the identity token moves to MCP-Gateway-Identity when that header is Authorization. oauth: each person's own token from the server's authorization server in Authorization: Bearer, and the identity token in MCP-Gateway-Identity. oauth excludes a static Authorization header and a requirement (one credential per call)
 type McpServerAuthMode string
 
 // McpServerCreate defines model for McpServerCreate.
@@ -2880,7 +2880,7 @@ type McpServerOAuth struct {
 	// Example: https://mcp.example.com/connect/callback
 	RedirectUri *string `json:"redirectUri,omitempty"`
 
-	// Registration How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+	// Registration How the portal got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the portal's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
 	Registration McpServerOAuthRegistration `json:"registration"`
 
 	// Resource The server's canonical URI from its protected-resource metadata; sent as the resource parameter and the only URL its tokens are ever sent to
@@ -2901,10 +2901,10 @@ type McpServerOAuth struct {
 	// SendResource Send the resource parameter (RFC 8707) on authorization and token requests, as the MCP spec requires; turn off only for an authorization server that rejects it
 	SendResource bool `json:"sendResource"`
 
-	// SetupConnection The sign-in the gateway uses to read the server's capabilities and for manual tests (decision 42)
+	// SetupConnection The sign-in the portal uses to read the server's capabilities and for manual tests (decision 42)
 	SetupConnection McpServerOAuthSetupConnection `json:"setupConnection"`
 
-	// TokenAuthMethod How the gateway authenticates to the token endpoint. none (a public client) requires pkce
+	// TokenAuthMethod How the portal authenticates to the token endpoint. none (a public client) requires pkce
 	TokenAuthMethod AuthProviderTokenAuthMethod `json:"tokenAuthMethod"`
 
 	// TokenEndpoint Example: https://github.com/login/oauth/access_token
@@ -2934,13 +2934,13 @@ type McpServerOAuthInput struct {
 	TokenAuthMethod *AuthProviderTokenAuthMethod `json:"tokenAuthMethod,omitempty"`
 }
 
-// McpServerOAuthRegistration How the gateway got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the gateway's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
+// McpServerOAuthRegistration How the portal got its OAuth client at the authorization server. dcr: registered automatically (RFC 7591). cimd: the portal's Client ID Metadata Document <APP_URL>/oauth/upstream-client-metadata.json (a public client), offered only when APP_URL is public https and the authorization server supports it. manual: a client the team created at the authorization server (client ID and secret entered). platform_provider: the client of a platform auth provider whose authorization and token endpoints equal the discovered ones
 type McpServerOAuthRegistration string
 
 // McpServerOAuthRegistrationChoice auto: cimd when offered, else dcr (the MCP spec's order); 422 registration_unavailable when neither is. Stored as the McpServerOAuthRegistration it resolved to
 type McpServerOAuthRegistrationChoice string
 
-// McpServerOAuthSetupConnection The sign-in the gateway uses to read the server's capabilities and for manual tests (decision 42)
+// McpServerOAuthSetupConnection The sign-in the portal uses to read the server's capabilities and for manual tests (decision 42)
 type McpServerOAuthSetupConnection struct {
 	AuthorizedAt *time.Time          `json:"authorizedAt"`
 	PersonId     *openapi_types.UUID `json:"personId"`
@@ -3290,7 +3290,7 @@ type PlatformRateLimit struct {
 	Key   RateLimitKey `json:"key"`
 	Label string       `json:"label"`
 
-	// Max The most the gateway allows for any value (1000000)
+	// Max The most the portal allows for any value (1000000)
 	Max int64 `json:"max"`
 
 	// TeamOverridable Teams can have their own value (and gateways, for gateway_per_minute), up to the ceiling
@@ -3320,7 +3320,7 @@ type ProviderConnection struct {
 	// ConnectedAt When the person last completed consent
 	ConnectedAt time.Time `json:"connectedAt"`
 
-	// ExpiresAt When the current access token expires (null; the provider gave no expiry). The gateway refreshes it before then when it has a refresh token
+	// ExpiresAt When the current access token expires (null; the provider gave no expiry). The portal refreshes it before then when it has a refresh token
 	ExpiresAt *time.Time         `json:"expiresAt"`
 	Id        openapi_types.UUID `json:"id"`
 
@@ -3328,7 +3328,7 @@ type ProviderConnection struct {
 	LastUsedAt *time.Time  `json:"lastUsedAt"`
 	Provider   ProviderRef `json:"provider"`
 
-	// Refreshable The gateway holds a refresh token
+	// Refreshable The portal holds a refresh token
 	Refreshable bool       `json:"refreshable"`
 	RefreshedAt *time.Time `json:"refreshedAt"`
 
@@ -3549,7 +3549,7 @@ type ServiceAccountKey struct {
 	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
 	Name       string             `json:"name"`
 
-	// Prefix The first characters of the key (omcp_sa_xxxxxxxx)
+	// Prefix The first characters of the key (omp_sa_xxxxxxxx)
 	Prefix    string                  `json:"prefix"`
 	RevokedAt *time.Time              `json:"revokedAt,omitempty"`
 	Status    ServiceAccountKeyStatus `json:"status"`
@@ -3964,7 +3964,7 @@ type CursorParam = string
 // GatewayIdParam defines model for GatewayIdParam.
 type GatewayIdParam = openapi_types.UUID
 
-// GatewayOptionKindParam Clients see tools and prompts as {serverSlug}__{name}, resources as omcp://{serverSlug}/{uri} and resource templates as omcp://{serverSlug}/{uriTemplate}
+// GatewayOptionKindParam Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri} and resource templates as omp://{serverSlug}/{uriTemplate}
 type GatewayOptionKindParam = GatewayCapabilityKind
 
 // GatewayOptionLimitParam defines model for GatewayOptionLimitParam.

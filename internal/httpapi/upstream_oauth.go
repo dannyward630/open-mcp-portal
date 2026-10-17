@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ncecere/open-mcp-gateway/internal/auth"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
-	"github.com/ncecere/open-mcp-gateway/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
 )
 
 // detectsPerMinute bounds detect-auth per person.

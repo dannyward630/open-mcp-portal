@@ -4,7 +4,7 @@ import type { Schemas } from "../api/client";
 type PlatformRole = Schemas["PlatformRole"];
 type TeamRole = Schemas["TeamRole"];
 
-export const instance: Schemas["InstanceInfo"] = { name: "Open MCP Gateway", orgName: "", theme: "neutral", logoUrl: null, supportUrl: null };
+export const instance: Schemas["InstanceInfo"] = { name: "Open MCP Portal", orgName: "", theme: "neutral", logoUrl: null, supportUrl: null };
 
 export const authConfig = (extra: Partial<Schemas["AuthConfig"]> = {}): Schemas["AuthConfig"] => ({
   instance,
@@ -333,7 +333,7 @@ export const myGateway = (extra: Partial<Schemas["MyGateway"]> = {}): Schemas["M
 export const apiKey = (extra: Partial<Schemas["ApiKey"]> = {}): Schemas["ApiKey"] => ({
   id: "13131313-1313-4131-8131-131313131313",
   name: "Claude Code on my laptop",
-  prefix: "omcp_ab12cd34",
+  prefix: "omp_ab12cd34",
   status: "active",
   createdAt: "2026-10-01T10:00:00Z",
   expiresAt: "2026-12-30T10:00:00Z",
@@ -395,7 +395,7 @@ export const oauthClient = (extra: Partial<Schemas["OAuthClientInfo"]> = {}): Sc
 
 /** A client that registered itself (dynamic registration): its name is its own claim. */
 export const registeredClient = (extra: Partial<Schemas["OAuthClientInfo"]> = {}): Schemas["OAuthClientInfo"] =>
-  oauthClient({ id: "omc_3f9a1c", kind: "registered", name: "Handy MCP Helper", host: "helper.example.net", uri: "https://helper.example.net", ...extra });
+  oauthClient({ id: "ompcl_3f9a1c", kind: "registered", name: "Handy MCP Helper", host: "helper.example.net", uri: "https://helper.example.net", ...extra });
 
 export const oauthConsent = (extra: Partial<Schemas["OAuthConsent"]> = {}): Schemas["OAuthConsent"] => ({
   client: oauthClient(),
@@ -447,7 +447,7 @@ export const serviceAccount = (extra: Partial<Schemas["ServiceAccount"]> = {}): 
 export const serviceAccountKey = (extra: Partial<Schemas["ServiceAccountKey"]> = {}): Schemas["ServiceAccountKey"] => ({
   id: "16161616-1616-4161-8161-161616161616",
   name: "GitHub Actions",
-  prefix: "omcp_sa_ab12cd34",
+  prefix: "omp_sa_ab12cd34",
   status: "active",
   createdAt: "2026-10-01T10:00:00Z",
   createdByName: "Una User",

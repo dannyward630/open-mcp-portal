@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ncecere/open-mcp-gateway/internal/calls"
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/identity"
-	"github.com/ncecere/open-mcp-gateway/internal/providers"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream/oauthmeta"
+	"github.com/ncecere/open-mcp-portal/internal/calls"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/identity"
+	"github.com/ncecere/open-mcp-portal/internal/providers"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/upstream/oauthmeta"
 )
 
 // Calls to MCP servers in oauth mode (docs/phase7-upstream-oauth.md

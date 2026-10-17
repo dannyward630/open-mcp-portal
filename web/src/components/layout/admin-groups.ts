@@ -12,9 +12,9 @@
 import { useCallback, useState } from "react";
 import { adminSections } from "./nav";
 
-const storageKey = "omg.adminNavOpen";
+const storageKey = "omp.adminNavOpen";
 /** Default-open groups the person closed by hand. */
-const closedKey = "omg.adminNavClosed";
+const closedKey = "omp.adminNavClosed";
 
 const defaultOpen = new Set(adminSections.flatMap((s) => (s.label && s.defaultOpen ? [s.label] : [])));
 

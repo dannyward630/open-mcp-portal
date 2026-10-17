@@ -1,9 +1,9 @@
 /*
  * Add MCP server (?form=new over the team's server list): name and slug
  * (suggested from the name, never changed afterwards), description, the
- * address, timeout and the switch, then how the gateway authenticates:
+ * address, timeout and the switch, then how the portal authenticates:
  * Detect sign-in, and None, a static header, or each person's own OAuth
- * sign-in (auth-mode-fields.tsx). The gateway reads the server's
+ * sign-in (auth-mode-fields.tsx). The portal reads the server's
  * capabilities at once, except in OAuth mode: someone signs in first, so the
  * record page opens on "Authorize to read its tools" (setup.tsx).
  */
@@ -75,7 +75,7 @@ export function AddServerForm({ team, onClose }: { team: string; onClose: () => 
       const s = created.server;
       qc.setQueryData(firstDiscoveryKey(s.id), created);
       void qc.invalidateQueries({ queryKey: teamServersKey(team) });
-      if (created.setupRequired) toast.success(`${s.name} was added`, "Authorize next, so the gateway can read its tools.");
+      if (created.setupRequired) toast.success(`${s.name} was added`, "Authorize next, so the portal can read its tools.");
       else if (created.refreshError) toast.warning(`${s.name} was added`, "Its capabilities couldn't be read yet.");
       else toast.success(`${s.name} was added`);
       setCreated(created);

@@ -26,7 +26,7 @@ import { ArchivedNotice } from "../layout";
 
 /** What an MCP server is, for the empty list. */
 export const whatIsAServer =
-  "An MCP server offers tools, resources and prompts to AI clients such as Claude Code or Cursor over the Model Context Protocol. Register the remote servers your team runs: the gateway reads what they offer, checks their health, and can publish them to the company catalog.";
+  "An MCP server offers tools, resources and prompts to AI clients such as Claude Code or Cursor over the Model Context Protocol. Register the remote servers your team runs: the portal reads what they offer, checks their health, and can publish them to the company catalog.";
 
 export function TeamServersPage() {
   const { slug, team, canEdit, isManager, archived } = useTeam();

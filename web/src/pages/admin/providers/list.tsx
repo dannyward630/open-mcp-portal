@@ -77,7 +77,7 @@ export function AdminAuthProvidersPage() {
       <ListPage<AuthProvider>
         id="admin-auth-providers"
         title={terms.authProviders}
-        description="OAuth apps people connect their own accounts with, so a server's tools can act as them (create a GitHub issue, read a Google Drive file). Teams choose a provider and scopes on their servers; the gateway keeps the tokens and sends each one only to the server that needs it."
+        description="OAuth apps people connect their own accounts with, so a server's tools can act as them (create a GitHub issue, read a Google Drive file). Teams choose a provider and scopes on their servers; the portal keeps the tokens and sends each one only to the server that needs it."
         primaryAction={add || undefined}
         caption={terms.authProviders}
         columns={columns}

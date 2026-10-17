@@ -3,8 +3,8 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
 )
 
 // The request and response plumbing that handlers share. Success responses

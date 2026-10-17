@@ -4,7 +4,7 @@
  * as staged changes and save it at once (If-Match; edits survive a change
  * made elsewhere) after a confirmation; auditors read. Entries from the
  * deployment's UPSTREAM_ALLOWED_NETWORKS are shown read-only, and a checker
- * says what the gateway would do with a URL.
+ * says what the portal would do with a URL.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";

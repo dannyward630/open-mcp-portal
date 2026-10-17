@@ -24,7 +24,7 @@ import { type Mode, useRememberHref } from "./mode-switch";
 import { RateLimitBanner } from "./rate-limit-banner";
 import { AppSidebar } from "./sidebar";
 
-const collapsedKey = "omg.sidebarCollapsed";
+const collapsedKey = "omp.sidebarCollapsed";
 
 /**
  * Below this width the sidebar starts as the icon rail, so lists and tables

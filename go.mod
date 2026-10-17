@@ -1,4 +1,4 @@
-module github.com/ncecere/open-mcp-gateway
+module github.com/ncecere/open-mcp-portal
 
 go 1.26.0
 

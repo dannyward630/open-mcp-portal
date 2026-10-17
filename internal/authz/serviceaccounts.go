@@ -1,6 +1,6 @@
 package authz
 
-import "github.com/ncecere/open-mcp-gateway/internal/apperr"
+import "github.com/ncecere/open-mcp-portal/internal/apperr"
 
 // Rules of service accounts (docs/phase4-client-auth.md; decisions 22 and
 // 23): a team's owners and admins create, change, disable and delete its

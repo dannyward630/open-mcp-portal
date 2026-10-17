@@ -12,9 +12,9 @@
 // protocol fall back to initialize.
 //
 // Every request is authenticated (Authorization: Bearer ...) with a
-// personal API key (omcp_...), an OAuth access token of a connected client
-// (omat_..., internal/oauth; accepted only by its own gateway) or a service
-// account key (omcp_sa_..., internal/serviceaccounts), and re-checks
+// personal API key (omp_...), an OAuth access token of a connected client
+// (ompat_..., internal/oauth; accepted only by its own gateway) or a service
+// account key (omp_sa_..., internal/serviceaccounts), and re-checks
 // everything before it lists or calls: the credential and its person (or
 // service account, and its team) are active, the key may be used on this
 // gateway, the gateway is enabled (and a team gateway's team not archived)
@@ -55,23 +55,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
-	"github.com/ncecere/open-mcp-gateway/internal/calls"
-	"github.com/ncecere/open-mcp-gateway/internal/capture"
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/identity"
-	"github.com/ncecere/open-mcp-gateway/internal/limits"
-	"github.com/ncecere/open-mcp-gateway/internal/oauth"
-	"github.com/ncecere/open-mcp-gateway/internal/observability"
-	"github.com/ncecere/open-mcp-gateway/internal/providers"
-	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
-	"github.com/ncecere/open-mcp-gateway/internal/registry"
-	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/apikeys"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
+	"github.com/ncecere/open-mcp-portal/internal/calls"
+	"github.com/ncecere/open-mcp-portal/internal/capture"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/identity"
+	"github.com/ncecere/open-mcp-portal/internal/limits"
+	"github.com/ncecere/open-mcp-portal/internal/oauth"
+	"github.com/ncecere/open-mcp-portal/internal/observability"
+	"github.com/ncecere/open-mcp-portal/internal/providers"
+	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/serviceaccounts"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Bounds.
@@ -349,7 +349,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, slug stri
 	token = strings.TrimSpace(token)
 	if raw == "" || !found || !strings.EqualFold(scheme, "Bearer") || token == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadata+`"`)
-		refuse(w, http.StatusUnauthorized, "Sign in with OAuth, or send a key as Authorization: Bearer omcp_...")
+		refuse(w, http.StatusUnauthorized, "Sign in with OAuth, or send a key as Authorization: Bearer omp_...")
 		return principal{}, false
 	}
 	invalid := func(msg string) (principal, bool) {

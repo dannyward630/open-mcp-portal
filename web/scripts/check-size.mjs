@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * File size guard for the Open MCP Gateway web app ("no hell files"). Fails (exit 1),
+ * File size guard for the Open MCP Portal web app ("no hell files"). Fails (exit 1),
  * one line per file, when a source file under src/ is longer than:
  *
  *   - 400 lines for source files (.ts, .tsx, .css), and

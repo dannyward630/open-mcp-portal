@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
 )
 
 // exampleKeyHashes are the SHA-256 hashes of the decoded 32-byte keys that
@@ -57,7 +57,7 @@ func (c Config) LoopbackAppURL() bool {
 func (c Config) AllowPrivateUpstreams() bool { return c.DevAuth && c.LoopbackAppURL() }
 
 // SafetyErrors returns the production safety violations for a process mode.
-// They are part of Validate; `open-mcp-gateway doctor` lists them too.
+// They are part of Validate; `open-mcp-portal doctor` lists them too.
 //
 // The checks apply unless APP_URL is loopback. An empty APP_URL counts as
 // production, except for migrate, which needs only DATABASE_URL and is
@@ -87,7 +87,7 @@ func (c Config) SafetyErrors(mode string) []error {
 	}
 	if u, err := url.Parse(c.AppURL); c.AppURL != "" && err == nil && u.Host != "" && u.Scheme == "http" {
 		errs = append(errs, fmt.Errorf("APP_URL must use https unless it is a loopback address (got %s): "+
-			"serve Open MCP Gateway behind TLS and set APP_URL=https://%s", u.Scheme+"://"+u.Host, u.Host))
+			"serve Open MCP Portal behind TLS and set APP_URL=https://%s", u.Scheme+"://"+u.Host, u.Host))
 	}
 	return errs
 }

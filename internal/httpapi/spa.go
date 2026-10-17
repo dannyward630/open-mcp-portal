@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
 )
 
 // contentSecurityPolicy applies to the web app. Styles allow 'unsafe-inline'
@@ -110,7 +110,7 @@ func spaHandler(assets fs.FS, built bool, opts spaOptions) http.Handler {
 		if !built || index == nil {
 			h.Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("The web UI has not been built. Run `make web`, then rebuild Open MCP Gateway.\n"))
+			_, _ = w.Write([]byte("The web UI has not been built. Run `make web`, then rebuild Open MCP Portal.\n"))
 			return
 		}
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")

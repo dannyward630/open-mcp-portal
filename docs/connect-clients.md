@@ -5,16 +5,16 @@ Every gateway has one MCP endpoint, `<gateway URL>/mcp/<gateway>`, for example `
 | Who connects | Use | Credential |
 |---|---|---|
 | You, in an interactive client (Claude Code, Claude, VS Code, Cursor) | **OAuth sign-in** (the default) | None to copy: you sign in in the browser, the client keeps short-lived tokens |
-| You, from a script or a client that can't sign in | A **personal API key** (`omcp_…`) | Account › API keys |
-| A pipeline, agent or job that must not depend on one person | A **service account key** (`omcp_sa_…`) | Team › Service accounts |
+| You, from a script or a client that can't sign in | A **personal API key** (`omp_…`) | Account › API keys |
+| A pipeline, agent or job that must not depend on one person | A **service account key** (`omp_sa_…`) | Team › Service accounts |
 
-All three see only what the caller may use on that gateway, checked again on every request. The gateway never passes your credential on to MCP servers; it sends them a signed identity instead ([upstream-identity.md](upstream-identity.md)).
+All three see only what the caller may use on that gateway, checked again on every request. The portal never passes your credential on to MCP servers; it sends them a signed identity instead ([upstream-identity.md](upstream-identity.md)).
 
 ## Tools that need your account on another service
 
 Some tools act as you on a third-party service (GitHub, Google, …). The first time you call one, the call fails with a
 link instead (JSON-RPC `-32042`; clients that support URL elicitation show it as a prompt, others show the error
-message, which contains the link). Open it in your browser while signed in to the gateway: it shows the tool, the
+message, which contains the link). Open it in your browser while signed in to the portal: it shows the tool, the
 gateway, the service and each permission (scope) asked for. Choose **Continue**, approve at the service, then run the tool
 again. The link works only for you, only once and for 10 minutes. Your connected accounts, and **Disconnect**, are under
 Account › My connections; **My gateways** shows which tools are connected. Service accounts can't use these tools.
@@ -29,7 +29,7 @@ the next call answers `-32042` again; otherwise it is refused with `-32010`. You
 **My gateways**. The client never sees your token for that server.
 
 Building such a server? [`examples/mail-mcp`](../examples/mail-mcp/README.md) shows a Gmail server adapted from running
-its own OAuth to using the gateway's delegated Google token.
+its own OAuth to using the portal's delegated Google token.
 
 ## OAuth sign-in (Claude Code, VS Code, Cursor, Claude)
 
@@ -73,7 +73,7 @@ VS Code asks to sign in when it starts the server.
 
 Cursor shows a sign-in prompt for the server in its MCP settings.
 
-**Claude (claude.ai and Claude Desktop):** add a custom connector with the gateway's URL. The gateway must be reachable from the internet for claude.ai.
+**Claude (claude.ai and Claude Desktop):** add a custom connector with the gateway's URL. The portal must be reachable from the internet for claude.ai.
 
 ### What a connected app can do
 
@@ -86,7 +86,7 @@ Cursor shows a sign-in prompt for the server in its MCP settings.
 
 Clients identify themselves either with a *Client ID Metadata Document* (an https URL their maker publishes; the consent page shows "From <host>") or, for older clients, by registering themselves (Dynamic Client Registration). Self-registered apps are marked **Unverified** on the consent page, with "It registered itself" (and the website it claims, if any): anyone can register any name, so allow one only if you just connected it yourself, and check the host the page says your answer goes to. They are never on the trusted list, a registration unused for 30 days expires (the app registers again), and call logs show their calls as "via <name> (unverified)". MCP servers see `client_verified: false` with such an app's name ([upstream-identity.md](upstream-identity.md)).
 
-If the browser shows **"Can't connect this app"**, the app's request was refused before anything was shared, for example an unknown app, a redirect address the app never registered, or a metadata document the gateway can't fetch. Nothing is sent to the app in that case. Errors after that (no PKCE, a URL that isn't one of your gateways, a gateway you can't use) go back to the app, which usually shows them.
+If the browser shows **"Can't connect this app"**, the app's request was refused before anything was shared, for example an unknown app, a redirect address the app never registered, or a metadata document the portal can't fetch. Nothing is sent to the app in that case. Errors after that (no PKCE, a URL that isn't one of your gateways, a gateway you can't use) go back to the app, which usually shows them.
 
 ## Personal API keys
 
@@ -94,22 +94,22 @@ For scripts, curl, and clients that can't open a browser. Create one under **Acc
 
 ```sh
 claude mcp add --transport http support https://mcp.example.com/mcp/support \
-  --header "Authorization: Bearer omcp_..."
+  --header "Authorization: Bearer omp_..."
 ```
 
 ```json
 {
-  "inputs": [{ "type": "promptString", "id": "omcp-key", "description": "Open MCP Gateway API key", "password": true }],
+  "inputs": [{ "type": "promptString", "id": "omp-key", "description": "Open MCP Portal API key", "password": true }],
   "servers": {
     "support": { "type": "http", "url": "https://mcp.example.com/mcp/support",
-                 "headers": { "Authorization": "Bearer ${input:omcp-key}" } }
+                 "headers": { "Authorization": "Bearer ${input:omp-key}" } }
   }
 }
 ```
 
 ```sh
 curl -X POST https://mcp.example.com/mcp/support \
-  -H "Authorization: Bearer omcp_..." -H "Content-Type: application/json" \
+  -H "Authorization: Bearer omp_..." -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -122,10 +122,10 @@ For CI, agents and jobs owned by a **team** rather than a person. Team owners an
 
 - An account has a name (unique in the team), a description, a **role** of `member` or `editor` (used for tools that require a minimum team role), and can be turned off.
 - It can use the **team's own gateways**, and **platform gateways granted to the team**. Grants to people or SSO groups don't cover it. The account's **Overview** lists the gateways it can use now and how many capabilities it reaches on each with its role.
-- Its keys (`omcp_sa_…`) are shown once, always expire (at most 365 days), and can be limited to some of the gateways it can use (platform gateways granted to the team included). An account has at most **two active keys**, so you can rotate: create the new key, deploy it, then revoke the old one.
+- Its keys (`omp_sa_…`) are shown once, always expire (at most 365 days), and can be limited to some of the gateways it can use (platform gateways granted to the team included). An account has at most **two active keys**, so you can rotate: create the new key, deploy it, then revoke the old one.
 - Turning the account off, deleting it, archiving the team, or revoking or expiring a key refuses the next request. The account doesn't depend on the person who created it.
 
-Use its key exactly like a personal key (`Authorization: Bearer omcp_sa_...`). MCP servers see `principal_type: service_account` with the account's ID and name and its team, and no email. Calls are recorded under the account's name and the key used. The team's call log (owners and admins) includes every call of the team's service accounts, through any gateway, and can be filtered by service account; platform staff can filter Admin › Calls by any team's service account.
+Use its key exactly like a personal key (`Authorization: Bearer omp_sa_...`). MCP servers see `principal_type: service_account` with the account's ID and name and its team, and no email. Calls are recorded under the account's name and the key used. The team's call log (owners and admins) includes every call of the team's service accounts, through any gateway, and can be filtered by service account; platform staff can filter Admin › Calls by any team's service account.
 
 ## Troubleshooting
 

@@ -4,17 +4,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: open-mcp-gateway
+  name: open-mcp-portal
   labels:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: open-mcp-gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: open-mcp-portal
 spec:
   type: ClusterIP
   sessionAffinity: None
   selector:
-    app.kubernetes.io/name: open-mcp-gateway
-    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
   ports:
     - name: http
       port: 80

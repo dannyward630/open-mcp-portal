@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream/oauthmeta"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/upstream/oauthmeta"
 )
 
 func TestParseChallenges(t *testing.T) {

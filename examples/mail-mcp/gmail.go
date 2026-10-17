@@ -31,7 +31,7 @@ type Gmail struct {
 // Gmail API failures, phrased for the person (and the model) reading the
 // tool error. They never contain the token or message contents.
 var (
-	errTokenRejected = errors.New("Google rejected the access token (revoked or expired). Reconnect your Google account under Account › My connections in the gateway, then try again")
+	errTokenRejected = errors.New("Google rejected the access token (revoked or expired). Reconnect your Google account under Account › My connections in Open MCP Portal, then try again")
 	errForbidden     = errors.New("Google refused the request: the connected account didn't grant the scope this tool needs, or the Gmail API isn't enabled for the OAuth client")
 	errNotFound      = errors.New("no such message")
 	errUnavailable   = errors.New("Gmail is unavailable right now; try again later")

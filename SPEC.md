@@ -1,4 +1,4 @@
-# Open MCP Gateway — specification
+# Open MCP Portal — specification
 
 Status: **approved direction, Phase 1 in progress**. Product decisions are recorded in
 [docs/decisions.md](docs/decisions.md); this document turns them into architecture, data model, API and
@@ -11,12 +11,12 @@ company catalog, curate them into gateways and give people and agents governed a
 
 Success means:
 
-- A team registers a remote MCP server; the gateway discovers its tools, resources and prompts.
+- A team registers a remote MCP server; the portal discovers its tools, resources and prompts.
 - A platform admin approves it into the company catalog (or a trusted team self-publishes).
 - A team or platform admin builds a gateway from selected tools and grants it to teams, users or SSO groups.
 - Claude Code, VS Code, Cursor or a headless agent connects to `/mcp/{slug}`, sees only what it may use and
   calls tools; every upstream call carries a signed identity of the user.
-- Later, tools that need the user's GitHub/Google/internal-API token get it from the gateway's token vault.
+- Later, tools that need the user's GitHub/Google/internal-API token get it from the portal's token vault.
 - Admins can see health, usage and an audit trail; call payloads are only kept where a team opted in.
 
 Out of scope: hosting or running agents, building MCP servers, an LLM gateway.
@@ -43,7 +43,7 @@ leader-elected loops using a PostgreSQL advisory lock — no job queue or Valkey
 ### Package layout
 
 ```text
-cmd/open-mcp-gateway/     main: serve | migrate | doctor
+cmd/open-mcp-portal/     main: serve | migrate | doctor
 internal/app/             dependency wiring only
 internal/config/          env/YAML config, validation, safety checks (from Grounded)
 internal/store/           pgx pool, goose migrations, advisory locks; queries/ + dbgen/ (sqlc)
@@ -131,12 +131,12 @@ error class, latency, request/response bytes; optional captured payload (truncat
 
 **Auth provider / user token (Phase 5)**: admin-configured OAuth apps; a server (with per-capability overrides)
 declares the required provider and scopes; missing consent returns an authorization URL (JSON-RPC `-32042`); tokens
-encrypted at rest, refreshed by the gateway. See [docs/phase5-delegated-credentials.md](docs/phase5-delegated-credentials.md).
+encrypted at rest, refreshed by the portal. See [docs/phase5-delegated-credentials.md](docs/phase5-delegated-credentials.md).
 
 ## 6. MCP endpoint behaviour
 
 - `POST /mcp/{slug}` Streamable HTTP, stateless JSON responses first; SSE responses where upstream streams.
-- Authentication: OAuth access token from the gateway's own authorization server, or API key. Unauthenticated
+- Authentication: OAuth access token from the portal's own authorization server, or API key. Unauthenticated
   requests get `401` with `WWW-Authenticate` pointing at protected-resource metadata.
 - `tools/list`, `resources/list`, `prompts/list` return only capabilities allowed by every check.
 - Every `tools/call`, `resources/read`, `prompts/get` re-checks: key/user active, gateway enabled and granted,
@@ -173,7 +173,7 @@ encrypted at rest, refreshed by the gateway. See [docs/phase5-delegated-credenti
    Kubernetes manifests are done ([docs/deploy.md](docs/deploy.md)).
 7. **Upstream OAuth** — *Designed* (decisions 39–44): [docs/phase7-upstream-oauth.md](docs/phase7-upstream-oauth.md);
    contract in `api/openapi.yaml` (`McpServer.authMode`/`oauth`, `detectTeamMcpServerAuth`, `authorizeTeamMcpServerSetup`,
-   `ProviderRef.kind`/`server`). The gateway acts as an MCP client to servers that are OAuth resource servers themselves
+   `ProviderRef.kind`/`server`). The portal acts as an MCP client to servers that are OAuth resource servers themselves
    (GitHub's `https://api.githubcopilot.com/mcp/`). Discovery follows the MCP authorization spec 2025-11-25: RFC 9728
    metadata from the 401, RFC 8414/OIDC (path insertion), PKCE S256, `resource`, then CIMD, DCR, a client entered by
    hand, or a linked platform provider. A server-bound provider row (kind `mcp_server`) reuses Phase 5's connections,
@@ -186,7 +186,7 @@ encrypted at rest, refreshed by the gateway. See [docs/phase5-delegated-credenti
 make deps-up          # Postgres on 127.0.0.1:55442
 make generate         # sqlc + oapi-codegen + openapi-typescript
 make check-generated
-make test             # go test ./... (integration tests use OMG_TEST_DATABASE_URL)
+make test             # go test ./... (integration tests use OMP_TEST_DATABASE_URL)
 make web-test         # typecheck + vitest
 make web              # build UI into web/dist
 make run              # serve on 127.0.0.1:8088 with DEV_AUTH

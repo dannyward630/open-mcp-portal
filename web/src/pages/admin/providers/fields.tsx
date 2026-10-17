@@ -94,7 +94,7 @@ export function AppFields({ form, set, errors, disabled, redirectUri, secret, se
       >
         <Input type="password" autoComplete="new-password" maxLength={2000} disabled={disabled || isPublic} value={secret} onChange={(e) => setSecret(e.target.value)} />
       </Field>
-      <Field label="Token endpoint authentication" description="How the gateway proves it's the app when it exchanges a code or refreshes a token.">
+      <Field label="Token endpoint authentication" description="How the portal proves it's the app when it exchanges a code or refreshes a token.">
         <NativeSelect disabled={disabled} value={form.tokenAuthMethod} onChange={(e) => set({ tokenAuthMethod: e.target.value as TokenAuthMethod })}>
           {(Object.keys(tokenAuthMethodLabels) as TokenAuthMethod[]).map((m) => (
             <option key={m} value={m}>
@@ -119,7 +119,7 @@ export function AppFields({ form, set, errors, disabled, redirectUri, secret, se
 
 const endpointFields = [
   ["authorizationUrl", "Authorization URL", "Where people's browsers go to approve, such as https://github.com/login/oauth/authorize.", false],
-  ["tokenUrl", "Token URL", "Where the gateway exchanges codes and refreshes tokens, through the same address guard as MCP servers.", false],
+  ["tokenUrl", "Token URL", "Where the portal exchanges codes and refreshes tokens, through the same address guard as MCP servers.", false],
   ["revocationUrl", "Revocation URL", "RFC 7009. Used when someone disconnects; without it, tokens are only erased here.", true],
   ["userinfoUrl", "Userinfo URL", "Read once after connecting, to label the account (such as octocat). Informational only.", true],
 ] as const;
@@ -179,7 +179,7 @@ export function RequestFields({ form, set, errors, disabled }: FieldsProps) {
         label="Extra authorization parameters"
         labelHint="Optional"
         className={m.wide}
-        description="Added to every authorization request, one key=value per line, such as access_type=offline for Google. At most 10; the gateway sets client_id, redirect_uri, state, the scope parameter and PKCE itself."
+        description="Added to every authorization request, one key=value per line, such as access_type=offline for Google. At most 10; the portal sets client_id, redirect_uri, state, the scope parameter and PKCE itself."
         error={errors.extraParams}
       >
         <Textarea rows={3} spellCheck={false} disabled={disabled} value={form.extraParams} onChange={(e) => set({ extraParams: e.target.value })} />

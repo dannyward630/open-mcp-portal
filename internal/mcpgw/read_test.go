@@ -3,8 +3,8 @@ package mcpgw
 import (
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 func offer(kind, server, name string, allowed bool, denied string) gateways.Offer {
@@ -23,14 +23,14 @@ func TestMatchRead(t *testing.T) {
 		uri, original, denied string
 		allowed, matched      bool
 	}{
-		{"omcp://status/status://services", "status://services", "", true, true},
-		{"omcp://status/status://services/email", "status://services/email", "", true, true},
-		{"omcp://status/status://services/a/b", "", "", false, false},
-		{"omcp://status/status://other", "", "", false, false},
-		{"omcp://other/status://services", "status://services", "role", false, true},
-		{"omcp://nope/status://services", "", "", false, false},
+		{"omp://status/status://services", "status://services", "", true, true},
+		{"omp://status/status://services/email", "status://services/email", "", true, true},
+		{"omp://status/status://services/a/b", "", "", false, false},
+		{"omp://status/status://other", "", "", false, false},
+		{"omp://other/status://services", "status://services", "role", false, true},
+		{"omp://nope/status://services", "", "", false, false},
 		{"status://services", "", "", false, false},
-		{"omcp://status/status://services/..", "", "", false, false},
+		{"omp://status/status://services/..", "", "", false, false},
 	}
 	for _, c := range cases {
 		got, ok := matchRead(offers, c.uri)

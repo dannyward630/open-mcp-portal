@@ -1,6 +1,6 @@
 /*
  * The connect page (/connect/{provider}?request=R, decision 28): a tool
- * needed the person's account with a provider, so the gateway answered the
+ * needed the person's account with a provider, so the portal answered the
  * call with this link (JSON-RPC -32042). The page reads the request
  * (GET /v1/connect/requests/R: only the person it was made for gets it),
  * shows who is signed in, the tool and gateway that asked, the provider, the
@@ -60,7 +60,7 @@ export function ConnectPage() {
     mutationFn: async (r: ConnectRequest) => {
       const out = unwrap(await api.POST("/v1/me/connections/start", { body: { providerId: r.provider.id, requestId: r.id } }));
       const target = safeAuthorizeUrl(out.authorizeUrl);
-      if (!target) throw new Error("The gateway answered with an address your browser can't go to, so you weren't sent anywhere.");
+      if (!target) throw new Error("The portal answered with an address your browser can't go to, so you weren't sent anywhere.");
       return target;
     },
     onSuccess: (target) => {

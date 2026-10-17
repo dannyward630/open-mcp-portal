@@ -2,7 +2,7 @@
  * Detect sign-in (POST …/mcp-servers/detect-auth, editors and above): the
  * gateway asks the URL how clients sign in, as an MCP client would, and
  * says what it found: the authorization server, the scopes it supports,
- * PKCE, how the gateway can get a client (automatically, a platform
+ * PKCE, how the portal can get a client (automatically, a platform
  * provider's, or one the team creates) and any problem, with "Use …" when
  * the server names itself with a slightly different URL. Nothing is saved
  * or audited; the server runs the discovery again on save.
@@ -59,7 +59,7 @@ export function DetectSignIn({ team, url, urlError, disabled, result, onResult, 
         </Button>
         <span className={s.muted}>{urlError ? "Enter the server's URL first." : "Asks the server how clients sign in. Nothing is saved."}</span>
       </div>
-      {refused ? <Alert tone="danger" title="The gateway won't connect to this address">{refused}</Alert> : <ApiErrorAlert error={detect.error} title="Couldn't detect the sign-in" />}
+      {refused ? <Alert tone="danger" title="The portal won't connect to this address">{refused}</Alert> : <ApiErrorAlert error={detect.error} title="Couldn't detect the sign-in" />}
       {result && !detect.isPending && (
         <>
           {stale && <Alert tone="info">This is what {result.url} answered. The URL changed since: press Detect sign-in again.</Alert>}
@@ -156,7 +156,7 @@ function OAuthFindings({ result: r, onUseUrl }: { result: DetectResult; onUseUrl
                   value: (
                     <span className={m.stack}>
                       {automatic.length ? (
-                        <span>Automatic: the gateway registers itself ({automatic.map((o) => registrationLabels[o].replace(/^Automatic \((.*)\)$/, "$1")).join(" or ")}).</span>
+                        <span>Automatic: the portal registers itself ({automatic.map((o) => registrationLabels[o].replace(/^Automatic \((.*)\)$/, "$1")).join(" or ")}).</span>
                       ) : (
                         <span>
                           No automatic registration: create an OAuth app at {urlHost(as?.issuer ?? r.url)} with the callback <code className={m.url}>{reg.redirectUri}</code>, then

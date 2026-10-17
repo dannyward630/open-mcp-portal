@@ -375,7 +375,7 @@ func (q *Queries) ListPublishedSigningKeys(ctx context.Context) ([]SigningKey, e
 }
 
 const lockSigningKeys = `-- name: LockSigningKeys :exec
-SELECT pg_advisory_xact_lock(hashtextextended('omg.signing-keys', 0))
+SELECT pg_advisory_xact_lock(hashtextextended('omp.signing-keys', 0))
 `
 
 // Serialises key creation and rotation across replicas (transaction lock).

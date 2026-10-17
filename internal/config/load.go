@@ -12,9 +12,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Load reads OMG_CONFIG_FILE (if set) and the process environment.
+// Load reads OMP_CONFIG_FILE (if set) and the process environment.
 func Load() (Config, error) {
-	return LoadFrom(os.Getenv("OMG_CONFIG_FILE"), os.LookupEnv)
+	return LoadFrom(os.Getenv("OMP_CONFIG_FILE"), os.LookupEnv)
 }
 
 // LoadFrom resolves configuration from an optional YAML file and an

@@ -13,7 +13,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
 )
 
 // Validate checks the configuration needed by a process mode ("serve" or

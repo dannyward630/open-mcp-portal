@@ -2,7 +2,7 @@
  * Delegated credentials' words and helpers (docs/phase5-delegated-credentials.md,
  * decisions 25-30): auth providers that platform admins configure, the
  * requirements a server's team sets on its capabilities ("Needs GitHub
- * (repo)"), and the accounts a person connects. The gateway sends the
+ * (repo)"), and the accounts a person connects. The portal sends the
  * person's token to the server; the client and the model never see it, and
  * neither does this app: tokens and client secrets are never returned.
  */
@@ -62,7 +62,7 @@ export function needsText(r: Pick<CapabilityRequirement, "providerName" | "scope
 
 /** What requiring a connection means, said the same way in a server's Settings and its Capabilities tab. */
 export const requirementHelp =
-  "Each person who calls these capabilities connects their own account with the provider once, in their browser. The gateway then sends their token to this server with each call that needs it, and refreshes it. Clients, models and service accounts never get it.";
+  "Each person who calls these capabilities connects their own account with the provider once, in their browser. The portal then sends their token to this server with each call that needs it, and refreshes it. Clients, models and service accounts never get it.";
 
 /** Service accounts can't call capabilities that need a person's account (decision 29). */
 export const serviceAccountsCant = "Service accounts can't use capabilities that need a person's account.";
@@ -76,7 +76,7 @@ const scopePattern = /^[!#-\[\]-~]+$/;
 /** What's wrong with a scope list, before it's sent (the server answers 400 invalid_scope otherwise). */
 export function scopesProblem(scopes: string[]): string | undefined {
   const bad = scopes.find((s) => !scopePattern.test(s) || s.length > 200);
-  if (bad) return `“${bad}” isn't a scope the gateway accepts: use the provider's scope names, without spaces or quotes.`;
+  if (bad) return `“${bad}” isn't a scope the portal accepts: use the provider's scope names, without spaces or quotes.`;
   if (scopes.length > 50) return "Use at most 50 scopes.";
   return undefined;
 }
@@ -84,7 +84,7 @@ export function scopesProblem(scopes: string[]): string | undefined {
 /** The server's refusal of a scope (400 invalid_scope, details.scope), in words. */
 export function invalidScopeText(details: Record<string, unknown> | undefined) {
   const scope = typeof details?.scope === "string" ? details.scope : "";
-  return scope ? `“${scope}” isn't a scope the gateway accepts: use the provider's scope names, without spaces or quotes.` : "One of the scopes isn't accepted: use the provider's scope names, without spaces or quotes.";
+  return scope ? `“${scope}” isn't a scope the portal accepts: use the provider's scope names, without spaces or quotes.` : "One of the scopes isn't accepted: use the provider's scope names, without spaces or quotes.";
 }
 
 /** Leaves the app for the provider (a seam for tests). */

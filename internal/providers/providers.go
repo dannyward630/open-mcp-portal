@@ -32,14 +32,14 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/registry"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
 )
 
 // Limits.
@@ -424,7 +424,7 @@ func (s *Service) validate(ctx context.Context, f *fields) error {
 		case !paramKeyRE.MatchString(k):
 			return unprocessable("invalid_param", "Parameter names are 1-64 letters, digits, _, . or -", map[string]any{"key": k, "reason": "invalid"})
 		case slices.Contains(reservedParamKeys, k) || k == f.scopeParam:
-			return unprocessable("invalid_param", "The gateway sets this parameter itself", map[string]any{"key": k, "reason": "reserved"})
+			return unprocessable("invalid_param", "The portal sets this parameter itself", map[string]any{"key": k, "reason": "reserved"})
 		case len(v) > maxParamValue || !oneLine(v):
 			return unprocessable("invalid_param", "Parameter values are at most 500 characters on one line", map[string]any{"key": k, "reason": "invalid"})
 		}
@@ -513,7 +513,7 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, in CreateInput) (Vi
 	}
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, tx pgx.Tx) error {
 		// One creation at a time keeps the limit exact.
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('omg.auth-providers'))`); err != nil {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('omp.auth-providers'))`); err != nil {
 			return err
 		}
 		n, err := q.CountAuthProviders(ctx)

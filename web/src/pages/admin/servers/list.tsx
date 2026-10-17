@@ -1,7 +1,7 @@
 /*
  * Admin → MCP servers: every team's servers as a ListPage, filtered by the
  * server (publish state, changes waiting for approval, team, the auth
- * provider they require, how the gateway authenticates (OAuth sign-in per
+ * provider they require, how the portal authenticates (OAuth sign-in per
  * person, a static header or none), search; all in the URL). How many wait for review
  * shows above the list, with a link to them. Platform admins review;
  * auditors read.

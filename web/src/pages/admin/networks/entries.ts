@@ -80,8 +80,8 @@ export function hostScope(value: string): string | undefined {
 /** Why the server refused an entry (422 invalid_entry, details.reason). */
 export const entryReasonLabels: Record<string, string> = {
   invalid_kind: "The kind must be a network (CIDR) or a host name.",
-  invalid_cidr: "This isn't a network the gateway understands.",
-  invalid_host: "This isn't a host name the gateway understands.",
+  invalid_cidr: "This isn't a network the portal understands.",
+  invalid_host: "This isn't a host name the portal understands.",
   non_ascii: "Use the ASCII (punycode) form of international names.",
   ip_as_host: "Addresses belong in a network (CIDR) entry.",
   always_blocked: "Loopback, link-local, metadata, multicast and broadcast addresses are always blocked.",

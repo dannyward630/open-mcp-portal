@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Styling and behaviour policy for the Open MCP Gateway web app, adapted from bitop-ui's
+ * Styling and behaviour policy for the Open MCP Portal web app, adapted from bitop-ui's
  * scripts/check-styling.mjs. The UI library (src/components/ui, installed
  * from bitop-ui with the shadcn CLI) and every page follow the same rules:
  * Base UI + CSS Modules + CSS variables. Fails (exit 1) with one actionable

@@ -28,14 +28,14 @@ describe("Admin → Trusted clients", () => {
     const table = await screen.findByRole("table", { name: "Trusted clients" });
     expect(within(table).getByText("https://claude.ai/oauth/claude-code-client-metadata")).toBeInTheDocument();
     expect(within(table).getByText("Vouched for by vscode.dev")).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("Trusted clients · Admin · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Trusted clients · Admin · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
 
     await u.click(screen.getByRole("button", { name: "Add client" }));
     const dialog = await screen.findByRole("dialog", { name: "Add trusted client" });
     const id = within(dialog).getByRole("textbox", { name: "Client ID" });
     // A registered client's ID can't be trusted.
-    await u.type(id, "omc_3f9a1c");
+    await u.type(id, "ompcl_3f9a1c");
     await u.click(within(dialog).getByRole("button", { name: "Add client" }));
     expect(within(dialog).getByText(/Clients that registered themselves can't be trusted/)).toBeInTheDocument();
     await u.clear(id);
@@ -76,7 +76,7 @@ describe("Admin → Trusted clients", () => {
     const ask = await screen.findByRole("alertdialog");
     expect(ask).toHaveTextContent("Asks for consent again: VS Code.");
     await u.click(within(ask).getByRole("button", { name: "Save trusted clients" }));
-    expect(await within(table).findByText(/The gateway doesn't accept this ID/)).toBeInTheDocument();
+    expect(await within(table).findByText(/The portal doesn't accept this ID/)).toBeInTheDocument();
   });
 
   it("keeps the edits through a save conflict (412) and overwrites on the latest revision", async () => {
@@ -140,7 +140,7 @@ describe("client ID checks", () => {
     expect(clientIdProblem("https://claude.ai/oauth/claude-code-client-metadata")).toBeUndefined();
     expect(clientIdProblem("  https://vscode.dev/oauth/client-metadata.json ")).toBeUndefined();
     expect(clientIdProblem("")).toMatch(/Enter the client's ID/);
-    expect(clientIdProblem("omc_3f9a1c")).toMatch(/registered themselves can't be trusted/);
+    expect(clientIdProblem("ompcl_3f9a1c")).toMatch(/registered themselves can't be trusted/);
     expect(clientIdProblem("http://claude.ai/oauth/x")).toMatch(/Only https/);
     expect(clientIdProblem("https://claude.ai")).toMatch(/Add the document's path/);
     expect(clientIdProblem("https://claude.ai/")).toMatch(/Add the document's path/);

@@ -1,19 +1,21 @@
 # Development dependencies only. Ports bind to loopback; never expose these.
 # `make deps-up` starts Postgres; it restarts with Docker (restart:
-# unless-stopped) until `make deps-down`.
-name: open-mcp-gateway
+# unless-stopped) until `make deps-down`. OMP_DEV_POSTGRES_PORT moves the host
+# port (default 55442; scripts/migrate-dev-db.sh uses it while the database of
+# the former compose project, open-mcp-gateway, still holds 55442).
+name: open-mcp-portal
 services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_USER: omg
-      POSTGRES_PASSWORD: omg-dev-only
-      POSTGRES_DB: omg
-    ports: ["127.0.0.1:55442:5432"]
+      POSTGRES_USER: omp
+      POSTGRES_PASSWORD: omp-dev-only
+      POSTGRES_DB: omp
+    ports: ["127.0.0.1:${OMP_DEV_POSTGRES_PORT:-55442}:5432"]
     volumes: [postgres:/var/lib/postgresql/data]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U omg -d omg"]
+      test: ["CMD-SHELL", "pg_isready -U omp -d omp"]
       interval: 5s
       timeout: 5s
       retries: 20

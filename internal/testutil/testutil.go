@@ -1,10 +1,10 @@
 // Package testutil provides real-infrastructure helpers for integration tests.
 //
 // Tests needing PostgreSQL call NewDB, which creates a fresh, migrated
-// database per test. The server comes from OMG_TEST_DATABASE_URL (default:
-// the compose Postgres, postgres://omg:omg-dev-only@127.0.0.1:55442/postgres).
+// database per test. The server comes from OMP_TEST_DATABASE_URL (default:
+// the compose Postgres, postgres://omp:omp-dev-only@127.0.0.1:55442/postgres).
 // When it is unreachable the test is skipped, except in CI (CI=true) or with
-// OMG_TEST_REQUIRE_DB=1, where a missing database fails the test instead of
+// OMP_TEST_REQUIRE_DB=1, where a missing database fails the test instead of
 // silently skipping it.
 package testutil
 
@@ -23,23 +23,23 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store"
 )
 
 // DefaultDatabaseURL is the compose Postgres (make deps-up), as a role
 // allowed to create databases.
-const DefaultDatabaseURL = "postgres://omg:omg-dev-only@127.0.0.1:55442/postgres?sslmode=disable"
+const DefaultDatabaseURL = "postgres://omp:omp-dev-only@127.0.0.1:55442/postgres?sslmode=disable"
 
-// DatabaseURL is OMG_TEST_DATABASE_URL, or DefaultDatabaseURL.
+// DatabaseURL is OMP_TEST_DATABASE_URL, or DefaultDatabaseURL.
 func DatabaseURL() string {
-	if v := os.Getenv("OMG_TEST_DATABASE_URL"); v != "" {
+	if v := os.Getenv("OMP_TEST_DATABASE_URL"); v != "" {
 		return v
 	}
 	return DefaultDatabaseURL
 }
 
 func requireDB() bool {
-	return os.Getenv("CI") == "true" || os.Getenv("OMG_TEST_REQUIRE_DB") == "1"
+	return os.Getenv("CI") == "true" || os.Getenv("OMP_TEST_REQUIRE_DB") == "1"
 }
 
 var (
@@ -80,9 +80,9 @@ func randomSuffix() string {
 	return hex.EncodeToString(b)
 }
 
-// Logger discards output unless OMG_TEST_LOG=1.
+// Logger discards output unless OMP_TEST_LOG=1.
 func Logger() *slog.Logger {
-	if os.Getenv("OMG_TEST_LOG") == "1" {
+	if os.Getenv("OMP_TEST_LOG") == "1" {
 		return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	}
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -94,7 +94,7 @@ func NewDB(t testing.TB) (*pgxpool.Pool, string) {
 	t.Helper()
 	ctx := context.Background()
 	admin := adminConn(t, ctx)
-	name := "omg_test_" + randomSuffix()
+	name := "omp_test_" + randomSuffix()
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatalf("create database: %v", err)
 	}

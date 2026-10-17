@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/netpolicy"
+	"github.com/ncecere/open-mcp-portal/internal/netpolicy"
 )
 
 func env(m map[string]string) func(string) (string, bool) {
@@ -56,7 +56,7 @@ func TestFileThenEnvPrecedenceAndSecretFiles(t *testing.T) {
 	if err := os.WriteFile(secret, []byte("s3cret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := filepath.Join(dir, "omg.yaml")
+	cfg := filepath.Join(dir, "omp.yaml")
 	doc := "app_url: https://file.example.com\nlisten_addr: ':9000'\noidc_client_secret_file: " + secret + "\noidc_scopes: [openid, email]\n"
 	if err := os.WriteFile(cfg, []byte(doc), 0o600); err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestFileThenEnvPrecedenceAndSecretFiles(t *testing.T) {
 }
 
 func TestUnknownFileKeyRejected(t *testing.T) {
-	cfg := filepath.Join(t.TempDir(), "omg.yaml")
+	cfg := filepath.Join(t.TempDir(), "omp.yaml")
 	if err := os.WriteFile(cfg, []byte("app_ur1: x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestValidate(t *testing.T) {
 
 func TestInstanceSettings(t *testing.T) {
 	d := Defaults()
-	if d.Instance.Name != "Open MCP Gateway" || d.Instance.OrgName != "" || d.Instance.Theme != "neutral" ||
+	if d.Instance.Name != "Open MCP Portal" || d.Instance.OrgName != "" || d.Instance.Theme != "neutral" ||
 		d.Instance.LogoURL != "" || d.Instance.SupportURL != "" {
 		t.Errorf("defaults = %+v", d.Instance)
 	}
@@ -192,7 +192,7 @@ func TestInstanceSettings(t *testing.T) {
 	}
 
 	// Empty values fall back to the defaults; YAML keys work too.
-	cfg := filepath.Join(t.TempDir(), "omg.yaml")
+	cfg := filepath.Join(t.TempDir(), "omp.yaml")
 	if err := os.WriteFile(cfg, []byte("instance_name: ''\nui_theme: ''\nui_logo_url: /brand/logo.svg\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

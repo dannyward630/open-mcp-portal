@@ -42,7 +42,7 @@ describe("Connect page", () => {
     expect(items[1]).toHaveTextContent("repo");
     expect(items[1]).toHaveTextContent("New");
     expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
-    await waitFor(() => expect(document.title).toBe("Connect GitHub · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Connect GitHub · Open MCP Portal"));
     // Nothing is started before the person continues.
     expect(calls.some((c) => c.method === "POST")).toBe(false);
     expect(go).not.toHaveBeenCalled();
@@ -96,7 +96,7 @@ describe("Connect page", () => {
     expect(screen.getByText(/sign out and sign in as yourself/)).toBeInTheDocument();
     expect(screen.getByText("una@example.com")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Continue/ })).toBeNull();
-    await waitFor(() => expect(document.title).toBe("This link was made for someone else · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("This link was made for someone else · Open MCP Portal"));
     expect(go).not.toHaveBeenCalled();
     expect(await axe(container)).toHaveNoViolations();
   });

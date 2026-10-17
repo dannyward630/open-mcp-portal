@@ -12,32 +12,32 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apikeys"
-	"github.com/ncecere/open-mcp-gateway/internal/auth"
-	"github.com/ncecere/open-mcp-gateway/internal/buildinfo"
-	"github.com/ncecere/open-mcp-gateway/internal/calls"
-	"github.com/ncecere/open-mcp-gateway/internal/capture"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/gateways"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/identity"
-	"github.com/ncecere/open-mcp-gateway/internal/keyrotation"
-	"github.com/ncecere/open-mcp-gateway/internal/limits"
-	"github.com/ncecere/open-mcp-gateway/internal/mcpgw"
-	"github.com/ncecere/open-mcp-gateway/internal/oauth"
-	"github.com/ncecere/open-mcp-gateway/internal/observability"
-	"github.com/ncecere/open-mcp-gateway/internal/platform"
-	"github.com/ncecere/open-mcp-gateway/internal/providers"
-	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
-	"github.com/ncecere/open-mcp-gateway/internal/registry"
-	"github.com/ncecere/open-mcp-gateway/internal/retention"
-	"github.com/ncecere/open-mcp-gateway/internal/secrets"
-	"github.com/ncecere/open-mcp-gateway/internal/serviceaccounts"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/teams"
-	"github.com/ncecere/open-mcp-gateway/internal/upstream"
-	"github.com/ncecere/open-mcp-gateway/internal/usage"
-	"github.com/ncecere/open-mcp-gateway/web"
+	"github.com/ncecere/open-mcp-portal/internal/apikeys"
+	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
+	"github.com/ncecere/open-mcp-portal/internal/calls"
+	"github.com/ncecere/open-mcp-portal/internal/capture"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/gateways"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/identity"
+	"github.com/ncecere/open-mcp-portal/internal/keyrotation"
+	"github.com/ncecere/open-mcp-portal/internal/limits"
+	"github.com/ncecere/open-mcp-portal/internal/mcpgw"
+	"github.com/ncecere/open-mcp-portal/internal/oauth"
+	"github.com/ncecere/open-mcp-portal/internal/observability"
+	"github.com/ncecere/open-mcp-portal/internal/platform"
+	"github.com/ncecere/open-mcp-portal/internal/providers"
+	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/retention"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/serviceaccounts"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/teams"
+	"github.com/ncecere/open-mcp-portal/internal/upstream"
+	"github.com/ncecere/open-mcp-portal/internal/usage"
+	"github.com/ncecere/open-mcp-portal/web"
 )
 
 // Modes.
@@ -80,7 +80,7 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	if st, err := store.Migrations(ctx, pool); err != nil {
 		return fmt.Errorf("migration state: %w", err)
 	} else if st.Pending {
-		return fmt.Errorf("the database is at migration %d but this binary needs %d: run `open-mcp-gateway migrate` (or set MIGRATE_ON_START=true)", st.Current, st.Latest)
+		return fmt.Errorf("the database is at migration %d but this binary needs %d: run `open-mcp-portal migrate` (or set MIGRATE_ON_START=true)", st.Current, st.Latest)
 	}
 
 	health := httpapi.NewHealth(map[string]func(context.Context) error{"postgres": pool.Ping})

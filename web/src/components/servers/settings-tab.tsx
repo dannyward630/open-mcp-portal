@@ -220,7 +220,7 @@ export function ServerSettingsTab({ server, scope, abilities }: Props) {
         <TimeoutField {...fields} />
         <EnabledSwitch {...fields} />
       </SettingsSection>
-      <SettingsSection title="Authentication" description="How the gateway proves itself to the server: nothing, one static header (stored encrypted), or each person's own OAuth sign-in.">
+      <SettingsSection title="Authentication" description="How the portal proves itself to the server: nothing, one static header (stored encrypted), or each person's own OAuth sign-in.">
         <AuthModeFields
           team={server.teamSlug}
           url={form.url}

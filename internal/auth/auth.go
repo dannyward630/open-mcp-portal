@@ -18,12 +18,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/httpx"
-	"github.com/ncecere/open-mcp-gateway/internal/ratelimit"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // Platform roles (aliases of the authz constants).
@@ -107,9 +107,9 @@ func Digest(s string) string {
 // HTTPS, so it is host-only, Secure and Path=/.
 func SessionCookieName(secure bool) string {
 	if secure {
-		return "__Host-omg_session"
+		return "__Host-omp_session"
 	}
-	return "omg_session"
+	return "omp_session"
 }
 
 // HasSessionCookie reports whether the request carries a session cookie at

@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 #
-# Open MCP Gateway image (docs/deploy.md).
+# Open MCP Portal image (docs/deploy.md).
 #
-#   make docker                                  # open-mcp-gateway:<version>
-#   docker build --target fakemcp -t omg-fakemcp .   # the fake MCP server (demo only)
+#   make docker                                  # open-mcp-portal:<version>
+#   docker build --target fakemcp -t omp-fakemcp .   # the fake MCP server (demo only)
 #
 # Multi-arch build: the web UI and the Go binary are built on the build
 # platform and cross-compiled for the target (no emulation for the slow
@@ -33,8 +33,8 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath \
-    -ldflags "-s -w -X github.com/ncecere/open-mcp-gateway/internal/buildinfo.Version=${VERSION} -X github.com/ncecere/open-mcp-gateway/internal/buildinfo.Commit=${COMMIT}" \
-    -o /out/open-mcp-gateway ./cmd/open-mcp-gateway
+    -ldflags "-s -w -X github.com/ncecere/open-mcp-portal/internal/buildinfo.Version=${VERSION} -X github.com/ncecere/open-mcp-portal/internal/buildinfo.Commit=${COMMIT}" \
+    -o /out/open-mcp-portal ./cmd/open-mcp-portal
 
 # The fake MCP server (cmd/fakemcp), for compose.demo.yaml only. Built only
 # when this target (or the demo) asks for it.
@@ -47,20 +47,20 @@ COPY --from=build-fakemcp /out/fakemcp /fakemcp
 USER 65532:65532
 ENTRYPOINT ["/fakemcp"]
 
-# The gateway (default target). Distroless: no shell or package manager;
+# The portal (default target). Distroless: no shell or package manager;
 # runs as a non-root user (65532) and works with a read-only root
 # filesystem. There is no HEALTHCHECK (no shell or curl in the image):
 # Kubernetes probes /healthz (liveness, startup) and /readyz (readiness).
 FROM gcr.io/distroless/static-debian12:nonroot
 ARG VERSION=dev
 ARG COMMIT=unknown
-LABEL org.opencontainers.image.title="open-mcp-gateway" \
-      org.opencontainers.image.description="Open MCP Gateway: a self-hosted, governed gateway to a company's MCP servers" \
-      org.opencontainers.image.source="https://github.com/ncecere/open-mcp-gateway" \
+LABEL org.opencontainers.image.title="open-mcp-portal" \
+      org.opencontainers.image.description="Open MCP Portal: a self-hosted portal for governed access to a company's MCP servers" \
+      org.opencontainers.image.source="https://github.com/ncecere/open-mcp-portal" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}"
-COPY --from=build /out/open-mcp-gateway /open-mcp-gateway
+COPY --from=build /out/open-mcp-portal /open-mcp-portal
 USER 65532:65532
 EXPOSE 8088
-ENTRYPOINT ["/open-mcp-gateway"]
+ENTRYPOINT ["/open-mcp-portal"]
 CMD ["serve"]

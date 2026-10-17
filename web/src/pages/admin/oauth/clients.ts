@@ -59,7 +59,7 @@ export function clientHost(value: string): string | undefined {
 
 /** Why the server refused the list (422 invalid_client_id: details.index and details.reason). */
 export const refusedClientReasons: Record<string, string> = {
-  not_metadata_url: "The gateway doesn't accept this ID: it must be an https address with a path (a Client ID Metadata Document).",
+  not_metadata_url: "The portal doesn't accept this ID: it must be an https address with a path (a Client ID Metadata Document).",
   duplicate: "This client is listed twice.",
   too_many: `At most ${maxClients} trusted clients.`,
 };

@@ -39,9 +39,9 @@ func TestMetricsContent(t *testing.T) {
 	m.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
 	body, _ := io.ReadAll(rec.Body)
 	text := string(body)
-	for _, family := range []string{"omg_build_info", "omg_mcp_requests_total", "omg_mcp_request_duration_seconds", "omg_mcp_call_duration_seconds",
-		"omg_mcp_rate_limited_total", "omg_http_requests_total", "omg_http_request_duration_seconds", "omg_provider_token_refresh_total",
-		"omg_loop_leader", "go_goroutines", `route="unmatched"`, `method="other"`, `code="2xx"`} {
+	for _, family := range []string{"omp_build_info", "omp_mcp_requests_total", "omp_mcp_request_duration_seconds", "omp_mcp_call_duration_seconds",
+		"omp_mcp_rate_limited_total", "omp_http_requests_total", "omp_http_request_duration_seconds", "omp_provider_token_refresh_total",
+		"omp_loop_leader", "go_goroutines", `route="unmatched"`, `method="other"`, `code="2xx"`} {
 		if !strings.Contains(text, family) {
 			t.Errorf("missing %s", family)
 		}

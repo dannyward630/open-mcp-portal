@@ -12,7 +12,7 @@
 export const keyPlaceholder = "<YOUR_API_KEY>";
 
 /** The VS Code input that prompts for the key (and stores it in VS Code's secret storage). */
-export const vscodeInputId = "omcp-key";
+export const vscodeInputId = "omp-key";
 
 export type SnippetClient = "claude" | "vscode" | "cursor" | "curl";
 
@@ -56,7 +56,7 @@ export function snippet(client: SnippetClient, { name, url, secret, auth = "oaut
       if (!withKey) return json({ servers: { [name]: { type: "http", url } } });
       // VS Code asks for the key once and keeps it in its secret storage: never written into the file.
       return json({
-        inputs: [{ type: "promptString", id: vscodeInputId, description: "Open MCP Gateway API key", password: true }],
+        inputs: [{ type: "promptString", id: vscodeInputId, description: "Open MCP Portal API key", password: true }],
         servers: { [name]: { type: "http", url, headers: { Authorization: `Bearer \${input:${vscodeInputId}}` } } },
       });
     case "cursor":

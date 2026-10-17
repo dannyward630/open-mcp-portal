@@ -9,7 +9,7 @@ import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness"
 const query =
   "client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fclaude-code-client-metadata&redirect_uri=http%3A%2F%2F127.0.0.1%3A53211%2Fcallback&response_type=code&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&resource=https%3A%2F%2Fmcp.example.com%2Fmcp%2Fsupport-tools&state=123";
 const path = `/oauth/consent?${query}`;
-const back = "http://127.0.0.1:53211/callback?code=omac_x&state=123&iss=https%3A%2F%2Fmcp.example.com";
+const back = "http://127.0.0.1:53211/callback?code=ompac_x&state=123&iss=https%3A%2F%2Fmcp.example.com";
 
 function openConsent(routes: Record<string, Handler>) {
   // The page reads the address the browser was sent to, as it arrived.
@@ -40,7 +40,7 @@ describe("OAuth consent page", () => {
     // No sidebar, breadcrumbs or command palette to wander off to.
     expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Search or jump to/ })).toBeNull();
-    await waitFor(() => expect(document.title).toBe("Connect Claude Code · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Connect Claude Code · Open MCP Portal"));
     // The request's parameters, as the endpoint passed them on (state stays text, not a number).
     const get = calls.find((c) => c.method === "GET" && c.url === "/v1/oauth/consent")!;
     expect(get.search.get("client_id")).toBe("https://claude.ai/oauth/claude-code-client-metadata");
@@ -101,7 +101,7 @@ describe("OAuth consent page", () => {
     expect(screen.getByText("redirect_uri isn't registered for this client")).toBeInTheDocument();
     expect(screen.getByText(/Nothing was shared with the app, and this page won't send you anywhere/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
-    await waitFor(() => expect(document.title).toBe("Can't connect this app · Open MCP Gateway"));
+    await waitFor(() => expect(document.title).toBe("Can't connect this app · Open MCP Portal"));
     expect(calls.some((c) => c.method === "POST")).toBe(false);
     expect(go).not.toHaveBeenCalled();
     expect(await axe(container)).toHaveNoViolations();

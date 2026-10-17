@@ -1,5 +1,5 @@
 /*
- * The words for the gateway's refusals about an MCP server's sign-in
+ * The words for the portal's refusals about an MCP server's sign-in
  * (docs/phase7-upstream-oauth.md), for ErrorAlert's `describe`: what went
  * wrong and what to do, instead of the server's terse message.
  */
@@ -28,7 +28,7 @@ export function describeAuthError(err: unknown): Described | undefined {
       return { title: "The server's sign-in couldn't be discovered", message: `Nothing was saved.${problemsOf(err.details)} Press Detect sign-in to see what the server answers.` };
     case "oauth_registration_failed":
       return {
-        title: "The authorization server refused to register the gateway",
+        title: "The authorization server refused to register the portal",
         message: "Nothing was saved. Try again, or create an OAuth app at the authorization server and enter its client ID and secret instead.",
       };
     case "auth_conflict":

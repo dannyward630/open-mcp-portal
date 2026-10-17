@@ -13,8 +13,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // Phase 3 follow-ups: gateway-options paging, resources and resource
@@ -111,11 +111,11 @@ func TestGatewayOptionsPaging(t *testing.T) {
 		}
 	}
 	slices.Sort(got)
-	if !slices.Equal(got, []string{"omcp://other-status/status://services", "omcp://status/status://services"}) {
+	if !slices.Equal(got, []string{"omp://other-status/status://services", "omp://status/status://services"}) {
 		t.Fatalf("resources = %v", got)
 	}
 	page = optionPage(t, e.owner, toolsTeam+"/gateway-options?kind=resource_template&server="+e.other.Id.String())
-	if len(page.Items) != 1 || page.Items[0].ExposedName != "omcp://other-status/status://services/{service}" || page.Items[0].Source != "catalog" {
+	if len(page.Items) != 1 || page.Items[0].ExposedName != "omp://other-status/status://services/{service}" || page.Items[0].Source != "catalog" {
 		t.Fatalf("templates of other = %+v", page.Items)
 	}
 	page = optionPage(t, e.owner, toolsTeam+"/gateway-options?q=whoami&server="+e.server.Id.String())
@@ -152,7 +152,7 @@ func TestGatewayResourceSelection(t *testing.T) {
 	resource := e.capID(e.owner, e.server, "resource", "status://services")
 	template := e.capID(e.owner, e.server, "resource_template", "status://services/{service}")
 	got := e.mustSetCaps(e.owner, path, sel(resource, template+":admin"))
-	if !slices.Equal(exposed(got.Items), []string{"omcp://status/status://services", "omcp://status/status://services/{service}"}) {
+	if !slices.Equal(exposed(got.Items), []string{"omp://status/status://services", "omp://status/status://services/{service}"}) {
 		t.Fatalf("selection = %v", exposed(got.Items))
 	}
 	for _, it := range got.Items {
@@ -177,14 +177,14 @@ func TestGatewayResourceSelection(t *testing.T) {
 	// Exposed URIs clash case-insensitively, like names.
 	upper := e.insertCapability(e.server, "resource", "STATUS://services")
 	code, raw = e.setCaps(e.owner, path, sel(resource, upper))
-	if code != 422 || errorCode(raw) != "name_clash" || !strings.Contains(string(raw), "omcp://status/") {
+	if code != 422 || errorCode(raw) != "name_clash" || !strings.Contains(string(raw), "omp://status/") {
 		t.Fatalf("uri clash = %d %s", code, raw)
 	}
 
 	// My gateways lists them with their exposed URIs (role applied).
 	var detail apitypes.MyGatewayDetail
 	if code := e.member.get("/v1/me/gateways/"+gw.Id.String(), &detail); code != 200 ||
-		!slices.Equal(exposed(detail.Capabilities), []string{"omcp://status/status://services"}) {
+		!slices.Equal(exposed(detail.Capabilities), []string{"omp://status/status://services"}) {
 		t.Fatalf("my gateway = %d %+v", code, detail.Capabilities)
 	}
 	if g := e.gateway(e.owner, path); g.CapabilityCount != 2 || g.UnavailableCount != 0 {
@@ -213,20 +213,20 @@ func TestMCPResources(t *testing.T) {
 	if err != nil || len(res.Resources) != 1 {
 		t.Fatalf("resources/list = %+v %v", res, err)
 	}
-	if r := res.Resources[0]; r.URI != "omcp://status/status://services" || r.Name != "services" || r.Title != "Services" ||
+	if r := res.Resources[0]; r.URI != "omp://status/status://services" || r.Name != "services" || r.Title != "Services" ||
 		r.Description != "Every monitored service." || r.MIMEType != "text/plain" {
 		t.Fatalf("resource = %+v", r)
 	}
 	tmpl, err := cs.ListResourceTemplates(ctx, nil)
-	if err != nil || len(tmpl.ResourceTemplates) != 1 || tmpl.ResourceTemplates[0].URITemplate != "omcp://status/status://services/{service}" ||
+	if err != nil || len(tmpl.ResourceTemplates) != 1 || tmpl.ResourceTemplates[0].URITemplate != "omp://status/status://services/{service}" ||
 		tmpl.ResourceTemplates[0].Name != "service" {
 		t.Fatalf("resources/templates/list = %+v %v", tmpl, err)
 	}
 
 	// A fixed resource: forwarded with the identity (resource claim), URIs
 	// given back in the exposed form.
-	read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "omcp://status/status://services"})
-	if err != nil || len(read.Contents) != 1 || read.Contents[0].URI != "omcp://status/status://services" || read.Contents[0].Text != "email\nvpn" {
+	read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "omp://status/status://services"})
+	if err != nil || len(read.Contents) != 1 || read.Contents[0].URI != "omp://status/status://services" || read.Contents[0].Text != "email\nvpn" {
 		t.Fatalf("read fixed = %+v %v", read, err)
 	}
 	reads := e.fake.ResourceReads()
@@ -239,7 +239,7 @@ func TestMCPResources(t *testing.T) {
 		Gateway  string `json:"gateway"`
 	}
 	if err := testutil.VerifyIdentity(ctx, strings.TrimPrefix(reads[0].Authorization, "Bearer "), jwks, e.fake.URL(), &claims); err != nil ||
-		claims.Resource != "omcp://status/status://services" || claims.Tool != "" || claims.Gateway != "docs" {
+		claims.Resource != "omp://status/status://services" || claims.Tool != "" || claims.Gateway != "docs" {
 		t.Fatalf("identity: %v %+v", err, claims)
 	}
 	if strings.Contains(reads[0].Authorization, key.Secret) {
@@ -247,8 +247,8 @@ func TestMCPResources(t *testing.T) {
 	}
 
 	// A templated one.
-	read, err = cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "omcp://status/status://services/email"})
-	if err != nil || len(read.Contents) != 1 || read.Contents[0].URI != "omcp://status/status://services/email" ||
+	read, err = cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "omp://status/status://services/email"})
+	if err != nil || len(read.Contents) != 1 || read.Contents[0].URI != "omp://status/status://services/email" ||
 		read.Contents[0].Text != "operating normally" {
 		t.Fatalf("read templated = %+v %v", read, err)
 	}
@@ -260,12 +260,12 @@ func TestMCPResources(t *testing.T) {
 	// server.
 	before := e.fake.Requests()
 	for _, uri := range []string{
-		"omcp://status/status://services/a/b",      // "/" needs {+var}
-		"omcp://status/status://services/..",       // dot segment
-		"omcp://status/status://other",             // not selected
-		"omcp://other-status/status://services",    // another server
-		"status://services",                        // not exposed
-		"omcp://status/status://services/email?x=", // reserved characters
+		"omp://status/status://services/a/b",      // "/" needs {+var}
+		"omp://status/status://services/..",       // dot segment
+		"omp://status/status://other",             // not selected
+		"omp://other-status/status://services",    // another server
+		"status://services",                       // not exposed
+		"omp://status/status://services/email?x=", // reserved characters
 	} {
 		if _, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri}); err == nil {
 			t.Errorf("read %s went through", uri)
@@ -274,12 +274,12 @@ func TestMCPResources(t *testing.T) {
 	if e.fake.Requests() != before {
 		t.Fatal("a refused read reached the server")
 	}
-	code, _, out := rawMCP(t, e.app, "POST", "docs", key.Secret, rpc(1, "resources/read", map[string]any{"uri": "omcp://status/status://other"}), nil)
+	code, _, out := rawMCP(t, e.app, "POST", "docs", key.Secret, rpc(1, "resources/read", map[string]any{"uri": "omp://status/status://other"}), nil)
 	if code != 200 || rpcErrorCode(out) != -32002 {
 		t.Fatalf("raw refused read = %d %v", code, out)
 	}
 	for _, m := range []string{"resources/subscribe", "resources/unsubscribe"} {
-		if code, _, out := rawMCP(t, e.app, "POST", "docs", key.Secret, rpc(2, m, map[string]any{"uri": "omcp://status/status://services"}), nil); code != 200 || rpcErrorCode(out) != -32601 {
+		if code, _, out := rawMCP(t, e.app, "POST", "docs", key.Secret, rpc(2, m, map[string]any{"uri": "omp://status/status://services"}), nil); code != 200 || rpcErrorCode(out) != -32601 {
 			t.Errorf("%s = %d %v", m, code, out)
 		}
 	}
@@ -288,7 +288,7 @@ func TestMCPResources(t *testing.T) {
 	// admin. Both reads are refused without reaching the server.
 	e.mustSetCaps(e.owner, path, sel(resource+":admin", echo))
 	before = e.fake.Requests()
-	for _, uri := range []string{"omcp://status/status://services/email", "omcp://status/status://services"} {
+	for _, uri := range []string{"omp://status/status://services/email", "omp://status/status://services"} {
 		if _, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri}); err == nil {
 			t.Errorf("read %s after revocation went through", uri)
 		}
@@ -301,7 +301,7 @@ func TestMCPResources(t *testing.T) {
 	}
 	// The owner (admin and above) still reads it.
 	ownerKey := newKey(t, e.owner, "owner")
-	if read, err := connect(t, e.app, "docs", ownerKey.Secret).ReadResource(ctx, &mcp.ReadResourceParams{URI: "omcp://status/status://services"}); err != nil ||
+	if read, err := connect(t, e.app, "docs", ownerKey.Secret).ReadResource(ctx, &mcp.ReadResourceParams{URI: "omp://status/status://services"}); err != nil ||
 		len(read.Contents) != 1 {
 		t.Fatalf("owner read = %+v %v", read, err)
 	}
@@ -309,9 +309,9 @@ func TestMCPResources(t *testing.T) {
 	records := e.scalar(`SELECT string_agg(method || ' ' || outcome || ' ' || coalesce(error_class, '-') || ' ' || coalesce(exposed_name, '-'), ', ' ORDER BY id) FROM mcp_calls`)
 	for _, want := range []string{
 		"resources/list ok - -", "resources/templates/list ok - -",
-		"resources/read ok - omcp://status/status://services,", "resources/read ok - omcp://status/status://services/email",
-		"resources/read denied unknown omcp://status/status://other", "resources/read denied unknown omcp://status/status://services/email",
-		"resources/read denied role omcp://status/status://services",
+		"resources/read ok - omp://status/status://services,", "resources/read ok - omp://status/status://services/email",
+		"resources/read denied unknown omp://status/status://other", "resources/read denied unknown omp://status/status://services/email",
+		"resources/read denied role omp://status/status://services",
 	} {
 		if !strings.Contains(records+",", want) {
 			t.Errorf("calls %q lack %q", records, want)
@@ -324,7 +324,7 @@ func TestMCPResources(t *testing.T) {
 	if init := connect(t, e.app, "plain", key.Secret).InitializeResult(); init.Capabilities.Resources != nil {
 		t.Fatalf("plain initialize = %+v", init.Capabilities)
 	}
-	if code, _, out := rawMCP(t, e.app, "POST", "plain", key.Secret, rpc(3, "resources/read", map[string]any{"uri": "omcp://status/status://services"}), nil); code != 200 || rpcErrorCode(out) != -32601 {
+	if code, _, out := rawMCP(t, e.app, "POST", "plain", key.Secret, rpc(3, "resources/read", map[string]any{"uri": "omp://status/status://services"}), nil); code != 200 || rpcErrorCode(out) != -32601 {
 		t.Errorf("plain read = %d %v", code, out)
 	}
 }
@@ -462,7 +462,7 @@ func TestAPIKeyScopes(t *testing.T) {
 		"logs":             logs.String(),
 	} {
 		for _, secret := range []string{scoped.Secret, all.Secret} {
-			if strings.Contains(text, secret) || strings.Contains(text, secret[len("omcp_"):]) {
+			if strings.Contains(text, secret) || strings.Contains(text, secret[len("omp_"):]) {
 				t.Errorf("%s contains an API key", what)
 			}
 		}

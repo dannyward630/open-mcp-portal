@@ -12,8 +12,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // Delegated credentials end to end (docs/phase5-delegated-credentials.md):
@@ -362,7 +362,7 @@ func TestDelegatedCredentialsEndToEnd(t *testing.T) {
 		t.Fatalf("echo's identity names a provider: %v", who.Claims)
 	}
 	// Resources without... the resource inherits the requirement.
-	code, _, rd := rawMCP(t, e.app, "POST", "support", e.key, rpc(8, "resources/read", map[string]any{"uri": "omcp://status/status://services"}), nil)
+	code, _, rd := rawMCP(t, e.app, "POST", "support", e.key, rpc(8, "resources/read", map[string]any{"uri": "omp://status/status://services"}), nil)
 	reads := e.fake.ResourceReads()
 	if code != 200 || rd["result"] == nil || len(reads) != 1 || reads[0].Header.Get("MCP-Gateway-Provider") != "github" {
 		t.Fatalf("read = %d %v %v", code, rd, reads)

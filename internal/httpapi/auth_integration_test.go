@@ -15,11 +15,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/app"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi"
-	"github.com/ncecere/open-mcp-gateway/internal/httpapi/apitypes"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/app"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
+	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 type testApp struct {
@@ -190,7 +190,7 @@ func TestSessionSecretIsStoredAsDigest(t *testing.T) {
 	app.devLogin("user")
 	var cookie string
 	for _, c := range app.Client.Jar.Cookies(mustParse(t, app.URL)) {
-		if c.Name == "omg_session" {
+		if c.Name == "omp_session" {
 			cookie = c.Value
 		}
 	}
@@ -422,12 +422,26 @@ func TestAuditLogIsAppendOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	// omg.audit_purge is the setting a retention job sets for its transaction.
-	if _, err := tx.Exec(ctx, "SELECT set_config('omg.audit_purge', 'on', true)"); err != nil {
+	// omp.audit_purge is the setting a retention job sets for its transaction.
+	if _, err := tx.Exec(ctx, "SELECT set_config('omp.audit_purge', 'on', true)"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.Exec(ctx, "DELETE FROM audit_log"); err != nil {
 		t.Fatalf("retention purge rejected: %v", err)
+	}
+	// The setting's name before the rename (migration 00013) still works, for
+	// a previous release during a rolling update.
+	_ = tx.Rollback(ctx)
+	old, err := app.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer old.Rollback(ctx)
+	if _, err := old.Exec(ctx, "SELECT set_config('omg.audit_purge', 'on', true)"); err != nil {
+		t.Fatal(err)
+	}
+	if tag, err := old.Exec(ctx, "DELETE FROM audit_log"); err != nil || tag.RowsAffected() == 0 {
+		t.Fatalf("purge with the old setting = %v, %v", tag, err)
 	}
 }
 
@@ -445,7 +459,7 @@ func TestAuthConfigInstance(t *testing.T) {
 	}
 	c := get(newTestApp(t, nil))
 	d := c.Instance
-	if d.Name != "Open MCP Gateway" || d.OrgName != "" || d.Theme != apitypes.Neutral || d.LogoUrl != nil || d.SupportUrl != nil {
+	if d.Name != "Open MCP Portal" || d.OrgName != "" || d.Theme != apitypes.Neutral || d.LogoUrl != nil || d.SupportUrl != nil {
 		t.Errorf("default instance = %+v", d)
 	}
 	if !c.DevAuthEnabled || c.OidcEnabled || c.LoginUrl != "/auth/login" || len(c.DevAccounts) != 6 || c.TeamRequestUrl != nil {
@@ -472,7 +486,7 @@ func TestDevPersonasKeepTheirNames(t *testing.T) {
 	app := newTestApp(t, nil)
 	app.devLogin("alex")
 	if _, err := app.Pool.Exec(context.Background(),
-		"UPDATE users SET display_name = 'Priya Shah', email = 'priya.shah@example.com' WHERE oidc_issuer = 'open-mcp-gateway:development' AND oidc_subject = 'alex'"); err != nil {
+		"UPDATE users SET display_name = 'Priya Shah', email = 'priya.shah@example.com' WHERE oidc_issuer = 'open-mcp-portal:development' AND oidc_subject = 'alex'"); err != nil {
 		t.Fatal(err)
 	}
 	code, body := app.do("GET", "/v1/auth/config", nil, nil)

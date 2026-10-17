@@ -18,8 +18,8 @@ describe("connect snippets", () => {
     expect(JSON.parse(snippet("cursor", { name: "x", url }))).toEqual({ mcpServers: { x: { url } } });
     // Even a secret passed by mistake never reaches an OAuth snippet.
     for (const c of ["claude", "vscode", "cursor"] as const) {
-      const text = snippet(c, { name: "s", url, secret: "omcp_secret" });
-      expect(text, c).not.toMatch(/omcp_secret|Authorization|header/i);
+      const text = snippet(c, { name: "s", url, secret: "omp_secret" });
+      expect(text, c).not.toMatch(/omp_secret|Authorization|header/i);
     }
     expect(authFor("claude", "oauth")).toBe("oauth");
     // curl can't open a browser: it always uses a key.
@@ -31,18 +31,18 @@ describe("connect snippets", () => {
     for (const c of snippetClients) {
       const text = snippet(c.id, { name: "support-tools", url, auth: "key" });
       expect(text, c.id).toContain(url);
-      expect(text, c.id).not.toContain("omcp_");
+      expect(text, c.id).not.toContain("omp_");
     }
     expect(snippet("claude", { name: "support-tools", url, auth: "key" })).toBe(`claude mcp add --transport http support-tools ${url} --header "Authorization: Bearer ${keyPlaceholder}"`);
-    expect(snippet("cursor", { name: "s", url, secret: "omcp_secret", auth: "key" })).toContain('"Authorization": "Bearer omcp_secret"');
-    expect(snippet("curl", { name: "s", url, secret: "omcp_secret" })).toContain('-H "Authorization: Bearer omcp_secret"');
+    expect(snippet("cursor", { name: "s", url, secret: "omp_secret", auth: "key" })).toContain('"Authorization": "Bearer omp_secret"');
+    expect(snippet("curl", { name: "s", url, secret: "omp_secret" })).toContain('-H "Authorization: Bearer omp_secret"');
   });
 
   it("give VS Code a password prompt instead of the key, even when one is passed", () => {
-    const parsed = JSON.parse(snippet("vscode", { name: "support-tools", url, secret: "omcp_secret", auth: "key" }));
+    const parsed = JSON.parse(snippet("vscode", { name: "support-tools", url, secret: "omp_secret", auth: "key" }));
     expect(parsed).toEqual({
-      inputs: [{ type: "promptString", id: "omcp-key", description: "Open MCP Gateway API key", password: true }],
-      servers: { "support-tools": { type: "http", url, headers: { Authorization: "Bearer ${input:omcp-key}" } } },
+      inputs: [{ type: "promptString", id: "omp-key", description: "Open MCP Portal API key", password: true }],
+      servers: { "support-tools": { type: "http", url, headers: { Authorization: "Bearer ${input:omp-key}" } } },
     });
     expect(JSON.parse(snippet("cursor", { name: "x", url, auth: "key" }))).toEqual({ mcpServers: { x: { url, headers: { Authorization: `Bearer ${keyPlaceholder}` } } } });
   });

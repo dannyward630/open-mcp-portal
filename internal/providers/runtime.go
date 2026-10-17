@@ -9,12 +9,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/observability"
-	"github.com/ncecere/open-mcp-gateway/internal/registry"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/observability"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
 // The runtime (decisions 27-29): a call of a capability with an effective
@@ -331,7 +331,7 @@ func (s *Service) DeleteConnections(ctx context.Context, q *dbgen.Queries, a aut
 	return nil
 }
 
-// observeRefresh counts a refresh (omg_provider_token_refresh_total).
+// observeRefresh counts a refresh (omp_provider_token_refresh_total).
 func observeRefresh(provider string, err error) {
 	var down *UnavailableError
 	switch {

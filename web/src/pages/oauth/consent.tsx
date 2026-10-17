@@ -91,7 +91,7 @@ export function OAuthConsentPage() {
     mutationFn: async (decision: Decision) => {
       const out = unwrap(await api.POST("/v1/oauth/consent", { body: { query: request.raw, decision } }));
       const target = safeRedirect(out.redirectUrl);
-      if (!target) throw new Error("The gateway answered with an address your browser can't go to, so you weren't sent anywhere.");
+      if (!target) throw new Error("The portal answered with an address your browser can't go to, so you weren't sent anywhere.");
       return target;
     },
     onSuccess: (target) => {

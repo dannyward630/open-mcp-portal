@@ -6,7 +6,7 @@
 // gateway of one, a server of another) is kept for the shorter of their
 // periods; with neither, the platform period applies.
 //
-// A leader-elected loop (advisory lock omg.retention) deletes in batches,
+// A leader-elected loop (advisory lock omp.retention) deletes in batches,
 // payloads first, then calls (never newer than the usage rollup watermark),
 // audit entries and rollups. Legal holds and dry runs are out of scope.
 package retention
@@ -23,12 +23,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ncecere/open-mcp-gateway/internal/apperr"
-	"github.com/ncecere/open-mcp-gateway/internal/audit"
-	"github.com/ncecere/open-mcp-gateway/internal/authz"
-	"github.com/ncecere/open-mcp-gateway/internal/store"
-	"github.com/ncecere/open-mcp-gateway/internal/store/dbgen"
-	"github.com/ncecere/open-mcp-gateway/internal/teams"
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/store"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+	"github.com/ncecere/open-mcp-portal/internal/teams"
 )
 
 // Kinds.

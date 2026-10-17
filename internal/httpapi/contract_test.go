@@ -8,9 +8,9 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/ncecere/open-mcp-gateway/internal/auth"
-	"github.com/ncecere/open-mcp-gateway/internal/config"
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/config"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 // TestRoutesMatchOpenAPI fails when a served route is missing from

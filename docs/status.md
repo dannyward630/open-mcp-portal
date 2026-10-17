@@ -1,10 +1,20 @@
 # Status and handoff
 
-Last updated: 2026-10-17 (Phase 7 upstream OAuth backend built: [phase7-upstream-oauth.md](phase7-upstream-oauth.md) "As built"; Phase 6 backend and UI built, browser QA findings fixed:
+Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstream OAuth backend built: [phase7-upstream-oauth.md](phase7-upstream-oauth.md) "As built"; Phase 6 backend and UI built, browser QA findings fixed:
 [phase6-operations.md](phase6-operations.md) "As built"; Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built").
 
 ## Where things stand
 
+- **Renamed to Open MCP Portal (decision 46).** Formerly Open MCP Gateway. Module
+  `github.com/ncecere/open-mcp-portal`, binary and command `open-mcp-portal`, `OMP_*` environment variables (`OMP_CONFIG_FILE`,
+  `OMP_TEST_DATABASE_URL`, `OMP_TEST_REQUIRE_DB`, `OMP_TEST_LOG`, `OMP_DEMO_PORT`, `OMP_IMAGE`, `OMP_FAKEMCP_IMAGE`),
+  metrics `omp_*`, Kubernetes names `open-mcp-portal*`, dev Compose project `open-mcp-portal` (database and user
+  `omp`). Prefixes: personal keys `omp_`, service account keys `omp_sa_`, access tokens `ompat_`, refresh tokens
+  `omprt_`, codes `ompac_`, registered client IDs `ompcl_`, exposed resources `omp://`; keys and tokens made before
+  no longer authenticate, and capture redaction still recognises the old prefixes. Migration `00013_open_mcp_portal`
+  (the purge settings `omp.audit_purge`/`omp.calls_purge`, old names still accepted; key prefix checks accept both).
+  The `MCP-Gateway-*` headers and the Gateways feature keep their names. An existing dev database moves with
+  `scripts/migrate-dev-db.sh`; an existing `.env` needs `DATABASE_URL=postgres://omp:omp-dev-only@127.0.0.1:55442/omp?sslmode=disable`.
 - Requirements interview: done. Decisions in [decisions.md](decisions.md); architecture, data model and phases in
   [../SPEC.md](../SPEC.md).
 - **Phase 1 (foundations): done.** Browser QA found one blocking bug (`name@localhost` rejected) and polish items; fixed
@@ -57,7 +67,7 @@ Last updated: 2026-10-17 (Phase 7 upstream OAuth backend built: [phase7-upstream
     (optional), the admin health-checks operation.
   - Follow-ups done (not yet browser-checked): gateway-options paged (`GatewayOptionPage`, `cursor`/`limit`
     100–500/`q`/`kind`/`server`; the picker searches on the server, filters by kind and server, loads more);
-    resources and resource templates (exposed as `omcp://{serverSlug}/{uri}`, RFC 6570 `{var}`/`{+var}` templates,
+    resources and resource templates (exposed as `omp://{serverSlug}/{uri}`, RFC 6570 `{var}`/`{+var}` templates,
     `resources/list|templates/list|read`, JWT claim `resource`); API keys limited to gateways (`gatewayIds`,
     `ApiKey.gateways`, error class `key_scope`). Migration `00006_gateway_resources_key_scopes`. See
     [phase3-gateways.md](phase3-gateways.md) "As built".
@@ -82,7 +92,7 @@ Last updated: 2026-10-17 (Phase 7 upstream OAuth backend built: [phase7-upstream
 
 - **Phase 4 (client sign-in and service accounts): backend and UI done; QA follow-ups done.** OAuth 2.1 authorization
   server for `/mcp/{slug}` (always on; CIMD and DCR clients, PKCE S256, resource = one gateway, consent per person +
-  client + gateway, trusted clients, rotating refresh tokens) and team service accounts with `omcp_sa_` keys. See
+  client + gateway, trusted clients, rotating refresh tokens) and team service accounts with `omp_sa_` keys. See
   [phase4-client-auth.md](phase4-client-auth.md) "As built", [connect-clients.md](connect-clients.md) and
   [upstream-identity.md](upstream-identity.md) (`principal_type`).
   - Migration `00008_client_auth` adds `oauth_settings` (trusted clients, seeded with Claude, Claude Code, VS Code),
@@ -130,7 +140,7 @@ Last updated: 2026-10-17 (Phase 7 upstream OAuth backend built: [phase7-upstream
 - **Phase 6 (operations): backend and UI done; browser QA done and its findings fixed.** Rate limits shared by replicas in PostgreSQL (per person, credential,
   service account and gateway; 429 + JSON-RPC `-32029`, recorded `rate_limited`), payload capture (opt-in per gateway or
   server, redacted, 16 KiB, sealed, audited views), retention loop, hourly usage rollups and reports, Prometheus metrics
-  on `METRICS_ADDR`, `API_KEY_PEPPER_PREVIOUS`, `open-mcp-gateway rotate-keys`, doctor key reports, and
+  on `METRICS_ADDR`, `API_KEY_PEPPER_PREVIOUS`, `open-mcp-portal rotate-keys`, doctor key reports, and
   `.github/workflows/ci.yml`. See [phase6-operations.md](phase6-operations.md) "As built" and [deploy.md](deploy.md)
   (Metrics, Key rotation, Scaling).
   - Migration `00011_operations`. New packages `internal/limits`, `internal/capture`, `internal/retention`,
@@ -174,7 +184,7 @@ Last updated: 2026-10-17 (Phase 7 upstream OAuth backend built: [phase7-upstream
 
 - OIDC login state lives in PostgreSQL (`login_states`), not Valkey.
 - Rate limits are counted in PostgreSQL (UNLOGGED table), not Valkey.
-- Listen address env var is `LISTEN_ADDR` (default `:8088`); config file env var is `OMG_CONFIG_FILE`.
+- Listen address env var is `LISTEN_ADDR` (default `:8088`); config file env var is `OMP_CONFIG_FILE`.
 - Malformed emails return `400 invalid_json` (generated Email type), same as Grounded.
 - OAuth for MCP clients is always on (Grounded has a setting) and binds each connection to one gateway.
 - Dropped for now: notifications/email, tracing. SSO groups are back
@@ -183,7 +193,7 @@ Last updated: 2026-10-17 (Phase 7 upstream OAuth backend built: [phase7-upstream
 ## Resume checklist
 
 ```sh
-cd ~/projects/golang/open-mcp-gateway
+cd ~/projects/golang/open-mcp-portal
 make deps-up                  # Postgres on 127.0.0.1:55442
 cp -n .env.example .env       # DEV_AUTH=true, APP_URL=http://localhost:8088, ENCRYPTION_KEY
 make fake-mcp                 # fake MCP server on http://127.0.0.1:8091/mcp (separate terminal)

@@ -195,19 +195,19 @@ func (m *MailServer) authorize(id *Identity, h http.Header) error {
 	if id == nil {
 		// Unreachable behind Guard (tools/call needs a token), but never act
 		// without one.
-		return errors.New("this server only accepts calls through Open MCP Gateway")
+		return errors.New("this server only accepts calls through Open MCP Portal")
 	}
 	if id.PrincipalType != "user" {
 		return errors.New("this tool reads a person's mailbox; service accounts can't use it")
 	}
 	token := h.Get(headerProviderToken)
 	if token == "" || id.Provider == "" {
-		return fmt.Errorf("no Google account token came with this call. The gateway sends one only when the server's "+
+		return fmt.Errorf("no Google account token came with this call. The portal sends one only when the server's "+
 			"user authorization requirement is set: ask the team that registered this server to set the requirement to "+
 			"the %q auth provider with the Gmail scopes (gmail.readonly; gmail.compose for create_draft)", m.Provider)
 	}
 	if id.Provider != m.Provider || h.Get(headerProvider) != m.Provider {
-		return fmt.Errorf("the gateway sent a token for the %q auth provider, but this server works with %q: "+
+		return fmt.Errorf("the portal sent a token for the %q auth provider, but this server works with %q: "+
 			"the server's user authorization requirement names the wrong provider", id.Provider, m.Provider)
 	}
 	return nil

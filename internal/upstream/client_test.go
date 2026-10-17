@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncecere/open-mcp-gateway/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
 func testClient(allowPrivate bool) *Client {

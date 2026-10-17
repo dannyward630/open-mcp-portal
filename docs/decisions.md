@@ -5,7 +5,7 @@ Status: requirements interview in progress. Nothing below is implemented yet.
 ## Purpose
 
 A central, self-hosted place for the company to discover and access its many MCP servers. It is closer to
-Arcade than to the MCP features in LiteLLM, Bifrost or the Docker MCP Gateway: the gateway brokers who the
+Arcade than to the MCP features in LiteLLM, Bifrost or the Docker MCP Gateway: the portal brokers who the
 user is and what each tool may do on their behalf, not only network routing.
 
 Not in scope: hosting or running agents (that is the separate `open-agent-platform` idea).
@@ -14,7 +14,7 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 
 | # | Area | Decision |
 |---|---|---|
-| 1 | Location | `~/projects/golang/open-mcp-gateway` |
+| 1 | Location | `~/projects/golang/open-mcp-portal` |
 | 2 | Stack | Go backend, PostgreSQL, React/TypeScript UI, following Grounded (net/http, pgx/sqlc/goose, OpenAPI-generated types, Bitop UI, TanStack Router/Query) |
 | 3 | Identity and roles | Grounded's model: OIDC sign-in, platform roles `platform_admin`/`platform_auditor`, teams with `owner`/`admin`/`editor`/`member`, users, invites, audit |
 | 4 | UI | Looks like Grounded and Open Model Gateway: separate platform admin and team portals, list/detail/settings templates |
@@ -50,7 +50,7 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 | 33 | Retention *(accepted default)* | Platform periods with team overrides: call metadata 90 days, captured payloads 14 days (at most 90), audit log 400 days (platform only). A leader-elected loop deletes in batches. Legal holds are out of scope |
 | 34 | Usage *(accepted default)* | Hourly rollups (calls, errors by outcome, p50/p95 latency, bytes) per gateway, server, capability, team and principal kind; dashboards for teams (their gateways, servers and service accounts) and platform admins (everything), ranges up to 90 days |
 | 35 | Metrics *(accepted default)* | Prometheus on a separate listener (`METRICS_ADDR`, off by default); low-cardinality metrics (requests by method/outcome, latency by gateway and server slug bounded by registered objects, rate-limit rejections, token refreshes, health checks, DB pool). No user IDs in labels |
-| 36 | Key rotation *(accepted default)* | `API_KEY_PEPPER_PREVIOUS` keeps keys and tokens valid during a pepper rotation (keys re-digested on use); `open-mcp-gateway rotate-keys` re-encrypts stored secrets from `ENCRYPTION_KEY_PREVIOUS` to `ENCRYPTION_KEY` and reports counts; `doctor` reports what is still on the old key |
+| 36 | Key rotation *(accepted default)* | `API_KEY_PEPPER_PREVIOUS` keeps keys and tokens valid during a pepper rotation (keys re-digested on use); `open-mcp-portal rotate-keys` re-encrypts stored secrets from `ENCRYPTION_KEY_PREVIOUS` to `ENCRYPTION_KEY` and reports counts; `doctor` reports what is still on the old key |
 | 37 | CI *(accepted default)* | A GitHub Actions workflow: lint, generated-code check, Go unit and integration tests with a Postgres service, web typecheck/tests/build, `k8s-validate`, docker build. The repository has no remote yet, so it is validated locally with `actionlint` |
 | 38 | Suspension blocks, doesn't disconnect *(accepted default)* | Suspending a person ends their browser sessions and refuses every later request at authentication, but keeps their OAuth connections (connected apps), API keys and provider connections, so reactivating restores them. This is the current behaviour, recorded because the user hasn't asked to change it |
 | 39 | Upstream auth modes *(accepted default)* | An MCP server's upstream auth is `none`, `static_header` (as today) or `oauth` (per person). In `oauth` mode the person's token goes in `Authorization: Bearer` and the identity JWT moves to `MCP-Gateway-Identity` (decision 19's rule). `oauth` excludes a static `Authorization` header and a Phase 5 requirement on the same server: one credential per call |
@@ -60,6 +60,7 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 | 43 | Runtime *(accepted default)* | Every call to an `oauth` server needs the caller's own connection to that server; missing, expired or insufficient means the existing `-32042` consent-link flow (same `/connect` pages, same My connections, labelled with the server's name). An upstream 401 `invalid_token` gets one refresh attempt, then `needs_reconsent` and `-32042`; a 403 `insufficient_scope` asks for re-consent with the requested scope. Service accounts are refused (`-32010`). Tool lists come from discovery; the upstream may show each person different tools and still checks every call |
 | 44 | Tokens and audit *(accepted default)* | Phase 5 storage, refresh, revocation and audit events (`provider_connection.*`) are reused, plus `mcp_server.auth_update`. Tokens never appear in logs, audit, call records or captured payloads; payload capture never records the `Authorization` header |
 | 45 | Identity token to external servers | Per-server switch `sendIdentity` (default on, keeping decision 7). The UI recommends turning it off for servers run outside the company (for example GitHub's hosted MCP server), so names, emails and teams aren't sent to a third party. Accepted default chosen by the assistant |
+| 46 | Name | The product is **Open MCP Portal** (short form OMP, after the full name), formerly Open MCP Gateway, so it no longer clashes with Open Model Gateway (OMG). Module `github.com/ncecere/open-mcp-portal`, binary `open-mcp-portal`, `OMP_*` environment variables, `omp_` metrics, key and token prefixes `omp_`, `omp_sa_`, `ompat_`, `omprt_`, `ompac_`, `ompcl_`, exposed resources `omp://`. Gateways stay the feature's name (curated tool sets at `/mcp/{slug}`), and so do the `MCP-Gateway-*` headers servers receive. Migration `00013_open_mcp_portal` |
 
 Decisions 25–30 are defaults the assistant accepted under the user's instruction "continue until both are done".
 They are not interview answers, and the user may change them. Design: [phase5-delegated-credentials.md](phase5-delegated-credentials.md).

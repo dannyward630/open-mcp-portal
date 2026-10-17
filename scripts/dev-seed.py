@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed a local development install with something to sign in to.
+"""Seed a local development install of Open MCP Portal with something to sign in to.
 
 Creates (idempotently, through the management API with the development sign-in):
   - team "demo" (owner admin@localhost, member user@localhost)

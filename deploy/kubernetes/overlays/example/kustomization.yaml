@@ -4,11 +4,11 @@
 #
 # Copy this directory into your own GitOps repository, replace every
 # example.org value and the image digest, and create the secret
-# open-mcp-gateway-runtime first (docs/deploy.md, "Secrets").
+# open-mcp-portal-runtime first (docs/deploy.md, "Secrets").
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: open-mcp-gateway
+namespace: open-mcp-portal
 
 resources:
   - namespace.yaml
@@ -23,17 +23,17 @@ resources:
 
 # Pin by digest (never a mutable tag).
 images:
-  - name: ghcr.io/ncecere/open-mcp-gateway
+  - name: ghcr.io/ncecere/open-mcp-portal
     newTag: v0.1.0
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 configMapGenerator:
-  - name: open-mcp-gateway-config
+  - name: open-mcp-portal-config
     behavior: merge
     literals:
       - APP_URL=https://mcp.example.org
       - OIDC_ISSUER=https://idp.example.org
-      - OIDC_CLIENT_ID=open-mcp-gateway
+      - OIDC_CLIENT_ID=open-mcp-portal
       - OIDC_ALLOWED_EMAIL_DOMAINS=example.org
       # The ingress controller's pod network, so client IPs are logged and
       # rate-limited correctly.
@@ -48,7 +48,7 @@ patches:
   # The metrics port, on the pods and the Service (for a ServiceMonitor).
   - target:
       kind: Deployment
-      name: open-mcp-gateway
+      name: open-mcp-portal
     patch: |-
       - op: add
         path: /spec/template/spec/containers/0/ports/-
@@ -58,7 +58,7 @@ patches:
           protocol: TCP
   - target:
       kind: Service
-      name: open-mcp-gateway
+      name: open-mcp-portal
     patch: |-
       - op: add
         path: /spec/ports/-
@@ -70,7 +70,7 @@ patches:
   # The ingress controller's namespace.
   - target:
       kind: NetworkPolicy
-      name: open-mcp-gateway-ingress
+      name: open-mcp-portal-ingress
     patch: |-
       - op: replace
         path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
@@ -78,7 +78,7 @@ patches:
   # The managed PostgreSQL's address only.
   - target:
       kind: NetworkPolicy
-      name: open-mcp-gateway-egress-postgres
+      name: open-mcp-portal-egress-postgres
     patch: |-
       - op: replace
         path: /spec/egress/0/to
@@ -88,7 +88,7 @@ patches:
   # An MCP server registered on https://mcp.example.com:8443 needs its port.
   - target:
       kind: NetworkPolicy
-      name: open-mcp-gateway-egress-https
+      name: open-mcp-portal-egress-https
     patch: |-
       - op: add
         path: /spec/egress/0/ports/-

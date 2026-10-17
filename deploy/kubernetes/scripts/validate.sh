@@ -32,7 +32,7 @@ mkdir -p "${scratch}/base"
 cat >"${scratch}/base/kustomization.yaml" <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: omg-validate
+namespace: omp-validate
 resources:
   - ../../base
 EOF
@@ -50,14 +50,14 @@ done
 validate "overlays/example/httproute.yaml" "${root}/overlays/example/httproute.yaml"
 validate "overlays/example/servicemonitor.yaml" "${root}/overlays/example/servicemonitor.yaml"
 
-# open-mcp-gateway-config must be hashed and referenced by both containers.
+# open-mcp-portal-config must be hashed and referenced by both containers.
 check_config_refs() { # name, rendered file
   local cm refs
-  cm="$(sed -n 's/^  name: \(open-mcp-gateway-config-[a-z0-9]\{10\}\)$/\1/p' "$2" | head -n 1)"
-  [ -n "$cm" ] || { echo "$1: open-mcp-gateway-config has no content hash" >&2; exit 1; }
-  # the ConfigMap itself, plus envFrom in the migrate and gateway containers
+  cm="$(sed -n 's/^  name: \(open-mcp-portal-config-[a-z0-9]\{10\}\)$/\1/p' "$2" | head -n 1)"
+  [ -n "$cm" ] || { echo "$1: open-mcp-portal-config has no content hash" >&2; exit 1; }
+  # the ConfigMap itself, plus envFrom in the migrate and portal containers
   refs="$(grep -c "name: ${cm}\$" "$2" || true)"
-  if [ "$refs" -lt 3 ] || grep -q "name: open-mcp-gateway-config\$" "$2"; then
+  if [ "$refs" -lt 3 ] || grep -q "name: open-mcp-portal-config\$" "$2"; then
     echo "$1: the Deployment does not reference ${cm} in every container" >&2
     exit 1
   fi
