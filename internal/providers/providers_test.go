@@ -139,6 +139,13 @@ func TestParseToken(t *testing.T) {
 		{"slack", FormatSlackAuthedUser, "application/json", `{"ok":true,"access_token":"xoxb","authed_user":{"access_token":"xoxp","scope":"a,b"}}`, 200, "xoxp", "a b", "", false},
 		{"slack not ok", FormatSlackAuthedUser, "application/json", `{"ok":false,"error":"invalid_code"}`, 200, "", "", "invalid_code", false},
 	}
+	// GitHub Apps answer an empty scope (they use permissions): no scope
+	// information, so the requested scopes count as granted.
+	for _, body := range []string{`{"access_token":"ghu_a","scope":"","token_type":"bearer"}`, `{"access_token":"a"}`} {
+		if tok, ee := parseToken(FormatStandard, 200, "application/json", []byte(body)); ee != nil || tok.HasScope {
+			t.Errorf("%s: got %+v %+v, want no scope information", body, tok, ee)
+		}
+	}
 	for _, c := range cases {
 		tok, ee := parseToken(c.format, c.status, c.mt, []byte(c.body))
 		code, unav := "", false

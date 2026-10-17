@@ -283,10 +283,16 @@ func parseToken(format string, status int, mt string, body []byte) (tokenSet, *e
 	if out.Access == "" || len(out.Access) > 8192 || len(out.Refresh) > 8192 {
 		return tokenSet{}, unavailable("invalid_response", status)
 	}
+	// An absent scope means the request's scopes were granted (RFC 6749
+	// \u00a75.1). An empty one is read the same way: GitHub Apps answer
+	// "scope": "" because they use permissions, not scopes. If a resource
+	// then answers insufficient_scope, the step-up flow asks again.
 	if sc, ok := m["scope"]; ok {
 		var s string
 		if json.Unmarshal(sc, &s) == nil {
-			out.Scopes, out.HasScope = splitScopes(s), true
+			if scopes := splitScopes(s); len(scopes) > 0 {
+				out.Scopes, out.HasScope = scopes, true
+			}
 		}
 	}
 	return out, nil
