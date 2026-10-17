@@ -1,0 +1,48 @@
+# Weekly dependency updates, grouped so each ecosystem opens at most one
+# pull request a week (security updates still arrive individually). Every
+# PR is checked by ci.yml. Workflow actions stay pinned by commit SHA;
+# Dependabot updates the SHA and the version comment together.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web:
+        patterns: ["*"]
+    ignore:
+      # openapi-typescript is a peer of typescript ^5; move TypeScript's
+      # major by hand, with the tools that depend on it.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # The types follow the Node major that CI and the image run (22).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      images:
+        patterns: ["*"]
+    ignore:
+      # The build images are the toolchain CI tests with (go.mod's toolchain
+      # line, setup-node 22). Moving either is a deliberate change of all of
+      # them together, not a Dependabot bump of the Dockerfile alone.
+      - dependency-name: golang
+      - dependency-name: node
