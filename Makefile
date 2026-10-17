@@ -16,7 +16,7 @@ K8S_TOOLS   := $(CURDIR)/bin/k8s-tools
 KUSTOMIZE   := $(K8S_TOOLS)/kustomize-$(KUSTOMIZE_VERSION)/kustomize
 KUBECONFORM := $(K8S_TOOLS)/kubeconform-$(KUBECONFORM_VERSION)/kubeconform
 
-.PHONY: dev-seed help deps-up deps-down generate check-generated build run migrate fake-mcp fake-oauth test test-integration test-ci lint actionlint fmt web web-test web-dev docker demo demo-down k8s-validate
+.PHONY: dev-seed help deps-up deps-down generate check-generated build run migrate fake-mcp fake-oauth example-mail example-mail-fake example-mail-smoke test test-integration test-ci lint actionlint fmt web web-test web-dev docker demo demo-down k8s-validate
 
 help: ## Show targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -58,6 +58,20 @@ fake-mcp: ## Run a fake MCP server on http://127.0.0.1:8091/mcp (FAKEMCP_DESCRIB
 fake-oauth: ## Run a fake OAuth provider on http://127.0.0.1:8092 for delegated credentials (client fake-client)
 	$(GO) run ./cmd/fakeoauth
 
+# The Gmail MCP example (examples/mail-mcp): MAIL_PROVIDER is the auth
+# provider's slug in the gateway, MAIL_AUDIENCE the server's URL as registered.
+MAIL_PROVIDER ?= google
+MAIL_AUDIENCE ?= http://127.0.0.1:8093/mcp
+
+example-mail: ## Run the Gmail MCP example on http://127.0.0.1:8093/mcp against real Gmail (MAIL_PROVIDER=google)
+	$(GO) run ./examples/mail-mcp -gateway http://localhost:8088 -provider $(MAIL_PROVIDER) -audience $(MAIL_AUDIENCE)
+
+example-mail-fake: ## Run the Gmail MCP example with an in-process fake Gmail, for make fake-oauth (provider google-dev)
+	$(GO) run ./examples/mail-mcp -gateway http://localhost:8088 -provider google-dev -audience $(MAIL_AUDIENCE) -fake-gmail
+
+example-mail-smoke: ## Set up provider google-dev, server and gateway "mail" in team demo, and smoke-test the example
+	python3 examples/mail-mcp/smoke.py
+
 test: ## All Go tests; integration tests skip when Postgres is unreachable
 	$(GO) test -count=1 ./...
 
@@ -68,7 +82,7 @@ test-ci: ## test-integration without deps-up (CI's Postgres service; OMG_TEST_DA
 
 lint: ## go vet and gofmt check
 	$(GO) vet ./...
-	@test -z "$$(gofmt -l cmd internal migrations web/embed.go)" || (gofmt -l cmd internal migrations web/embed.go && echo "run 'make fmt'" && exit 1)
+	@test -z "$$(gofmt -l cmd internal examples migrations web/embed.go)" || (gofmt -l cmd internal examples migrations web/embed.go && echo "run 'make fmt'" && exit 1)
 
 ACTIONLINT_VERSION ?= v1.7.12
 
@@ -76,7 +90,7 @@ actionlint: ## Check the GitHub Actions workflows
 	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
 fmt: ## Format Go code
-	gofmt -w cmd internal migrations web/embed.go
+	gofmt -w cmd internal examples migrations web/embed.go
 
 web: ## Build the web UI into web/dist (embedded by `make build`)
 	cd web && npm ci --ignore-scripts && npm run build

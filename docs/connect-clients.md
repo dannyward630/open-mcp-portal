@@ -19,6 +19,9 @@ gateway, the service and each permission (scope) asked for. Choose **Continue**,
 again. The link works only for you, only once and for 10 minutes. Your connected accounts, and **Disconnect**, are under
 Account › My connections; **My gateways** shows which tools are connected. Service accounts can't use these tools.
 
+Building such a server? [`examples/mail-mcp`](../examples/mail-mcp/README.md) shows a Gmail server adapted from running
+its own OAuth to using the gateway's delegated Google token.
+
 ## OAuth sign-in (Claude Code, VS Code, Cursor, Claude)
 
 Add the gateway's URL **without any header**. The first time the client talks to the gateway, it gets `401` with a pointer to the gateway's sign-in metadata, opens your browser, and:

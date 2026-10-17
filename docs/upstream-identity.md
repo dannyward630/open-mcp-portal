@@ -80,6 +80,12 @@ The gateway doesn't check that the provider account belongs to the person (for e
 the provider who the token belongs to and compare it with the identity token's `email` or `sub`. If the provider answers
 `401` the token was revoked: return a tool error; the person reconnects under Account › My connections.
 
+**Worked example.** [`examples/mail-mcp`](../examples/mail-mcp/README.md) is a Gmail MCP server (search, read, create
+draft) that used to need its own Google OAuth and now relies on the gateway's provider token: it verifies the identity
+token on every request (JWKS cache with a refetch for unknown kids, `iss`, `aud`, expiry), checks the `provider` claim
+against `MCP-Gateway-Provider`, and returns a clear tool error when no token comes because the requirement isn't set.
+`make example-mail-fake` runs it against `make fake-oauth`; `make example-mail` against real Google.
+
 **Recorded call contents.** When your team (or a gateway's) turns on "Record call contents"
 ([phase6-operations.md](phase6-operations.md), "Payload capture"), the gateway stores each call's arguments and your
 result, redacted. Headers are never stored, and the identity token, the provider token and your server's static header
