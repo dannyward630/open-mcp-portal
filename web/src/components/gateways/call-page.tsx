@@ -46,8 +46,8 @@ function Ref({ refd, link }: { refd: McpCall["gateway"] | undefined; link?: Reac
   return link ?? <span>{refd.name}</span>;
 }
 
-function Provider({ slug }: { slug: string }) {
-  return <>{useProviderName(slug)}</>;
+function Provider({ slug, serverName }: { slug: string; serverName?: string }) {
+  return <>{useProviderName(slug, serverName)}</>;
 }
 
 type Props = {
@@ -125,7 +125,7 @@ export function CallPage({ scope, callId, canViewPayload, elsewhere }: Props) {
                 </span>
               ),
             },
-            ...(c.providerSlug ? [{ label: "Account", value: <Provider slug={c.providerSlug} /> }] : []),
+            ...(c.providerSlug ? [{ label: "Account", value: <Provider slug={c.providerSlug} serverName={c.server?.name} /> }] : []),
             { label: "Time", value: `${c.latencyMs.toLocaleString()} ms` },
             { label: "Size", value: `${bytes(c.requestBytes)} in · ${bytes(c.responseBytes)} out` },
             ...(c.clientName ? [{ label: "Client", value: c.clientName }] : []),

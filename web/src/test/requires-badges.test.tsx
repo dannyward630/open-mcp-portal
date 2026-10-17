@@ -143,6 +143,21 @@ describe("Calls that needed a connection", () => {
     expect(row).not.toHaveTextContent("Account: github");
   });
 
+  it("name a server-bound provider (an OAuth-protected server's own sign-in) after the call's server", async () => {
+    const signIn = mcpCall({
+      id: 10,
+      providerSlug: "mcp-2924980d301c",
+      exposedName: "code-search__search_code",
+      server: { id: "3d6d2600-e03c-48a8-8f6d-1b9ac1d13b23", slug: "code-search", name: "Code search", exists: true },
+    });
+    mockApi({ ...routes, "GET /v1/admin/calls": () => page([signIn]), "GET /v1/auth-providers": () => providerSummaries });
+    renderApp("/admin/calls");
+    const table = await screen.findByRole("table", { name: /Calls/ });
+    const row = (await within(table).findByText("code-search__search_code")).closest("tr")!;
+    await waitFor(() => expect(row).toHaveTextContent("Account: Code search"));
+    expect(row).not.toHaveTextContent("mcp-2924980d301c");
+  });
+
   it("have words for every Phase 5 outcome and class", () => {
     expect(outcomeLabels.needs_authorization).toBe("Needed a connection");
     expect(callErrorLabel("not_connected")).toBe("Account not connected");

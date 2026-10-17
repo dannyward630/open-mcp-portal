@@ -130,23 +130,30 @@ export function CallError({ code }: { code: string }) {
   );
 }
 
+/** The prefix of a server-bound provider's slug (a server in oauth mode: people sign in to the server itself). */
+const SERVER_PROVIDER_PREFIX = "mcp-";
+
 /**
- * A recorded provider slug as the provider's name, from the providers people can connect (GET /v1/auth-providers);
- * the slug itself for one that's turned off or gone.
+ * A recorded provider slug as the provider's name, from the providers people can connect (GET /v1/auth-providers).
+ * A server-bound provider (slug mcp-…, never in that list) is named after the call's server; the slug itself is
+ * shown for a platform provider that's turned off or gone.
  */
-export function useProviderName(slug: string) {
+export function useProviderName(slug: string, serverName?: string) {
   const providers = useQuery({ ...authProvidersQuery(), enabled: Boolean(slug) });
-  return providers.data?.find((p) => p.slug === slug)?.name ?? slug;
+  const known = providers.data?.find((p) => p.slug === slug)?.name;
+  if (known) return known;
+  if (serverName && slug.startsWith(SERVER_PROVIDER_PREFIX)) return serverName;
+  return slug;
 }
 
 /** The provider's name in the Account column, with its slug as the tooltip. */
-function ProviderName({ slug }: { slug: string }) {
-  return <span title={slug}>{useProviderName(slug)}</span>;
+function ProviderName({ slug, serverName }: { slug: string; serverName?: string }) {
+  return <span title={slug}>{useProviderName(slug, serverName)}</span>;
 }
 
 /** The auth provider whose account the capability needed (named when it's known, else its slug as recorded). */
-function ProviderBadge({ slug }: { slug: string }) {
-  const name = useProviderName(slug);
+function ProviderBadge({ slug, serverName }: { slug: string; serverName?: string }) {
+  const name = useProviderName(slug, serverName);
   return (
     <span className={s.secondary}>
       <Badge size="sm" variant="outline" title="The account the capability needed">
@@ -231,7 +238,7 @@ export function callColumns({ gateway = false, adminLinks = false, detail, narro
         <span>
           <OutcomeBadge outcome={c.outcome} />
           {c.errorClass && <CallError code={c.errorClass} />}
-          {c.providerSlug && <ProviderBadge slug={c.providerSlug} />}
+          {c.providerSlug && <ProviderBadge slug={c.providerSlug} serverName={c.server?.name} />}
         </span>
       ),
     },
@@ -240,7 +247,7 @@ export function callColumns({ gateway = false, adminLinks = false, detail, narro
       header: "Account",
       accessor: (c) => c.providerSlug ?? "",
       defaultHidden: true,
-      cell: (c) => (c.providerSlug ? <ProviderName slug={c.providerSlug} /> : <span className={s.muted}>—</span>),
+      cell: (c) => (c.providerSlug ? <ProviderName slug={c.providerSlug} serverName={c.server?.name} /> : <span className={s.muted}>—</span>),
     },
     {
       id: "captured",
