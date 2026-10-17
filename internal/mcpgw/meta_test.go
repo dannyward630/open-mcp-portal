@@ -11,6 +11,9 @@ func TestScrubMeta(t *testing.T) {
 		{`{"content":[],"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"up"},"x":1}}`, `{"_meta":{"x":1},"content":[]}`},
 		{`{"content":[],"_meta":{"x":1}}`, `{"content":[],"_meta":{"x":1}}`},
 		{`{"content":[]}`, `{"content":[]}`},
+		{`{"content":[],"structuredContent":[{"name":"main"}]}`, `{"content":[]}`},
+		{`{"content":[],"structuredContent":null,"_meta":{"x":1}}`, `{"_meta":{"x":1},"content":[]}`},
+		{`{"content":[],"structuredContent":{"a":1}}`, `{"content":[],"structuredContent":{"a":1}}`},
 	}
 	for _, c := range cases {
 		got, err := scrubMeta([]byte(c.in))

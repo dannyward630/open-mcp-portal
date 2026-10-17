@@ -175,15 +175,28 @@ func scrubMeta(encoded []byte) ([]byte, error) {
 	if err := json.Unmarshal(encoded, &obj); err != nil {
 		return encoded, nil // not an object: nothing to scrub
 	}
+	changed := false
+	// structuredContent must be a JSON object (MCP schema); strict clients
+	// reject a result whose isn't (GitHub's server returns arrays). The
+	// same data is in the text content, so drop it.
+	if sc, ok := obj["structuredContent"]; ok && !isJSONObject(sc) {
+		delete(obj, "structuredContent")
+		changed = true
+	}
 	raw, ok := obj["_meta"]
 	if !ok {
-		return encoded, nil
+		if !changed {
+			return encoded, nil
+		}
+		return json.Marshal(obj)
 	}
 	var meta map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		return encoded, nil
+		if !changed {
+			return encoded, nil
+		}
+		return json.Marshal(obj)
 	}
-	changed := false
 	for _, k := range upstreamMetaKeys {
 		if _, ok := meta[k]; ok {
 			delete(meta, k)
@@ -203,6 +216,12 @@ func scrubMeta(encoded []byte) ([]byte, error) {
 		obj["_meta"] = m
 	}
 	return json.Marshal(obj)
+}
+
+// isJSONObject reports whether raw is a JSON object.
+func isJSONObject(raw json.RawMessage) bool {
+	var o map[string]json.RawMessage
+	return json.Unmarshal(raw, &o) == nil && o != nil
 }
 
 // upstreamFailed answers a failed exchange with a JSON-RPC error (the
