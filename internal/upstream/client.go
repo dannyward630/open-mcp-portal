@@ -95,6 +95,9 @@ type Target struct {
 	// that server's URL. The identity token then goes in
 	// MCP-Gateway-Identity.
 	BearerToken string
+	// ParamHeaders are a tools/call's Mcp-Param-* headers (ParamHeaders),
+	// added only to the tools/call request itself.
+	ParamHeaders map[string]string
 	// Timeout bounds the whole exchange (connect and every list page).
 	Timeout time.Duration
 }

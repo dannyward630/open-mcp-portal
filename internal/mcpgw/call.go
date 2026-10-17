@@ -98,6 +98,8 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 	switch kind {
 	case upstream.KindTool:
 		rc.captureCall(o, args, target, token, cred)
+		// SEP-2243 parameter headers, from the approved definition.
+		target.ParamHeaders = upstream.ParamHeaders(o.Capability.Definition, args)
 		res, isErr, ok := rc.exchange(o, &rec, cred, target, func(t upstream.Target) (any, bool, error) {
 			res, _, err := client.CallTool(ctx, t, o.Capability.Name, args)
 			if err != nil {

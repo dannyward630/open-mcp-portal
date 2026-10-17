@@ -3,6 +3,7 @@ package upstream
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -292,13 +293,19 @@ type headerTransport struct {
 	provider      string
 	providerToken string
 	bearer        string
+	params        map[string]string
 	maxResponse   int64
 	ex            *exchange
 }
 
 func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.header != "" || t.identity != "" || t.providerToken != "" || t.bearer != "" {
+	if t.header != "" || t.identity != "" || t.providerToken != "" || t.bearer != "" || len(t.params) > 0 {
 		req = req.Clone(req.Context())
+	}
+	if len(t.params) > 0 && isToolsCall(req) {
+		for k, v := range t.params {
+			req.Header.Set(k, v)
+		}
 	}
 	if t.header != "" {
 		req.Header.Set(t.header, t.value)
@@ -339,6 +346,30 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return res, nil
 }
 
+// isToolsCall reports whether a request posts a JSON-RPC tools/call (the
+// only request that carries parameter headers). The body is read and put
+// back unchanged.
+func isToolsCall(req *http.Request) bool {
+	if req.Method != http.MethodPost || req.Body == nil || req.Body == http.NoBody {
+		return false
+	}
+	if req.Header.Get("Mcp-Method") == "tools/call" {
+		return true
+	}
+	body, err := io.ReadAll(io.LimitReader(req.Body, 4<<20))
+	_ = req.Body.Close()
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
+	req.ContentLength = int64(len(body))
+	if err != nil {
+		return false
+	}
+	var msg struct {
+		Method string `json:"method"`
+	}
+	return json.Unmarshal(body, &msg) == nil && msg.Method == "tools/call"
+}
+
 // cappedBody fails a read past its limit.
 type cappedBody struct {
 	io.ReadCloser
@@ -377,7 +408,7 @@ func (c *Client) httpClient(t Target, ex *exchange) (client *http.Client, done f
 	return &http.Client{
 		Transport: &headerTransport{next: tr, header: t.HeaderName, value: t.HeaderValue, identity: t.IdentityHeader,
 			identityValue: t.IdentityValue, provider: t.Provider, providerToken: t.ProviderToken, bearer: t.BearerToken,
-			maxResponse: c.maxResponse(), ex: ex},
+			params: t.ParamHeaders, maxResponse: c.maxResponse(), ex: ex},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return fmt.Errorf("%w: MCP servers may not redirect", ErrBlockedAddress)
 		},
