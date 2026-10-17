@@ -164,7 +164,13 @@ encrypted at rest, refreshed by the gateway. See [docs/phase5-delegated-credenti
    (decisions 25–30): [docs/phase5-delegated-credentials.md](docs/phase5-delegated-credentials.md); contract in
    `api/openapi.yaml` (tags `auth-providers`, `connections`). Missing consent returns MCP `-32042` with a
    single-person consent link; tokens reach servers in `MCP-Gateway-Provider-Token`.
-6. **Operations** — rate limits, payload capture + retention, usage dashboards, Kubernetes manifests.
+6. **Operations** — *Designed* (decisions 31–38): [docs/phase6-operations.md](docs/phase6-operations.md); contract in
+   `api/openapi.yaml` (tags `limits`, `retention`, `usage`; call detail and captured payloads; capture and rate-limit
+   fields on gateways and servers). Rate limits per person, credential, service account and gateway counted in
+   PostgreSQL (HTTP 429, JSON-RPC `-32029`, outcome `rate_limited`); opt-in payload capture per gateway or server
+   (redacted, 16 KiB per part, sealed, views audited); retention with team overrides; hourly usage rollups and
+   dashboards; Prometheus on `METRICS_ADDR`; `API_KEY_PEPPER_PREVIOUS` and `rotate-keys`; GitHub Actions CI.
+   Kubernetes manifests are done ([docs/deploy.md](docs/deploy.md)).
 
 ## 8. Commands
 

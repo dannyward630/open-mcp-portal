@@ -45,8 +45,24 @@ Not in scope: hosting or running agents (that is the separate `open-agent-platfo
 | 29 | Tokens *(accepted default)* | One connection per person and provider: tokens sealed at rest, refreshed by the gateway before expiry, union of granted scopes tracked. A failed refresh marks the connection as needing re-consent. People see and revoke theirs on Account › My connections; platform admins see metadata and can revoke anyone's (auditors read). Suspended people keep connections, but their calls are refused as today. Service accounts can't use capabilities that require a provider (a clear error); those capabilities stay listed, with a note in management views |
 | 30 | Audit *(accepted default)* | `auth_provider.create/update/delete` and `provider_connection.create/refresh_failed/revoke`; never a token or secret |
 
+| 31 | Rate limits *(accepted default)* | Requests per minute on `/mcp/{slug}` per person (any credential), per personal API key or OAuth connection, per service account and per gateway, counted in PostgreSQL (fixed one-minute windows shared by every replica). Platform admins set defaults; for service accounts and gateways also a ceiling and team overrides (above or below the default, up to the ceiling); each gateway can set its own value. Over a limit: HTTP 429 with `Retry-After` and a JSON-RPC error, recorded as `rate_limited`. The per-process limiters (OAuth endpoints, connect start, and with them sign-in and `/v1`) move to the same store |
+| 32 | Payload capture *(accepted default)* | Opt-in per gateway (team owners/admins for team gateways, platform admins for platform gateways) and per server (the server team's owners/admins); a call is captured if either is on. Arguments and result/content, each truncated to 16 KiB, with secret-looking values redacted (provider and bearer tokens, our key prefixes, common secret patterns, extra regexes set by platform admins). Readable only by the owners/admins of the team whose switch captured it, and platform admins and auditors; every view is audited. The identity JWT, provider tokens and client credentials are never captured |
+| 33 | Retention *(accepted default)* | Platform periods with team overrides: call metadata 90 days, captured payloads 14 days (at most 90), audit log 400 days (platform only). A leader-elected loop deletes in batches. Legal holds are out of scope |
+| 34 | Usage *(accepted default)* | Hourly rollups (calls, errors by outcome, p50/p95 latency, bytes) per gateway, server, capability, team and principal kind; dashboards for teams (their gateways, servers and service accounts) and platform admins (everything), ranges up to 90 days |
+| 35 | Metrics *(accepted default)* | Prometheus on a separate listener (`METRICS_ADDR`, off by default); low-cardinality metrics (requests by method/outcome, latency by gateway and server slug bounded by registered objects, rate-limit rejections, token refreshes, health checks, DB pool). No user IDs in labels |
+| 36 | Key rotation *(accepted default)* | `API_KEY_PEPPER_PREVIOUS` keeps keys and tokens valid during a pepper rotation (keys re-digested on use); `open-mcp-gateway rotate-keys` re-encrypts stored secrets from `ENCRYPTION_KEY_PREVIOUS` to `ENCRYPTION_KEY` and reports counts; `doctor` reports what is still on the old key |
+| 37 | CI *(accepted default)* | A GitHub Actions workflow: lint, generated-code check, Go unit and integration tests with a Postgres service, web typecheck/tests/build, `k8s-validate`, docker build. The repository has no remote yet, so it is validated locally with `actionlint` |
+| 38 | Suspension blocks, doesn't disconnect *(accepted default)* | Suspending a person ends their browser sessions and refuses every later request at authentication, but keeps their OAuth connections (connected apps), API keys and provider connections, so reactivating restores them. This is the current behaviour, recorded because the user hasn't asked to change it |
+
 Decisions 25–30 are defaults the assistant accepted under the user's instruction "continue until both are done".
 They are not interview answers, and the user may change them. Design: [phase5-delegated-credentials.md](phase5-delegated-credentials.md).
+
+Decisions 31–38 are likewise defaults the assistant chose under the user's instruction "continue until both are
+done", not interview answers; the user may change them. Design: [phase6-operations.md](phase6-operations.md). Choices
+made there beyond the wording above: `credential_per_minute` covers personal keys and OAuth connections only (service
+account keys count toward the service account's limit); usage rollups get their own retention period (400 days,
+platform only); captured payloads are sealed with `ENCRYPTION_KEY`; payloads are readable by the team whose switch
+captured them rather than by both teams of a call.
 
 ## Proposed build order
 

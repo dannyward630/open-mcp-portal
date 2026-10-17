@@ -1,7 +1,7 @@
 # Status and handoff
 
 Last updated: 2026-10-16 (Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md)
-"As built"; before that, Phase 5 designed, decisions 25–30).
+"As built"; Phase 6 designed, decisions 31–38: [phase6-operations.md](phase6-operations.md)).
 
 ## Where things stand
 
@@ -127,6 +127,10 @@ Last updated: 2026-10-16 (Phase 5 backend built: [phase5-delegated-credentials.m
     Not browser-checked; not tried against a real provider.
   - Gaps: the start rate limit is per process; no background refresh; see the design's "Not in this phase".
 
+- **Phase 6 (operations): designed, not built.** Rate limits, payload capture, retention, usage, metrics, key
+  rotation and CI in [phase6-operations.md](phase6-operations.md) (decisions 31 to 38); contract in
+  `api/openapi.yaml` (19 new operations, additive fields). Until the backend serves them, the route contract test and
+  the authz-matrix classification test fail and generated types are stale.
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
   example overlay in `deploy/kubernetes` (one Deployment with a migrate init container, Service, PDB, NetworkPolicies,
@@ -165,8 +169,14 @@ make test && make web-test
 2. Phase 5 (delegated credentials): **backend built**; the web UI is built in parallel from the same contract. Then a
    browser QA pass of the connect flow (`/connect/{provider}`, `/connect/done`) with `make fake-oauth`, and a check
    against one real provider (GitHub is the simplest).
-3. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, metrics; see [deploy.md](deploy.md)
-   "Not covered yet".
+3. Phase 6 (operations, decisions 31–38): build the backend from [phase6-operations.md](phase6-operations.md) in this
+   order: migration `00011_operations`; shared rate limits on `/mcp` (and moving the OAuth, connect, sign-in and `/v1`
+   limiters to PostgreSQL); payload capture with redaction and the payload/call-detail routes; retention loop; usage
+   rollups and routes; `METRICS_ADDR`; `API_KEY_PEPPER_PREVIOUS`, `rotate-keys` and `doctor` reports; then
+   `make generate` and the web UI (Limits, Retention, Payload capture, Usage, call detail, gateway/server switches).
+4. CI (decision 37): write `.github/workflows/ci.yml` and a `make test-ci` target; check with `actionlint`.
+5. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow, a metrics port and example
+   `ServiceMonitor` once metrics exist; see [deploy.md](deploy.md) "Not covered yet".
 
 ## Phase 1 UI
 
