@@ -1,7 +1,28 @@
 # Status and handoff
 
-Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstream OAuth backend built: [phase7-upstream-oauth.md](phase7-upstream-oauth.md) "As built"; Phase 6 backend and UI built, browser QA findings fixed:
-[phase6-operations.md](phase6-operations.md) "As built"; Phase 5 backend built: [phase5-delegated-credentials.md](phase5-delegated-credentials.md) "As built").
+Last updated: 2026-10-17. Open MCP Portal (formerly Open MCP Gateway, decision 46), version 0.1.0, unreleased.
+
+## Summary
+
+- **Phases 1 to 7 are done** (backend and web UI): foundations, registry and catalog, gateways, client sign-in and
+  service accounts, delegated credentials, operations, and per-person OAuth to upstream MCP servers. Details per phase
+  below and in each design's "As built" section.
+- **Verified with real clients and a real upstream server:**
+  - Claude Code's real client signed in to a gateway over OAuth (CIMD, a trusted client, so no consent page) and
+    called tools.
+  - pi signed in over OAuth (dynamic client registration, through the consent page) and called tools.
+  - GitHub's hosted MCP server (`https://api.githubcopilot.com/mcp/`) was set up as an `oauth`-mode server with a
+    GitHub App as a manual client, each person signed in with their own GitHub account, and six tools worked from pi:
+    `get_me`, `search_repositories`, `list_issues`, `list_branches`, `get_file_contents`, `search_code`.
+  - The fixes this found are in git: `4f75508` (an empty token scope from a GitHub App is no scope information),
+    `9ff238e` (drop non-object `outputSchema`s; client cancellations aren't errors), `f3272d9` (the server's own
+    reason in failed-exchange errors), `6fe0995` (SEP-2243 `Mcp-Param-*` headers on forwarded calls), `0182c12`
+    (drop non-object `structuredContent`).
+- **Not verified yet:**
+  - a real Google or Microsoft delegated-credentials provider (Phase 5 auth providers were only run against the fake,
+    `make fake-oauth` with `make example-mail-fake`);
+  - the CI workflow (`.github/workflows/ci.yml`) on GitHub's runners;
+  - a smoke test on kind or a real Kubernetes cluster (only `make k8s-validate`).
 
 ## Where things stand
 
@@ -108,7 +129,8 @@ Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstr
   - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), and a curl smoke
     test (fake MCP server, CIMD on a loopback http server under the development allowance, hand-made PKCE pair,
     consent, token, `tools/call whoami` showing `principal_type: user` and `client`, refresh rotation, then a service
-    account key showing `principal_type: service_account`). Not browser-checked.
+    account key showing `principal_type: service_account`). Real clients: Claude Code (CIMD, trusted, no consent) and
+    pi (DCR, consent page) signed in and called tools. VS Code and Cursor not tried.
   - Gaps (rate limits and pepper rotation: done in Phase 6): no rate limit on `/mcp` itself; rate counters per process; no previous-pepper support (rotating
     `API_KEY_PEPPER` signs clients out and invalidates keys); no CORS on OAuth endpoints; no private-use redirect
     schemes; DCR clean-up runs on registration; the previous release can't list call records of service accounts.
@@ -120,7 +142,7 @@ Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstr
     `mcp_calls.oauth_client_kind`, an index). CIMD fetches logged at info level; the OAuth error page follows the
     color mode; UI fixes (rotation note, sign-in note for apps, combined notices, wording, focus).
 
-- **Phase 5 (delegated credentials): backend done.** Auth providers (presets for GitHub, Google, Microsoft Entra ID,
+- **Phase 5 (delegated credentials): done.** Auth providers (presets for GitHub, Google, Microsoft Entra ID,
   Atlassian, Slack, GitLab), server requirements and capability overrides (review when widened), consent links
   (JSON-RPC `-32042`), the connect flow (`POST /v1/me/connections/start`, `GET /connect/callback`), tokens sealed and
   refreshed under a row lock, revocation, and the runtime headers `MCP-Gateway-Provider`/`MCP-Gateway-Provider-Token` with
@@ -133,8 +155,11 @@ Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstr
     `provider_token` tool. No new settings.
   - Contract: all 14 operations served. Additive changes made while building: `AuthProviderPreset.redirectUri`, `name`
     in `in_use` details' servers, provider slugs `done` and `callback` reserved (`422 invalid_slug`).
-  - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), `make k8s-validate`.
-    Not browser-checked; not tried against a real provider.
+  - UI: Admin › Auth providers, Account › Connections, the connect pages (`/connect/{provider}`, `/connect/done`),
+    "Needs" badges on servers and gateways.
+  - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), `make k8s-validate`;
+    end to end only with the fake provider (`make fake-oauth`, `make example-mail-fake`). Not verified against a real
+    Google or Microsoft provider.
   - Gaps: no background refresh (the start rate limit is shared since Phase 6); see the design's "Not in this phase".
 
 - **Phase 6 (operations): backend and UI done; browser QA done and its findings fixed.** Rate limits shared by replicas in PostgreSQL (per person, credential,
@@ -168,7 +193,7 @@ Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstr
   `migrate` + `serve` in production mode (https APP_URL, OIDC, fresh keys) against a scratch database, `/healthz`,
   `/readyz`, `doctor`, SIGTERM drain; demo discovered the fake server's capabilities; `k8s-validate` passes.
 
-- **Phase 7 (upstream OAuth): backend built; UI built in parallel from the same contract.** Servers in `oauth` mode
+- **Phase 7 (upstream OAuth): done; verified end to end against GitHub.** Servers in `oauth` mode
   (GitHub's hosted MCP server): detect (RFC 9728/8414/OIDC discovery through the guard), save with DCR, CIMD, a manual
   client or a linked platform provider, setup sign-in that reads capabilities, each person's own token as the bearer
   (identity in `MCP-Gateway-Identity`, or none with `sendIdentity: false`), 401 refresh-and-retry, 403 step-up, health
@@ -177,8 +202,11 @@ Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstr
   - Contract additions: `sendIdentity` (McpServer, create, update; decision 45), `McpServerOAuth.redirectUri`,
     `ConnectRequest.authorizationServerHost`.
   - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration`, `make k8s-validate`; a live
-    detect against `https://api.githubcopilot.com/mcp/` (oauth, github.com/login/oauth, S256, manual, ten scopes).
-  - Gaps: the manual GitHub sign-in (needs an OAuth app) not run; CIMD only tested as unavailable on loopback.
+    detect against `https://api.githubcopilot.com/mcp/` (oauth, github.com/login/oauth, S256, manual, ten scopes);
+    then GitHub end to end: a GitHub App as the manual client, setup sign-in, each person's own sign-in, and six tools
+    called from pi (`get_me`, `search_repositories`, `list_issues`, `list_branches`, `get_file_contents`,
+    `search_code`). Fixes from that run: `4f75508`, `9ff238e`, `f3272d9`, `6fe0995`, `0182c12`.
+  - Gaps: upstream CIMD only tested as unavailable on loopback; DCR upstream only against the fake.
 
 ## Differences from Grounded (deliberate)
 
@@ -194,31 +222,30 @@ Last updated: 2026-10-17 (renamed to Open MCP Portal, decision 46; Phase 7 upstr
 
 ```sh
 cd ~/projects/golang/open-mcp-portal
-make deps-up                  # Postgres on 127.0.0.1:55442
-cp -n .env.example .env       # DEV_AUTH=true, APP_URL=http://localhost:8088, ENCRYPTION_KEY
+make deps-up                  # Postgres on 127.0.0.1:55442 (Compose project open-mcp-portal, user omp)
+cp -n .env.example .env       # DEV_AUTH=true, APP_URL=http://localhost:8088, ENCRYPTION_KEY, API_KEY_PEPPER
 make fake-mcp                 # fake MCP server on http://127.0.0.1:8091/mcp (separate terminal)
-make fake-oauth               # fake OAuth provider on http://127.0.0.1:8092 (delegated credentials)
+make fake-oauth               # fake OAuth provider on http://127.0.0.1:8092 (delegated credentials; separate terminal)
+make web                      # build the UI into web/dist (embedded by make run / make build)
+make run                      # http://localhost:8088, sign in as admin@localhost (separate terminal)
 make dev-seed                 # after make run: team demo, published server, gateways demo + company
-make web && make build        # embed UI
-make run                      # http://localhost:8088, sign in as admin@localhost
+make example-mail-fake        # Gmail example with a fake Gmail on http://127.0.0.1:8093/mcp (provider google-dev)
 make test && make web-test
 ```
 
+An old `open-mcp-gateway` dev database moves with `scripts/migrate-dev-db.sh`.
+
 ## Next steps
 
-1. Browser re-check of the Phase 4 QA follow-ups (390px service account header, Admin › Calls filter, dark error page)
-   and QA of the OAuth flow with real clients (Claude Code, VS Code, Cursor) against a reachable deployment.
-2. Phase 5 (delegated credentials): **backend built**; the web UI is built in parallel from the same contract. Then a
-   browser QA pass of the connect flow (`/connect/{provider}`, `/connect/done`) with `make fake-oauth`, and a check
-   against one real provider (GitHub is the simplest).
-3. Phase 6: a browser re-check of the QA fixes (call page as auditor and as an editor, custom usage dates, pattern
-   dialog), and an end-to-end test that a provider token echoed by a server is redacted from a captured payload.
-4. Push to a remote and let `.github/workflows/ci.yml` run once; fix what only GitHub's runners show.
-5. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow; see [deploy.md](deploy.md) "Not
+1. A real Google or Microsoft auth provider for delegated credentials (`make example-mail` against real Gmail), and an
+   end-to-end test that a provider token echoed by a server is redacted from a captured payload.
+2. Push to a remote and let `.github/workflows/ci.yml` run once; fix what only GitHub's runners show.
+3. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow; see [deploy.md](deploy.md) "Not
    covered yet".
-6. Phase 7: the manual GitHub test in [phase7-upstream-oauth.md](phase7-upstream-oauth.md) (create a GitHub OAuth app,
-   Detect, Enter a client, setup sign-in, a second person's `get_me`, revoke on GitHub), and a browser QA pass of the
-   new screens.
+4. Browser re-checks: the Phase 4 QA follow-ups (390px service account header, Admin › Calls filter, dark error
+   page), the Phase 6 QA fixes (call page as auditor and as an editor, custom usage dates, pattern dialog), and the
+   Phase 5 and 7 screens.
+5. Other real clients: VS Code and Cursor over OAuth against a reachable deployment.
 
 ## Phase 1 UI
 

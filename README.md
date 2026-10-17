@@ -8,8 +8,10 @@ own scripts to a gateway and see only what they may use, with every call checked
 Go + PostgreSQL 17, with a React/Vite web UI embedded in one binary. Documentation: <https://docs.omp.bitop.dev>.
 Website: <https://omp.bitop.dev>.
 
-**Development software (0.1.0, unreleased).** Phases 1 to 7 are built and tested locally; it hasn't run in
-production yet. See [status](docs/status.md) for what has been checked and what hasn't.
+**Development software (0.1.0, unreleased).** Phases 1 to 7 are done. Claude Code and pi have signed in over OAuth
+and called tools, and GitHub's hosted MCP server works with each person's own GitHub sign-in. Not tried yet: a real
+Google or Microsoft provider for delegated credentials (only a fake), CI on GitHub, and a Kubernetes cluster; it
+hasn't run in production. See [status](docs/status.md) for what has been checked and what hasn't.
 
 ## What it does
 

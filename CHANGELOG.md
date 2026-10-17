@@ -48,7 +48,7 @@ sign-in discovery (RFC 9728, RFC 8414, OIDC), DCR, CIMD, a manual client or a li
 sign-in that reads capabilities, each caller's own token with refresh and step-up, and a per-server `sendIdentity`
 switch.
 
-**Fixes since Phase 7.** An empty token scope from a provider (GitHub Apps) counts as no scope information; tool lists
+**Fixes since Phase 7**, found by running Claude Code, pi and GitHub's hosted MCP server end to end. An empty token scope from a provider (GitHub Apps) counts as no scope information; tool lists
 drop `outputSchema` values that aren't objects and relayed results drop `structuredContent` that isn't an object (MCP
 schema); client cancellations aren't recorded as errors; failed exchanges with a server include the server's own
 reason (redacted, bounded); forwarded tool calls send SEP-2243 `Mcp-Param-*` headers built from the approved
