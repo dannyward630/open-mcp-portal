@@ -1,6 +1,6 @@
 # Admin overview and attention (design)
 
-Status: **designed for v0.2 (roadmap B), not built.** Decision 57. The contract is in [`../api/openapi.yaml`](../api/openapi.yaml):
+Status: **built in v0.2 (roadmap B)** (backend; the web screens follow). Decision 57. See "As built" at the end. The contract is in [`../api/openapi.yaml`](../api/openapi.yaml):
 `GET /v1/admin/overview` (`adminGetOverview`) and `GET /v1/teams/{team}/attention` (`getTeamAttention`); schemas `AdminOverview`, `TeamAttention`, `AttentionItem`, `LinkTarget`.
 No migration: everything is read from existing tables (and, for notification failures, the tables of [notifications.md](notifications.md)).
 
@@ -83,3 +83,16 @@ The UI routes on `type` (+ `id`, `teamSlug`); the same `LinkTarget` is used by i
 - Roles: members don't get key, token or notification items; owners and admins do; auditors get the platform view; `404` for outsiders; archived team empty.
 - A sentinel test that no header value, token prefix or URL appears in either response; each `link` resolves through the UI's route table (Vitest) and to an object the caller may open.
 - Vitest: both screens (grouping, empty and all-clear states, truncation line, error with Retry).
+
+## As built
+
+`internal/overview` (`Service.Admin`, `Service.Team`) and `internal/httpapi/v02.go`; queries in `internal/store/queries/overview.sql`. No migration.
+
+- Every kind is one query with `LIMIT 20` and a window count for the exact total (`totals`); `truncated` is true when any kind was cut. Kinds counting groups (`service_account_keys_expiring`, `automation_tokens_expiring`) cut at 20 teams.
+  Order: severity, then `at` (oldest first, items without `at` last), then name.
+- `review_pending` is one item for the platform (`count`, oldest `at`: warning past 3 days) and one for the team card (link `servers`).
+  A failing server is critical past 24 h. Expiry items are a warning within 3 days. `personal_keys_expiring` has no link.
+- Aggregates over no rows return the epoch internally; `at` is null then. `upstream_signin_lapsed` takes `at` from the latest `provider_connection.refresh_failed` audit entry of the setup connection (null when none was recorded).
+- `last24h` sums `usage_hourly` for the 24 hourly buckets ending with the current hour; `errors` is every outcome but `ok`. `rolledUpTo` is the rollup watermark.
+- Authz: platform staff for the overview (a `platform:read` token too, which acts as an auditor); the team card for members and platform staff; key, token and notification-failure items only for owners, admins and platform staff. An archived team answers `200` with no items.
+- Tests: `internal/overview/overview_integration_test.go` (every kind on seeded data, thresholds, the 20-item cut with exact totals, roles, archived teams, `last24h` against a direct aggregate) and `TestOverviewAPI`.

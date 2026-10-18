@@ -3,6 +3,12 @@
 Last updated: 2026-10-17. Open MCP Portal (formerly Open MCP Gateway, decision 46), version 0.1.0, **cut on 2026-10-17**
 (release notes: [releases/v0.1.0.md](releases/v0.1.0.md)).
 
+## v0.2 backend (in progress, branch `v02-backend`)
+
+Admin overview, notifications and automation tokens are built (backend only; migrations `00014`, `00015`; each design has an "As built" section: [admin-overview.md](admin-overview.md), [notifications.md](notifications.md), [automation-tokens.md](automation-tokens.md)).
+Verified: unit and integration tests (`go test ./...` with PostgreSQL), the authorization matrix over all 33 new operations, a token matrix over every operation, SMTP against an in-test server, webhooks against `httptest` receivers.
+Not verified: a real SMTP server and a real Slack webhook, the Kubernetes egress rows on a real cluster, the web screens (another branch).
+
 ## Summary
 
 - **Phases 1 to 7 are done** (backend and web UI): foundations, registry and catalog, gateways, client sign-in and

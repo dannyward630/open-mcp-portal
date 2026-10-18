@@ -6,6 +6,15 @@ Notable changes to Open MCP Portal, one entry per release. Design notes for each
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, minor releases may include
 breaking changes; the entry says how to adapt.
 
+## Unreleased (0.2.0)
+
+**v0.2 pilot readiness, backend** (migrations `00014`, `00015`; designs: [admin overview](docs/admin-overview.md), [notifications](docs/notifications.md), [automation tokens](docs/automation-tokens.md)).
+
+- Admin overview and team attention: `GET /v1/admin/overview` and `GET /v1/teams/{team}/attention` (failing and changed servers, lapsed sign-ins, pending reviews, expiring keys and tokens, connections, gateways, rate limits, notification failures), computed per request with exact totals.
+- Notifications: in-app inbox, email through `SMTP_*` (off without `SMTP_HOST`; STARTTLS required, certificates always verified, verified addresses only), signed (HMAC-SHA256) and Slack-compatible webhooks. Eight events, per-person preferences, team and platform destinations, delivery log, retries with backoff, `doctor` check. Webhooks reach public https addresses only; internal ones only through the new `NOTIFY_WEBHOOK_ALLOWED_NETWORKS`, never the MCP servers' allowlist.
+- Automation tokens: platform-admin (`ompadm_`) and team publisher (`omppub_`) tokens for `/v1`, scoped by `x-omp-token-scopes`, expiring, revocable, audited as the token; never valid for `/mcp`. Create no token until every replica runs this release.
+- Upgrade notes: users must sign in once for their email to count as verified; `API_KEY_PEPPER_PREVIOUS` also covers tokens; the new `go.mod` entries are indirect.
+
 ## [0.1.0] - 2026-10-17
 
 The first release ([release notes](docs/releases/v0.1.0.md)): a self-hosted portal where teams register MCP servers, publish them to a company catalog, curate

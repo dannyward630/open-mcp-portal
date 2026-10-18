@@ -1,6 +1,6 @@
 # Notifications (design)
 
-Status: **designed for v0.2 (roadmap B), not built.** Decision 56. The contract is in [`../api/openapi.yaml`](../api/openapi.yaml) (tag `notifications`; payload
+Status: **built in v0.2 (roadmap B)** (backend; the web screens follow). Decision 56. See "As built" at the end. The contract is in [`../api/openapi.yaml`](../api/openapi.yaml) (tag `notifications`; payload
 schemas `NotificationPayload` and `*Data`). Migration `00014_notifications.sql`. Reference, not copied: the sister project Open Model Gateway's
 `docs/alerts.md` (visibility follows live authority, per-person read state, outcome categories, at-most-one-sender locking). The difference: OMG evaluates
 rules; here the portal's own changes and loops *emit events*, and a leader-elected dispatcher delivers them.
@@ -126,3 +126,24 @@ Matrix classification: inbox and preferences own=signedIn; team destinations own
 config (every `SMTP_*` rule, `_FILE`, tls-none safety, doctor lines without secrets); per event: trigger, dedup, recipients by role (editors for server events, none for suspended, archived team, actor skipped), preferences; 3-failure threshold, reminder at 24 h, recovery only after an incident;
 fan-out idempotence and a second dispatcher blocked by the lock; retry schedule, permanent failure, 24 h expiry, auto-stop at 20; the signature (a reference verifier, rotation with two `v1=`), payload ≤ 8 KiB and a sentinel that no secret or call content reaches payloads, emails, inbox, audit or logs;
 SSRF: loopback, metadata, rebinding, redirect, plain http without allowlist, re-check at send; URL and secret never in any response; fake SMTP server (starttls required, AUTH, header injection attempt, 30/h cap); retention of inbox and outbox; Vitest for bell, inbox, preferences and both destination screens.
+
+## As built
+
+`internal/notify` (service, dispatcher, hooks, email, webhooks, destinations), `internal/config/smtp.go`, migration `00014_notifications.sql`, handlers in `internal/httpapi/v02.go`.
+
+**Changes from the design above, from the security review (threat-model section 10):**
+
+- **Webhooks do not use the MCP servers' internal-network allowlist.** Any team owner could otherwise make the portal POST into the internal network. Webhook URLs are https to **public** addresses only (checked on save and, DNS pinned, on every dial; mapped, NAT64 and compatible IPv6 forms of blocked addresses refused; no redirects). Internal destinations only through the operator's `NOTIFY_WEBHOOK_ALLOWED_NETWORKS` (default empty; same syntax as `UPSTREAM_ALLOWED_NETWORKS`; loopback, link-local and metadata can't be listed). There is no development allowance. The status of a delivery is kept, never the response; a destination that is blocked answers the same fixed class (`not_allowed`) whatever the address, so there is no port or path oracle.
+- Email goes only to **verified** addresses: `users.email_verified` (migration 00014) is set at each sign-in from the provider's claim, so people who haven't signed in since the upgrade get no email until they do (the inbox is unaffected).
+- Delivery workers are **fair**: a run claims at most 3 due rows per destination (or person) and delivers each destination's rows sequentially, 8 destinations at a time, so one team's slow endpoint holds one worker.
+- User-controlled text (server, team, key and provider names) is clipped, quoted and put on one line in titles and bodies; Slack text escapes `& < >` and breaks `@` mentions; its only link is the portal's. A platform destination's `capability.changed` carries counts, not capability names.
+
+**Details:**
+
+- The dispatcher is `Service.Loop` (tick `NOTIFICATION_INTERVAL`), one run under the advisory lock `omp.notifications`: hourly `ScanKeys`, fan-out of up to 200 events (one transaction each), then up to 50 due outbox rows. A claimed row's `next_attempt_at` moves 120 s ahead (a lease), so a crashed run leaves its rows to the next. Retry waits 1 m, 5 m, 30 m, 2 h, 6 h (6 attempts); a 4xx other than 408 and 429, or an SMTP 5xx, fails at once; undelivered after 24 h is `failed`/`expired`; 20 failed attempts in a row stop a destination (audited `notification_destination.disable` by the system).
+- Hooks (one line each, through an interface): `registry.Notifier` (`ServerChecked` after each stored check, `CapabilitiesRefreshed`, `PublishRequested`, `PublishDecided`; `Service.SetNotifier`) and `providers.Notifier` (`ConnectionReconsent`, called where `markReconsent` runs). They receive the queries of the change's transaction; `notify.Emit` works under a savepoint (`store.TxOf`) and never fails the change.
+  `server.unhealthy`'s dedup key is `…:<server>:<since in µs>:<whole days>`; `server.recovered` needs an unhealthy event of that incident.
+- A manual Test of a destination is rate limited by counting its audit entries (10 an hour), and `settings.notifications_test_email` the same (5 an hour per admin). Retention: inbox 90 days, events and outbox 14, purged by a retention hook (`omp_retention_deleted_total{kind=notification_inbox|notification_outbox}`).
+- `doctor` (group `notifications`): `email` (off = info; configured = connect, EHLO, STARTTLS, AUTH, QUIT within 5 s, no message) and `webhooks`. Metrics: `omp_notifications_emitted_total{event}`, `omp_notification_deliveries_total{channel,event,outcome}`, `omp_notification_emit_errors_total`, `omp_loop_leader{loop="notifications"}`.
+- Not built: no event for **token creation** (it would need a ninth event type, a contract change; creation is audited with the creator and the expiry of platform tokens reaches platform admins as `key.expiring`).
+- Tests: `internal/notify` (unit: signing and the reference verifier with two `v1=`, retry schedule, URL checks incl. IPv6 forms, rebinding, redirects, hostile text, header injection, payload shape; integration: recipients by role, dedup, preferences, health transitions, capability changes, publish events, lapses, key scan, delivery end to end, retries, expiry, auto-stop, the lock, a tarpit destination, SMTP against a fake server with STARTTLS and AUTH, retention), `internal/config/smtp_test.go`, `internal/doctor/notifications_test.go` and `TestNotificationsAPI`.
