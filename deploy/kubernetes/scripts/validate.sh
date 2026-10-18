@@ -65,13 +65,15 @@ check_config_refs() { # name, rendered file
 }
 check_config_refs "base" "${scratch}/base.yaml"
 check_config_refs "overlays/example" "${scratch}/example.yaml"
+check_config_refs "overlays/smoke" "${scratch}/smoke.yaml"
 grep -q "^  APP_URL: https://mcp.example.org\$" "${scratch}/example.yaml" ||
   { echo "overlays/example: APP_URL not merged into the config" >&2; exit 1; }
 grep -q "^  METRICS_ADDR: :9090\$" "${scratch}/example.yaml" && grep -q "containerPort: 9090" "${scratch}/example.yaml" ||
   { echo "overlays/example: the metrics port is not wired" >&2; exit 1; }
 
-# No secret values in the manifests: the runtime secret is referenced only.
-if grep -q "^kind: Secret\$" "${scratch}/base.yaml" "${scratch}"/example.yaml; then
+# No secret values in the manifests: the runtime secret is referenced only
+# (the smoke overlay's secrets are created by scripts/k8s-smoke.sh).
+if grep -q "^kind: Secret\$" "${scratch}/base.yaml" "${scratch}"/example.yaml "${scratch}"/smoke.yaml; then
   echo "a rendered manifest contains a Secret; secrets must be created outside the base" >&2
   exit 1
 fi

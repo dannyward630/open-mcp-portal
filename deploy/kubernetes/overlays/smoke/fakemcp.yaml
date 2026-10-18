@@ -1,0 +1,75 @@
+# The fake MCP server (cmd/fakemcp, Dockerfile target fakemcp) in the cluster.
+# The portal registers it as
+#   http://fakemcp.omp-smoke.svc.cluster.local:8091/mcp
+# which UPSTREAM_ALLOWED_NETWORKS=http:*.svc.cluster.local covers (docs/deploy.md,
+# "Internal MCP servers"). The image is built from the working tree and loaded
+# into kind by scripts/k8s-smoke.sh; the tag is set there.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fakemcp
+  labels:
+    app.kubernetes.io/name: omp-smoke-fakemcp
+    app.kubernetes.io/part-of: omp-smoke
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: omp-smoke-fakemcp
+  ports:
+    - name: mcp
+      port: 8091
+      targetPort: mcp
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fakemcp
+  labels:
+    app.kubernetes.io/name: omp-smoke-fakemcp
+    app.kubernetes.io/part-of: omp-smoke
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: omp-smoke-fakemcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: omp-smoke-fakemcp
+        app.kubernetes.io/part-of: omp-smoke
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: fakemcp
+          image: omp-smoke/fakemcp:local
+          imagePullPolicy: IfNotPresent
+          # It listens on loopback by default.
+          args: [-addr, "0.0.0.0:8091"]
+          ports:
+            - name: mcp
+              containerPort: 8091
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: mcp
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
