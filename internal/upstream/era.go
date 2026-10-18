@@ -256,9 +256,12 @@ var errStatus = errors.New("upstream: unexpected HTTP status")
 // probe asks a server which era it speaks.
 func (c *Client) probe(ctx context.Context, t Target) (Protocol, error) {
 	version := ModernVersion
-	tried := map[string]bool{}
+	// How many times each version was tried: a server that rejects a version
+	// it lists gets one more try (it may have been a passing refusal), then
+	// it is an error.
+	tried := map[string]int{}
 	for {
-		tried[version] = true
+		tried[version]++
 		ex := &exchange{}
 		hc, done := c.httpClient(t, ex)
 		r, err := c.roundTrip(ctx, hc, t, rpcRequest{Method: "server/discover", Version: version,
@@ -290,7 +293,7 @@ func (c *Client) probe(ctx context.Context, t Target) (Protocol, error) {
 					return Protocol{}, rpcFailure(t, r.status, r.msg.Error)
 				}
 				if v := newest(modernVersions(), data.Supported); v != "" {
-					if tried[v] {
+					if tried[v] >= 2 {
 						return Protocol{}, &Error{Class: ClassBadResponse, Message: "The server doesn't accept protocol version " + v + " it lists."}
 					}
 					version = v

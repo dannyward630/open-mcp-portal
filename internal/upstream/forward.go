@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -293,9 +294,14 @@ func (c *Client) modernResult(ctx context.Context, t Target, ex *exchange, req F
 		if r.msg != nil && r.msg.Error != nil {
 			return nil, r.msg.Error.Code == codeUnsupportedVersion, rpcFailure(t, r.status, r.msg.Error)
 		}
-		return nil, true, c.classify(ctx, t, ex, errStatus)
+		// Not an answer a modern server gives to a call it ran: the server may
+		// be of the other era now (the call was refused before it started).
+		stale := r.status == http.StatusBadRequest || r.status == http.StatusNotFound || r.status == http.StatusMethodNotAllowed ||
+			r.status == http.StatusNotAcceptable || r.status == http.StatusUnsupportedMediaType
+		return nil, stale, c.classify(ctx, t, ex, errStatus)
 	case r.msg == nil:
-		return nil, true, &Error{Class: ClassBadResponse, Message: "The server's answer was not a JSON-RPC response."}
+		// Nothing says the call didn't run: never repeated for it.
+		return nil, false, &Error{Class: ClassBadResponse, Message: "The server's answer was not a JSON-RPC response."}
 	case r.msg.Error != nil:
 		return nil, false, rpcFailure(t, 0, r.msg.Error)
 	}
@@ -368,6 +374,12 @@ func sameJSONValue(got any, want json.RawMessage) bool {
 		dec.UseNumber()
 		if dec.Decode(&v) != nil {
 			return string(b)
+		}
+		if n, ok := v.(json.Number); ok {
+			// 1 and 1.0 are the same token.
+			if f, err := n.Float64(); err == nil {
+				return strconv.FormatFloat(f, 'g', -1, 64)
+			}
 		}
 		out, _ := json.Marshal(v)
 		return string(out)

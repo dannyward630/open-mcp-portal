@@ -128,3 +128,58 @@ func TestHealthStreakAndPruning(t *testing.T) {
 		t.Fatal("pruning lost statusSince")
 	}
 }
+
+// A scheduled check that reads a server stores the protocol it negotiated; a
+// failing one leaves what was stored.
+func TestHealthChecksRecordProtocol(t *testing.T) {
+	s, exec := testService(t)
+	ctx := context.Background()
+	team := exec(`INSERT INTO teams (slug, name) VALUES ('t', 'T') RETURNING id::text`)
+	want := map[string]string{}
+	var fakes []*testutil.FakeMCP
+	for _, p := range []testutil.Protocol{testutil.ProtocolModern, testutil.ProtocolLegacy, testutil.ProtocolBoth} {
+		f := testutil.NewFakeMCP(t)
+		f.SetProtocol(p)
+		fakes = append(fakes, f)
+		slug := string(p)
+		exec(`INSERT INTO mcp_servers (team_id, slug, name, url) VALUES ($1, $2, $2, $3) RETURNING id::text`, team, slug, f.URL())
+		want[slug] = map[testutil.Protocol]string{testutil.ProtocolModern: "modern 2026-07-28", testutil.ProtocolLegacy: "legacy 2025-11-25",
+			testutil.ProtocolBoth: "modern 2026-07-28"}[p]
+	}
+	got := func() map[string]string {
+		out := map[string]string{}
+		for slug := range want {
+			out[slug] = exec(`SELECT coalesce(protocol_era || ' ' || protocol_version || ' ' || (protocol_negotiated_at IS NOT NULL)::text, '-') FROM mcp_servers WHERE slug = $1`, slug)
+		}
+		return out
+	}
+	for slug, v := range got() {
+		if v != "-" {
+			t.Fatalf("%s: protocol %q before any check", slug, v)
+		}
+	}
+	if sum, err := s.RunHealthChecks(ctx, time.Nanosecond); err != nil || sum.Healthy != 3 {
+		t.Fatalf("pass = %+v, %v", sum, err)
+	}
+	for slug, v := range got() {
+		if v != want[slug]+" true" {
+			t.Errorf("%s: protocol %q, want %q", slug, v, want[slug])
+		}
+	}
+	// A server that fails keeps the last negotiated protocol.
+	fakes[0].RequireHeader("X-Key", "needed")
+	if sum, err := s.RunHealthChecks(ctx, time.Nanosecond); err != nil || sum.Failed != 1 {
+		t.Fatalf("failing pass = %+v, %v", sum, err)
+	}
+	if v := got()["modern"]; v != "modern 2026-07-28 true" {
+		t.Errorf("after a failed check: %q", v)
+	}
+	// A new URL forgets it (the server read before is another endpoint now).
+	id := uuid.MustParse(exec(`SELECT id::text FROM mcp_servers WHERE slug = 'legacy'`))
+	if err := s.q.ClearMCPServerRefreshed(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if v := got()["legacy"]; v != "-" {
+		t.Errorf("after clearing: %q", v)
+	}
+}

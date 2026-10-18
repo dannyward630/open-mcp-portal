@@ -94,7 +94,9 @@ func mcpNameHeader(name string) string {
 // that arrive on an SSE stream go to onNote. An error is a transport failure
 // (classify it); a non-2xx answer is a reply with its status.
 func (c *Client) roundTrip(ctx context.Context, hc *http.Client, t Target, r rpcRequest, onNote func(rpcMessage)) (reply, error) {
-	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": r.Method, "params": r.Params})
+	// Every request has its own id, so a retry of an input_required call is a
+	// different request (MRTR: "the JSON-RPC id MUST be different").
+	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": c.nextID.Add(1), "method": r.Method, "params": r.Params})
 	if err != nil {
 		return reply{}, err
 	}

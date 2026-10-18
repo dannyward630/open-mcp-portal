@@ -226,8 +226,8 @@ func TestEraUnsupportedVersionNegotiation(t *testing.T) {
 		srv.Close()
 	}
 
-	// A server that only takes an older modern version than ours would be
-	// retried with the newest version both speak.
+	// A server that rejects a version it lists is tried once more, then it is
+	// an error (it can't loop).
 	var versions []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		versions = append(versions, r.Header.Get("MCP-Protocol-Version"))
@@ -237,11 +237,8 @@ func TestEraUnsupportedVersionNegotiation(t *testing.T) {
 	}))
 	defer srv.Close()
 	_, err := eraClient().Negotiate(context.Background(), Target{URL: srv.URL, ServerID: "x", Timeout: 5 * time.Second})
-	if err == nil || len(versions) != 2 {
-		// The same version again can't help: one retry, then an error.
-		if len(versions) > 2 {
-			t.Errorf("versions tried = %v", versions)
-		}
+	if err == nil || len(versions) != 2 || versions[0] != "2026-07-28" || versions[1] != "2026-07-28" {
+		t.Errorf("err = %v, versions tried = %v", err, versions)
 	}
 }
 

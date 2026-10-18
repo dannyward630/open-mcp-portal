@@ -2,13 +2,16 @@
 // remote MCP servers teams register (adapted from Grounded's
 // internal/mcpclient; docs/registry.md).
 //
-// It speaks Streamable HTTP only, through the official Go SDK: stateless
-// protocol 2026-07-28 first (server/discover) and the initialize handshake
-// for older servers. It advertises no client capabilities (no roots,
-// sampling or elicitation) and refuses multi-round-trip input requests.
-// Every exchange goes through the address rule in guard.go. The transport
-// sits behind Target and Client so gateway-hosted servers can be added later
-// without changing the registry (docs/decisions.md, decision 10).
+// It speaks Streamable HTTP only, in the era each server speaks (era.go): the
+// stateless protocol 2026-07-28 (server/discover) when the server is of it, the
+// initialize handshake for older servers, learned once per server and cached.
+// Discovery and legacy servers go through the official Go SDK, advertising no
+// client capabilities; calls to modern servers are plain requests (modern.go,
+// forward.go) that declare exactly the elicitation the downstream client did
+// and relay input_required results untouched. Every exchange goes through the
+// address rule in guard.go. The transport sits behind Target and Client so
+// gateway-hosted servers can be added later without changing the registry
+// (docs/decisions.md, decision 10).
 package upstream
 
 import (
@@ -24,6 +27,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -57,6 +61,9 @@ type Client struct {
 	// Eras remembers the protocol era learned for each server (era.go; nil:
 	// every call probes).
 	Eras *EraCache
+
+	// nextID numbers the JSON-RPC requests of the modern era.
+	nextID atomic.Int64
 }
 
 func (c *Client) maxResponse() int64 {
