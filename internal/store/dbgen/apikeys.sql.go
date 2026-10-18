@@ -28,7 +28,7 @@ func (q *Queries) CountActiveAPIKeys(ctx context.Context, userID uuid.UUID) (int
 }
 
 const getAPIKeyByDigest = `-- name: GetAPIKeyByDigest :one
-SELECT k.id, k.user_id, k.name, k.prefix, k.digest, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, k.pepper_id, u.id, u.oidc_issuer, u.oidc_subject, u.email, u.display_name, u.platform_role, u.status, u.claims, u.revision, u.created_at, u.updated_at, u.last_login_at, u.groups
+SELECT k.id, k.user_id, k.name, k.prefix, k.digest, k.created_at, k.expires_at, k.revoked_at, k.last_used_at, k.pepper_id, u.id, u.oidc_issuer, u.oidc_subject, u.email, u.display_name, u.platform_role, u.status, u.claims, u.revision, u.created_at, u.updated_at, u.last_login_at, u.groups, u.email_verified
 FROM api_keys k
 JOIN users u ON u.id = k.user_id
 WHERE k.digest = $1
@@ -66,6 +66,7 @@ func (q *Queries) GetAPIKeyByDigest(ctx context.Context, digest string) (GetAPIK
 		&i.User.UpdatedAt,
 		&i.User.LastLoginAt,
 		&i.User.Groups,
+		&i.User.EmailVerified,
 	)
 	return i, err
 }

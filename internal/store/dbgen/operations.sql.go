@@ -330,6 +330,10 @@ SELECT 'service_account_key'::text, k.id, sa.name || ' · ' || k.name, ''::text,
        k.last_used_at, k.created_at
 FROM service_account_keys k JOIN service_accounts sa ON sa.id = k.service_account_id JOIN teams t ON t.id = sa.team_id
 WHERE k.revoked_at IS NULL AND k.expires_at > now() AND k.pepper_id IS DISTINCT FROM $1::bytea
+UNION ALL
+SELECT 'automation_token'::text, k.id, k.name, ''::text, COALESCE(t.slug, ''), k.pepper_id, k.last_used_at, k.created_at
+FROM automation_tokens k LEFT JOIN teams t ON t.id = k.team_id
+WHERE k.revoked_at IS NULL AND k.expires_at > now() AND k.pepper_id IS DISTINCT FROM $1::bytea
 ORDER BY 1, 3
 `
 
@@ -345,7 +349,7 @@ type KeysNotOnPepperRow struct {
 }
 
 // Usable keys (unrevoked, unexpired) whose digest is not on a pepper: personal
-// API keys and service account keys, with their owner or team.
+// API keys, service account keys and automation tokens, with their owner or team.
 func (q *Queries) KeysNotOnPepper(ctx context.Context, pepperID []byte) ([]KeysNotOnPepperRow, error) {
 	rows, err := q.db.Query(ctx, keysNotOnPepper, pepperID)
 	if err != nil {
