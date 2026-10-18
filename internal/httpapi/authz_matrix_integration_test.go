@@ -15,6 +15,7 @@ import (
 
 	"github.com/ncecere/open-mcp-portal/internal/auth"
 	"github.com/ncecere/open-mcp-portal/internal/capture"
+	"github.com/ncecere/open-mcp-portal/internal/config"
 	"github.com/ncecere/open-mcp-portal/internal/httpx"
 	"github.com/ncecere/open-mcp-portal/internal/secrets"
 	"github.com/ncecere/open-mcp-portal/internal/testutil"
@@ -216,8 +217,17 @@ func (e *matrixEnv) newInvite(tf teamFix) string {
 		VALUES ($1, $2, 'member', now() + interval '1 day') RETURNING id::text`, tf.id, fmt.Sprintf("i-%d@example.com", e.next()))
 }
 
-func newMatrixEnv(t *testing.T) *matrixEnv {
-	e := &matrixEnv{t: t, app: newTestApp(t, nil), fakeURL: testutil.NewFakeMCP(t).URL()}
+func newMatrixEnv(t *testing.T) *matrixEnv { return newMatrixEnvWith(t, nil) }
+
+// newMatrixEnvWith is newMatrixEnv with extra configuration.
+func newMatrixEnvWith(t *testing.T, mutate func(*testConfig)) *matrixEnv {
+	smtp := matrixSMTP(t)
+	e := &matrixEnv{t: t, app: newTestApp(t, func(c *config.Config) {
+		smtp(c)
+		if mutate != nil {
+			mutate(c)
+		}
+	}), fakeURL: testutil.NewFakeMCP(t).URL()}
 	e.a = e.newTeam("alpha", "Alpha Confidential Team")
 	e.b = e.newTeam("bravo", "Bravo Team")
 	e.exec(`UPDATE teams SET publish_policy_override = 'self_publish' WHERE id = $1 RETURNING slug`, e.b.id)
