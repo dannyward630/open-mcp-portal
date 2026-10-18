@@ -30,7 +30,7 @@ export function TestDialog({ scope, destination, onClose }: { scope: Destination
       <Stack gap={4}>
         {result && (
           <Alert tone={result.ok ? "success" : "danger"} title={result.ok ? "The destination accepted the test" : "The test failed"}>
-            <p>{result.message}</p>
+            {!result.ok && <p>{result.message}</p>}
             <p>
               {result.errorClass ? `${errorClassText(result.errorClass)}. ` : ""}
               {result.httpStatus ? `HTTP ${result.httpStatus}. ` : ""}
