@@ -321,6 +321,12 @@ func (s *Service) prepareOAuth(ctx context.Context, q *dbgen.Queries, serverURL,
 		choice = *in.Registration
 	case cur != nil && cur.Registration != nil:
 		choice = *cur.Registration
+		if choice == RegistrationDCR && !sameIssuer {
+			// A client registered at another authorization server is no use
+			// here (credentials belong to one issuer, SEP-2352): choose again,
+			// preferring a Client ID Metadata Document where it is offered.
+			choice = RegistrationAuto
+		}
 	}
 	if choice == RegistrationAuto {
 		switch {
@@ -489,7 +495,7 @@ func (s *Service) register(ctx context.Context, plan *oauthPlan, serverName stri
 	reg, err := s.fetcher().Register(ctx, md.RegistrationEndpoint, oauthmeta.RegistrationRequest{
 		ClientName: clipName(s.oauth.InstanceName + " · " + serverName), RedirectURIs: []string{s.RedirectURI()},
 		GrantTypes: []string{"authorization_code", "refresh_token"}, ResponseTypes: []string{"code"}, TokenEndpointAuthMethod: method,
-		Scope: strings.Join(plan.scopes, " "), ClientURI: s.oauth.AppURL,
+		Scope: strings.Join(plan.scopes, " "), ClientURI: s.oauth.AppURL, ApplicationType: "web",
 	})
 	if err != nil {
 		code := "error"

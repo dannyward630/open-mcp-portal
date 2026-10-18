@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ncecere/open-mcp-portal/internal/calls"
@@ -47,8 +48,11 @@ const (
 	// stateTTL is how long a person has to open the link and retry.
 	stateTTL       = 10 * time.Minute
 	purposeConsent = "consent"
-	// maxStateLen bounds the requestState a client may send back.
-	maxStateLen = 2048
+	// purposeRelay seals an upstream server's own requestState (relay.go).
+	purposeRelay = "relay"
+	// maxStateLen bounds the requestState a client may send back (a relay
+	// state holds the upstream's, at most maxUpstreamState).
+	maxStateLen = 16 << 10
 
 	// ClassStateInvalid, ClassStateExpired and ClassStateMismatch are the
 	// error classes of calls refused for their requestState.
@@ -76,6 +80,15 @@ type stateClaims struct {
 	Digest    string `json:"d"`
 	IssuedAt  int64  `json:"iat"`
 	ExpiresAt int64  `json:"exp"`
+	// The fields of a relay state (purposeRelay, relay.go): the upstream
+	// server the input requests came from, the keys of the requests relayed
+	// (a retry may answer only those) and the upstream's own requestState.
+	// Never a credential.
+	Server string `json:"s,omitempty"`
+	// Keys are the relayed keys joined by newlines (a key has no control
+	// character).
+	Keys     string `json:"k,omitempty"`
+	Upstream string `json:"us,omitempty"`
 }
 
 // stateBox seals and opens requestState tokens.
@@ -235,8 +248,20 @@ func (rc *request) urlElicitation() bool {
 type retry struct {
 	// verified: the request carries a requestState we issued for it.
 	verified bool
-	// declined: an input response says the person declined or cancelled.
+	// declined: an input response says the person declined or cancelled
+	// the consent (a consent state only; a relayed elicitation's decline
+	// goes to the server that asked).
 	declined bool
+	// relay is set for a verified relay state: the retry of an upstream's
+	// input request (relay.go).
+	relay *relayState
+}
+
+// relayState is what a verified relay state carries.
+type relayState struct {
+	server   string
+	keys     []string
+	upstream string
 }
 
 // checkRetry reads requestState and inputResponses of a modern tools/call,
@@ -280,14 +305,18 @@ func (rc *request) checkRetry(rec calls.Call) (retry, bool) {
 	switch {
 	case errors.Is(err, errStateExpired):
 		return reject(ClassStateExpired, "Invalid parameters: requestState has expired. Retry the original request without it.")
-	case err != nil || c.Purpose != purposeConsent || c.Principal != rc.principalID():
+	case err != nil || (c.Purpose != purposeConsent && c.Purpose != purposeRelay) || c.Principal != rc.principalID():
 		return reject(ClassStateInvalid, "Invalid parameters: requestState is not valid. Retry the original request without it.")
 	}
-	want := rc.stateFor(purposeConsent)
+	want := rc.stateFor(c.Purpose)
 	if c.Gateway != want.Gateway || c.Method != want.Method || c.Name != want.Name || c.Digest != want.Digest {
 		return reject(ClassStateMismatch, "Invalid parameters: requestState was issued for a different request. Retry the original request, echoing the requestState you were given for it.")
 	}
 	r.verified = true
+	if c.Purpose == purposeRelay {
+		r.relay = &relayState{server: c.Server, keys: strings.Split(c.Keys, "\n"), upstream: c.Upstream}
+		return r, true
+	}
 	for _, raw := range responses {
 		var resp struct {
 			Action string `json:"action"`

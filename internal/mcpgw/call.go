@@ -84,11 +84,15 @@ func (rc *request) call(kind string) {
 		rc.declined(*offer)
 		return
 	}
-	rc.forward(kind, *offer, args)
+	rc.forward(kind, *offer, args, again)
 }
 
-// forward sends the call to the server with the caller's signed identity.
-func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) {
+// forward sends the call to the server with the caller's signed identity, in
+// the era the server speaks, and relays what comes back: its result, or an
+// elicitation it needs the person to answer (relay.go). A tools/call with a
+// progress token from a client that accepts SSE is answered as a stream
+// (stream.go).
+func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage, again retry) {
 	ctx := rc.r.Context()
 	rec := calls.Call{ExposedName: o.ExposedName, Server: &o.Server, CapabilityID: o.Capability.ID}
 	cred, ok := rc.delegated(o, &rec)
@@ -101,33 +105,15 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 		return
 	}
 	who := identityFor{tool: o.ExposedName}
+	method := upstream.MethodToolsCall
 	if kind == upstream.KindPrompt {
-		who = identityFor{prompt: o.ExposedName}
+		who, method = identityFor{prompt: o.ExposedName}, upstream.MethodPromptsGet
 	}
 	token, ok := rc.prepareTarget(&target, who, o, cred, &rec)
 	if !ok {
 		return
 	}
-	client := rc.h.Registry.Client()
-	var result any
-	isError := false
-	switch kind {
-	case upstream.KindTool:
-		rc.captureCall(o, args, target, token, cred)
-		// SEP-2243 parameter headers, from the approved definition.
-		target.ParamHeaders = upstream.ParamHeaders(o.Capability.Definition, args)
-		res, isErr, ok := rc.exchange(o, &rec, cred, target, func(t upstream.Target) (any, bool, error) {
-			res, _, err := client.CallTool(ctx, t, o.Capability.Name, args)
-			if err != nil {
-				return nil, false, err
-			}
-			return res, res.IsError, nil
-		})
-		if !ok {
-			return
-		}
-		result, isError = res, isErr
-	default:
+	if kind == upstream.KindPrompt {
 		var sargs map[string]string
 		if len(args) > 0 && !bytes.Equal(args, []byte("null")) {
 			if err := json.Unmarshal(args, &sargs); err != nil {
@@ -137,20 +123,58 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 				return
 			}
 		}
-		rc.captureCall(o, args, target, token, cred)
-		res, _, ok := rc.exchange(o, &rec, cred, target, func(t upstream.Target) (any, bool, error) {
-			res, _, err := client.GetPrompt(ctx, t, o.Capability.Name, sargs)
-			if err != nil {
-				return nil, false, err
-			}
-			return res, false, nil
-		})
-		if !ok {
-			return
-		}
-		result = res
 	}
-	rc.relay(rec, result, isError)
+	rc.captureCall(o, args, target, token, cred)
+	if kind == upstream.KindTool {
+		// SEP-2243 parameter headers, from the approved definition.
+		target.ParamHeaders = upstream.ParamHeaders(o.Capability.Definition, args)
+	}
+	fwd, ok := rc.forwardRequest(method, o.Capability.Name, args, o, again, &rec)
+	if !ok {
+		return
+	}
+	if progress, ok := rc.wantsStream(); ok && kind == upstream.KindTool {
+		st := rc.startStream(progress)
+		defer st.close()
+		fwd.ProgressToken, fwd.OnProgress = progress, st.progress
+		target.MaxBody = maxStreamBytes
+	}
+	rc.forwardCall(o, rec, cred, target, fwd)
+}
+
+// forwardCall makes the call and answers with its outcome.
+func (rc *request) forwardCall(o gateways.Offer, rec calls.Call, cred *providers.Credential, target upstream.Target, fwd upstream.ForwardRequest) {
+	ctx := rc.r.Context()
+	client := rc.h.Registry.Client()
+	out, _, ok := rc.exchange(o, &rec, cred, target, func(t upstream.Target) (any, bool, error) {
+		res, err := client.Forward(ctx, t, fwd)
+		if err != nil {
+			return nil, false, err
+		}
+		return res, false, nil
+	})
+	if !ok {
+		return
+	}
+	fr := out.(*upstream.ForwardResult)
+	if fr.Input != nil {
+		rc.relayInput(o, rec, fr.Input)
+		return
+	}
+	switch {
+	case fr.Tool != nil:
+		rc.relay(rec, fr.Tool, fr.Tool.IsError)
+	case fr.Prompt != nil:
+		rc.relay(rec, fr.Prompt, false)
+	default:
+		// A read: the contents' URIs go back in the exposed form.
+		for _, c := range fr.Read.Contents {
+			if c != nil {
+				c.URI = gateways.ExposedURI(o.Server.Slug, c.URI)
+			}
+		}
+		rc.relay(rec, fr.Read, false)
+	}
 }
 
 // relay answers with a server's result (without upstreamMetaKeys, at most
@@ -255,6 +279,9 @@ func (rc *request) upstreamFailed(rec calls.Call, err error) {
 	}
 	code := int64(codeInternal)
 	rec.Outcome, rec.ErrorClass = calls.OutcomeUpstreamError, ue.Class
+	if rc.r.Context().Err() != nil && ue.Class != upstream.ClassTimeout {
+		rec.ErrorClass = "client_cancelled" // the client went away; the call to the server was cancelled
+	}
 	switch {
 	case ue.Class == upstream.ClassTimeout:
 		rec.Outcome = calls.OutcomeTimeout

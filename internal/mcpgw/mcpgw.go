@@ -181,6 +181,10 @@ type Handler struct {
 	AppURL  string
 	Log     *slog.Logger
 
+	// keepAlive is the interval of SSE keep-alive comments (stream.go; 0:
+	// 15 s).
+	keepAlive time.Duration
+
 	stateOnce sync.Once
 	state     *stateBox
 	// now is the clock of requestState expiry (tests set it; nil: time.Now).
@@ -463,6 +467,9 @@ type request struct {
 	// the capabilities it declared.
 	modern     bool
 	clientCaps map[string]json.RawMessage
+	// stream is the SSE response of a streamed call (stream.go; nil: the
+	// answer is one JSON object). Once set, w is the stream.
+	stream *stream
 }
 
 // observe records the request's metrics.
@@ -674,6 +681,9 @@ func (rc *request) record(c calls.Call, responseBytes int64) {
 		c.UserID = p.user.ID
 	}
 	c.ClientName = rc.clientName()
+	if rc.stream != nil {
+		responseBytes = rc.stream.bytes() // progress events and the response
+	}
 	c.Latency, c.RequestBytes, c.ResponseBytes = time.Since(rc.start), rc.requestBytes, responseBytes
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(rc.r.Context()), 5*time.Second)
 	defer cancel()

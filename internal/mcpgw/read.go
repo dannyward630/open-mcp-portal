@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/ncecere/open-mcp-portal/internal/calls"
 	"github.com/ncecere/open-mcp-portal/internal/gateways"
 	"github.com/ncecere/open-mcp-portal/internal/upstream"
@@ -107,12 +105,12 @@ func (rc *request) read() {
 		rc.declined(target.offer)
 		return
 	}
-	rc.forwardRead(p.URI, *target)
+	rc.forwardRead(p.URI, *target, again)
 }
 
 // forwardRead reads the resource from its server with the caller's signed
 // identity and gives the contents' URIs back in the exposed form.
-func (rc *request) forwardRead(exposed string, t readTarget) {
+func (rc *request) forwardRead(exposed string, t readTarget, again retry) {
 	ctx := rc.r.Context()
 	o := t.offer
 	rec := calls.Call{ExposedName: exposed, Server: &o.Server, CapabilityID: o.Capability.ID}
@@ -130,21 +128,9 @@ func (rc *request) forwardRead(exposed string, t readTarget) {
 		return
 	}
 	rc.captureCall(o, readArguments(exposed), target, token, cred)
-	out, _, ok := rc.exchange(o, &rec, cred, target, func(tg upstream.Target) (any, bool, error) {
-		res, _, err := rc.h.Registry.Client().ReadResource(ctx, tg, t.original)
-		if err != nil {
-			return nil, false, err
-		}
-		return res, false, nil
-	})
+	fwd, ok := rc.forwardRequest(upstream.MethodResourcesRead, t.original, nil, o, again, &rec)
 	if !ok {
 		return
 	}
-	res := out.(*mcp.ReadResourceResult)
-	for _, c := range res.Contents {
-		if c != nil {
-			c.URI = gateways.ExposedURI(o.Server.Slug, c.URI)
-		}
-	}
-	rc.relay(rec, res, false)
+	rc.forwardCall(o, rec, cred, target, fwd)
 }

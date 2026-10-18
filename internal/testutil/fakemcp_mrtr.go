@@ -40,6 +40,7 @@ func objectSchemaOf(props map[string]any) map[string]any {
 }
 
 func (f *FakeMCP) addMRTRTools(s *mcp.Server) {
+	f.addMRTRPromptAndResource(s)
 	s.AddTool(&mcp.Tool{Name: "ask_form", Title: "Ask (form)", Description: "Asks for a region with a form elicitation, then answers.",
 		InputSchema: map[string]any{"type": "object"}},
 		func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -93,6 +94,32 @@ func (f *FakeMCP) addMRTRTools(s *mcp.Server) {
 		})
 }
 
+// addMRTRPromptAndResource adds the prompt ask_prompt and the resource
+// status://ask, which also answer input_required until the retry.
+func (f *FakeMCP) addMRTRPromptAndResource(s *mcp.Server) {
+	s.AddPrompt(&mcp.Prompt{Name: "ask_prompt", Title: "Ask prompt", Description: "Asks who it is for with a form, then answers."},
+		func(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+			if r, ok := req.Params.InputResponses["who"].(*mcp.ElicitResult); ok {
+				return &mcp.GetPromptResult{Messages: []*mcp.PromptMessage{{Role: "user",
+					Content: &mcp.TextContent{Text: fmt.Sprintf("for %v upstream-state=%s", r.Content["who"], req.Params.RequestState)}}}}, nil
+			}
+			return &mcp.GetPromptResult{
+				InputRequests: mcp.InputRequestMap{"who": &mcp.ElicitParams{Mode: "form", Message: "Who is it for?",
+					RequestedSchema: map[string]any{"type": "object", "properties": map[string]any{"who": map[string]any{"type": "string"}}}}},
+				RequestState: "prompt-state-1"}, nil
+		})
+	s.AddResource(&mcp.Resource{URI: "status://ask", Name: "ask", Title: "Ask", Description: "Sends the person to a URL, then answers.", MIMEType: "text/plain"},
+		func(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			if r, ok := req.Params.InputResponses["approve"].(*mcp.ElicitResult); ok {
+				return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: req.Params.URI, MIMEType: "text/plain",
+					Text: fmt.Sprintf("%s upstream-state=%s", r.Action, req.Params.RequestState)}}}, nil
+			}
+			return &mcp.ReadResourceResult{
+				InputRequests: mcp.InputRequestMap{"approve": &mcp.ElicitParams{Mode: "url", Message: "Approve the read.", URL: "https://auth.example.com/read"}},
+				RequestState:  "read-state-1"}, nil
+		})
+}
+
 func (f *FakeMCP) addStreamTools(s *mcp.Server) {
 	s.AddTool(&mcp.Tool{Name: "progress", Title: "Progress", Description: "Reports progress count times, delay_ms apart, then answers.",
 		InputSchema: objectSchemaOf(map[string]any{"count": map[string]any{"type": "integer"}, "delay_ms": map[string]any{"type": "integer"}})},
@@ -126,6 +153,9 @@ func (f *FakeMCP) addStreamTools(s *mcp.Server) {
 			case <-ctx.Done():
 				f.cancelled.Add(1)
 				return nil, ctx.Err()
+			case <-f.release:
+				f.cancelled.Add(1)
+				return nil, context.Canceled
 			case <-time.After(60 * time.Second):
 				return fakeText("block: timed out"), nil
 			}

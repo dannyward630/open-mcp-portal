@@ -77,6 +77,7 @@ type FakeMCP struct {
 	streamTools bool
 	seen        []SeenRequest
 	blocked     chan struct{}
+	release     chan struct{}
 	cancelled   atomic.Int64
 	jsonH, sseH http.Handler
 }
@@ -129,7 +130,8 @@ func (f *FakeMCP) SeenRequests() []SeenRequest {
 // EnableMRTRTools adds ask_form, ask_url {url} and ask_sampling {mixed}:
 // tools that answer a modern call with an input_required result (a form
 // elicitation, a URL elicitation, a sampling request) and complete when the
-// retry carries the responses. They record the _meta, requestState and
+// retry carries the responses; also the prompt ask_prompt (a form) and the
+// resource status://ask (a URL), which do the same. They record the _meta, requestState and
 // inputResponses they received (ToolCalls).
 func (f *FakeMCP) EnableMRTRTools() {
 	f.mu.Lock()
@@ -146,7 +148,7 @@ func (f *FakeMCP) EnableStreamTools() {
 	defer f.mu.Unlock()
 	f.streamTools = true
 	if f.blocked == nil {
-		f.blocked = make(chan struct{}, 16)
+		f.blocked, f.release = make(chan struct{}, 16), make(chan struct{}, 16)
 	}
 }
 
@@ -340,7 +342,7 @@ func NewFakeMCPHandler() (*FakeMCP, http.Handler) {
 	f := &FakeMCP{hidden: map[string]bool{}, descriptions: map[string]string{}, protocol: ProtocolBoth}
 	getServer := func(*http.Request) *mcp.Server { return f.server() }
 	f.jsonH = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
-	f.sseH = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true})
+	f.sseH = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true, PropagateRequestCancellation: true})
 	return f, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.requests++
@@ -372,11 +374,51 @@ func NewFakeMCPHandler() (*FakeMCP, http.Handler) {
 			h = f.sseH
 		}
 		f.mu.Unlock()
+		if f.watchBlock(r) {
+			finished := make(chan struct{})
+			defer close(finished)
+			go func() {
+				select {
+				case <-r.Context().Done():
+					// The client closed the connection: the block call (which a
+					// session of an older protocol version never sees cancelled
+					// by the SDK) is told.
+					select {
+					case f.release <- struct{}{}:
+					default:
+					}
+				case <-finished:
+				}
+			}()
+		}
 		h.ServeHTTP(w, r)
 	})
 }
 
 const modernVersion = "2026-07-28"
+
+// watchBlock reports whether r is a tools/call of the block tool (its body
+// has been read and put back by era).
+func (f *FakeMCP) watchBlock(r *http.Request) bool {
+	f.mu.Lock()
+	on := f.streamTools
+	f.mu.Unlock()
+	if !on || r.Method != http.MethodPost || r.Body == nil {
+		return false
+	}
+	body, err := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	var msg struct {
+		Method string `json:"method"`
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	return json.Unmarshal(body, &msg) == nil && msg.Method == "tools/call" && msg.Params.Name == "block"
+}
 
 // era applies SetProtocol to an MCP request and records it; false when it
 // answered (the request is of the era the fake doesn't speak).
@@ -659,7 +701,7 @@ func (f *FakeMCP) server() *mcp.Server {
 		})
 		s.AddTool(&mcp.Tool{Name: "echo", Title: "Echo", Description: describe("echo", "Returns its text."), InputSchema: stringArg("text", "Any text")},
 			func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				f.sawCall("echo", headerOf(req))
+				f.sawFull("echo", req)
 				var args struct {
 					Text string `json:"text"`
 				}

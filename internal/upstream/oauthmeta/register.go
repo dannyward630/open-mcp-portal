@@ -21,6 +21,9 @@ type RegistrationRequest struct {
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 	Scope                   string   `json:"scope,omitempty"`
 	ClientURI               string   `json:"client_uri,omitempty"`
+	// ApplicationType is "web" for the portal (SEP-837, MCP 2026-07-28
+	// authorization): a server-side client with https redirect URIs.
+	ApplicationType string `json:"application_type,omitempty"`
 }
 
 // Registration is the authorization server's answer. ClientSecret is a
