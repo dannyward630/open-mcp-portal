@@ -8,8 +8,14 @@ import { automationToken, platformToken, tokenSecret } from "./fixtures-v02";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 const teamPath = `/v1/teams/${team.slug}/automation-tokens`;
-const day = 86_400_000;
-const inDays = (n: number) => new Date(Date.now() + n * day).toISOString();
+// Noon, n calendar days from today: "now + n * 24h" reads as n-1 days when the test runs just after midnight
+// or across a daylight-saving change.
+const inDays = (n: number) => {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + n);
+  return d.toISOString();
+};
 
 const teamRoutes = (extra: Record<string, Handler> = {}, role: Schemas["TeamRole"] | null = "owner", platform: Schemas["PlatformRole"] = "none"): Record<string, Handler> => ({
   ...shellRoutes(platform, role),
