@@ -6,6 +6,28 @@ Notable changes to Open MCP Portal, one entry per release. Design notes for each
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, minor releases may include
 breaking changes; the entry says how to adapt.
 
+## Unreleased (0.2.0)
+
+### Security
+
+Fixes from the [threat model](docs/threat-model.md) review (section 8). Two additive API changes need a client update:
+approving now names what was reviewed.
+
+- **Another origin never keeps a server's stored header value (F-1).** A URL edit that changes scheme, host or port is
+  refused with `422 auth_value_required` unless the same request sends a new `authValue` or removes the header; in `oauth`
+  mode it erases the connections and sends the server back to the setup sign-in. The audit entry names `oldOrigin` and
+  `newOrigin`. Path, trailing-slash and case edits are unchanged.
+- **Approvals are bound to what the reviewer saw (F-2).** `McpServer.reviewDigest` is new and read-only. Approving a
+  server (`adminReviewMcpServer`) must send it as `expectedDigest`, approving a capability (`adminApproveMcpCapability`,
+  `approveTeamMcpCapability`) must send `expectedFingerprint`: `400 expected_digest_required` or
+  `expected_fingerprint_required` without it, `409 changed_since_review` when the server or capability changed in
+  between. Publishing accepts an optional `expectedDigest`. The web UI sends them; scripts that approve (such as
+  `scripts/dev-seed.py`) read the digest first.
+- **Sign-in `next` refuses control characters (F-4).** `/auth/login?next=/%09/evil.example` ended in a redirect to
+  `//evil.example`; sign-in and the connect flow now share one path rule (`internal/safepath`).
+- `serve` refuses an `ENCRYPTION_KEY` equal to the `API_KEY_PEPPER`; the main listener's `ReadHeaderTimeout` (10 s) and
+  `IdleTimeout` are pinned by a test; CI runs `govulncheck` and `npm audit --audit-level=high` (none reported).
+
 ## [0.1.0] - 2026-10-17
 
 The first release ([release notes](docs/releases/v0.1.0.md)): a self-hosted portal where teams register MCP servers, publish them to a company catalog, curate
