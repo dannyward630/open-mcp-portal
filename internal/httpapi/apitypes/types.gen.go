@@ -550,9 +550,10 @@ func (e CapabilityRequirementOverrideMode) Valid() bool {
 
 // Defines values for ConnectRequestReason.
 const (
-	ConnectRequestReasonMissingScopes  ConnectRequestReason = "missing_scopes"
-	ConnectRequestReasonNeedsReconsent ConnectRequestReason = "needs_reconsent"
-	ConnectRequestReasonNotConnected   ConnectRequestReason = "not_connected"
+	ConnectRequestReasonMissingScopes    ConnectRequestReason = "missing_scopes"
+	ConnectRequestReasonNeedsReconsent   ConnectRequestReason = "needs_reconsent"
+	ConnectRequestReasonNotConnected     ConnectRequestReason = "not_connected"
+	ConnectRequestReasonServerNotAllowed ConnectRequestReason = "server_not_allowed"
 )
 
 // Valid indicates whether the value is a known member of the ConnectRequestReason enum.
@@ -563,6 +564,8 @@ func (e ConnectRequestReason) Valid() bool {
 	case ConnectRequestReasonNeedsReconsent:
 		return true
 	case ConnectRequestReasonNotConnected:
+		return true
+	case ConnectRequestReasonServerNotAllowed:
 		return true
 	default:
 		return false
@@ -2864,6 +2867,17 @@ type CatalogServerPage struct {
 	NextCursor *string         `json:"nextCursor,omitempty"`
 }
 
+// ConnectConfirmed defines model for ConnectConfirmed.
+type ConnectConfirmed struct {
+	Provider ProviderRef `json:"provider"`
+
+	// Scopes Everything the server is now allowed to use of the account
+	Scopes ScopeList `json:"scopes"`
+
+	// Server An MCP server and its team, as a person is asked to allow it
+	Server ConnectServer `json:"server"`
+}
+
 // ConnectRequest Why a call asked the person to connect an account (a consent link from JSON-RPC -32042)
 type ConnectRequest struct {
 	// AccountLabel The account connected now, if any
@@ -2889,6 +2903,9 @@ type ConnectRequest struct {
 
 	// RequiredScopes What the capability needs
 	RequiredScopes ScopeList `json:"requiredScopes"`
+
+	// Server The MCP server the link was made for, which the person is asked to allow to use the account (a consent link is for one server at one address). Null for an MCP server's own sign-in (provider.kind mcp_server)
+	Server *ConnectServer `json:"server"`
 }
 
 // ConnectRequestReason defines model for ConnectRequest.Reason.
@@ -2902,6 +2919,15 @@ type ConnectRequestCapability struct {
 	// Kind Clients see tools and prompts as {serverSlug}__{name}, resources as omp://{serverSlug}/{uri} and resource templates as omp://{serverSlug}/{uriTemplate}
 	Kind  GatewayCapabilityKind `json:"kind"`
 	Title string                `json:"title"`
+}
+
+// ConnectServer An MCP server and its team, as a person is asked to allow it
+type ConnectServer struct {
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+	Slug     string             `json:"slug"`
+	TeamName string             `json:"teamName"`
+	TeamSlug string             `json:"teamSlug"`
 }
 
 // ConnectStart defines model for ConnectStart.
@@ -3420,7 +3446,7 @@ type McpCall struct {
 	// ClientName clientInfo.name from initialize, when sent
 	ClientName *string `json:"clientName,omitempty"`
 
-	// ErrorClass Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that require an account; needs_authorization with not_connected, missing_scopes or needs_reconsent; denied with service_account or provider_disabled; upstream_error with provider_unavailable.
+	// ErrorClass Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that require an account; needs_authorization with not_connected, missing_scopes, needs_reconsent or server_not_allowed (connected, but the person hasn't allowed this server, at its current address, to use the account); denied with service_account or provider_disabled; upstream_error with provider_unavailable.
 	ErrorClass *string `json:"errorClass,omitempty"`
 
 	// ExposedName The tool or prompt name, or the exposed resource URI, the client used (absent for list calls)
@@ -4506,6 +4532,9 @@ type ProviderConnection struct {
 	// AccountLabel The provider account as its userinfo endpoint named it (such as octocat); informational
 	AccountLabel *string `json:"accountLabel"`
 
+	// AllowedServers The MCP servers this account may be used by: the person allowed each one (for the scopes listed, at the address listed) when they confirmed a consent link. A platform provider's token is sent only to these. Disconnecting removes them all. Empty for an MCP server's own sign-in (its connection is for that server alone). A server whose address moves to another host, or that requires another provider, is removed and must be allowed again.
+	AllowedServers []ProviderServerGrant `json:"allowedServers"`
+
 	// ConnectedAt When the person last completed consent
 	ConnectedAt time.Time `json:"connectedAt"`
 
@@ -4544,6 +4573,22 @@ type ProviderRef struct {
 	// Server The MCP server a kind mcp_server provider belongs to (null for platform providers)
 	Server *McpServerRef `json:"server,omitempty"`
 	Slug   string        `json:"slug"`
+}
+
+// ProviderServerGrant A person's consent for one MCP server to use a connected account
+type ProviderServerGrant struct {
+	ConsentedAt time.Time `json:"consentedAt"`
+
+	// Origin The scheme, host and port of the server's URL when the person allowed it; the token is sent only while the server's URL has this origin
+	//
+	// Example: https://tools.example.com
+	Origin string `json:"origin"`
+
+	// Scopes What the person allowed this server to use
+	Scopes ScopeList `json:"scopes"`
+
+	// Server An MCP server and its team, as a person is asked to allow it
+	Server ConnectServer `json:"server"`
 }
 
 // PublishDecidedData defines model for PublishDecidedData.

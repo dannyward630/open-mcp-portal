@@ -1755,7 +1755,7 @@ export interface paths {
         put?: never;
         /**
          * Begin connecting (or reconnecting) an account; returns where to send the browser
-         * @description Browser session only (403 session_required with an API key). The authorization URL is built from the provider's stored settings, with PKCE S256 when the provider uses it and a single-use state bound to this session, person, provider and connect request; it expires after 10 minutes. The scopes asked for are the union of the connection's granted scopes (when active), scopes (or the provider's default scopes when both scopes and requestId are absent) and the connect request's required scopes. 404 provider_not_found (unknown or turned off). 404 connect_request_not_found (unknown, or another person's); 410 connect_request_expired (expired or used); 409 provider_mismatch (the request is for another provider). 400 invalid_scope; 400 invalid_return_to (returnTo must be a path on this site). 429 slow_down (20 a minute per person). providerId may name a server-bound provider (kind mcp_server) when the caller can use one of that server's capabilities through a gateway now; otherwise 404 provider_not_found. Server editors use authorizeTeamMcpServerSetup instead.
+         * @description Browser session only (403 session_required with an API key). The authorization URL is built from the provider's stored settings, with PKCE S256 when the provider uses it and a single-use state bound to this session, person, provider and connect request; it expires after 10 minutes. The scopes asked for are the union of the connection's granted scopes (when active), scopes (or the provider's default scopes when both scopes and requestId are absent) and the connect request's required scopes. 404 provider_not_found (unknown or turned off). 404 connect_request_not_found (unknown, or another person's); 410 connect_request_expired (expired or used, or made before servers had to be allowed); 410 connect_request_server_changed (the server the link was made for has another address or required account now); 409 provider_mismatch (the request is for another provider). For a platform provider the callback also allows the server the request was made for, at the address it was made for, once the provider granted the request's scopes (confirmConnectRequest does the same without a round trip when the account already covers them). 400 invalid_scope; 400 invalid_return_to (returnTo must be a path on this site). 429 slow_down (20 a minute per person). providerId may name a server-bound provider (kind mcp_server) when the caller can use one of that server's capabilities through a gateway now; otherwise 404 provider_not_found. Server editors use authorizeTeamMcpServerSetup instead.
          */
         post: operations["startMyConnection"];
         delete?: never;
@@ -1778,9 +1778,32 @@ export interface paths {
         post?: never;
         /**
          * Disconnect one of the caller's accounts; its tokens are erased at once
-         * @description Where the provider has a revocation endpoint the portal also revokes the tokens there (best effort, recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again. Audited as provider_connection.revoke (reason user).
+         * @description Where the provider has a revocation endpoint the portal also revokes the tokens there (best effort, recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again. Audited as provider_connection.revoke (reason user). The connection's allowed servers (ProviderConnection. allowedServers) go with it, so reconnecting asks again for each server.
          */
         delete: operations["revokeMyConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connect/requests/{requestId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The opaque ID from a consent link (the request query parameter of /connect/{provider}) */
+                requestId: components["parameters"]["ConnectRequestIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Allow the server a consent link was made for to use the person's connected account, without going to the provider
+         * @description Browser session only (403 session_required with an API key). For a link whose reason is server_not_allowed: the person is connected, the account's scopes already cover the link, and only the server's consent is missing. Records the grant for the server and address the link was made for (audited as provider_connection.server_allow) and uses the link up; nothing is sent to the provider. A link can allow only the server it names. 409 connect_required (not connected, needs reconnecting, or the account lacks the link's scopes: continue to the provider with startMyConnection); 409 not_platform_provider (an MCP server's own sign-in has nothing to allow); 404 connect_request_not_found (unknown, or another person's); 410 connect_request_expired (expired or used, or made before the grants existed); 410 connect_request_server_changed (the server's address or required account changed since the link was made); 404 provider_not_found (turned off).
+         */
+        post: operations["confirmConnectRequest"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1798,7 +1821,7 @@ export interface paths {
         };
         /**
          * What a consent link is for, so the web app can confirm before leaving for the provider
-         * @description Signed in, and only the person the link was made for; anyone else gets 404 connect_request_not_found, the same as an unknown ID. 410 connect_request_expired once it expired (10 minutes) or was used.
+         * @description Signed in, and only the person the link was made for; anyone else gets 404 connect_request_not_found, the same as an unknown ID. 410 connect_request_expired once it expired (10 minutes) or was used, or when it was made before servers had to be allowed; 410 connect_request_server_changed when the server's address or its required account changed after the link was made (the link is for one server at one address).
          */
         get: operations["getConnectRequest"];
         put?: never;
@@ -3666,7 +3689,7 @@ export interface components {
             /** @description clientInfo.name from initialize, when sent */
             clientName?: string;
             outcome: components["schemas"]["McpCallOutcome"];
-            /** @description Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that require an account; needs_authorization with not_connected, missing_scopes or needs_reconsent; denied with service_account or provider_disabled; upstream_error with provider_unavailable. */
+            /** @description Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that require an account; needs_authorization with not_connected, missing_scopes, needs_reconsent or server_not_allowed (connected, but the person hasn't allowed this server, at its current address, to use the account); denied with service_account or provider_disabled; upstream_error with provider_unavailable. */
             errorClass?: string;
             /** @description The auth provider the capability required at the time of the call (absent when none) */
             providerSlug?: string;
@@ -4140,6 +4163,36 @@ export interface components {
             expiresAt: string | null;
             /** @description The portal holds a refresh token */
             refreshable: boolean;
+            /** @description The MCP servers this account may be used by: the person allowed each one (for the scopes listed, at the address listed) when they confirmed a consent link. A platform provider's token is sent only to these. Disconnecting removes them all. Empty for an MCP server's own sign-in (its connection is for that server alone). A server whose address moves to another host, or that requires another provider, is removed and must be allowed again. */
+            allowedServers: components["schemas"]["ProviderServerGrant"][];
+        };
+        /** @description An MCP server and its team, as a person is asked to allow it */
+        ConnectServer: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            teamSlug: string;
+            teamName: string;
+        };
+        /** @description A person's consent for one MCP server to use a connected account */
+        ProviderServerGrant: {
+            server: components["schemas"]["ConnectServer"];
+            /**
+             * @description The scheme, host and port of the server's URL when the person allowed it; the token is sent only while the server's URL has this origin
+             * @example https://tools.example.com
+             */
+            origin: string;
+            /** @description What the person allowed this server to use */
+            scopes: components["schemas"]["ScopeList"];
+            /** Format: date-time */
+            consentedAt: string;
+        };
+        ConnectConfirmed: {
+            provider: components["schemas"]["ProviderRef"];
+            server: components["schemas"]["ConnectServer"];
+            /** @description Everything the server is now allowed to use of the account */
+            scopes: components["schemas"]["ScopeList"];
         };
         ConnectStart: {
             /** Format: uuid */
@@ -4172,8 +4225,10 @@ export interface components {
         ConnectRequest: {
             id: string;
             provider: components["schemas"]["ProviderRef"];
+            /** @description The MCP server the link was made for, which the person is asked to allow to use the account (a consent link is for one server at one address). Null for an MCP server's own sign-in (provider.kind mcp_server) */
+            server: components["schemas"]["ConnectServer"] | null;
             /** @enum {string} */
-            reason: "not_connected" | "missing_scopes" | "needs_reconsent";
+            reason: "not_connected" | "missing_scopes" | "needs_reconsent" | "server_not_allowed";
             /** @description What the capability needs */
             requiredScopes: components["schemas"]["ScopeList"];
             /** @description What will be asked for (granted scopes kept, plus the required ones) */
@@ -8791,6 +8846,36 @@ export interface operations {
             200: components["responses"]["OkReply"];
             401: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
+        };
+    };
+    confirmConnectRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The opaque ID from a consent link (the request query parameter of /connect/{provider}) */
+                requestId: components["parameters"]["ConnectRequestIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The server is allowed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ConnectConfirmed"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            410: components["responses"]["ErrorReply"];
         };
     };
     getConnectRequest: {

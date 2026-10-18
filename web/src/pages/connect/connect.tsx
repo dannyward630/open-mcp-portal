@@ -7,15 +7,20 @@
  * account connected now and each scope (already granted, or new), and only
  * then, on Continue, starts connecting (POST /v1/me/connections/start with
  * the app's CSRF token) and sends the browser to the provider. Cancel leaves
- * everything as it was.
+ * everything as it was. A link is for one server (F-3): the page names it with
+ * its team, and when the account already has the scopes (reason
+ * server_not_allowed) the button allows the server with POST
+ * /v1/connect/requests/R/confirm and goes to the result page, without
+ * leaving for the provider. A link for a server that moved (410) is explained
+ * like an expired one.
  *
  * Another person's or an unknown link (404), and an expired or used one
  * (410), are explained here and never sent anywhere. No app shell; signed
  * out, the session gate shows the sign-in page, which returns here with the
  * whole query.
  */
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useParams, useSearch } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useEffect, useId, useState } from "react";
 import { ApiError, api, unwrap } from "../../api/client";
 import { type ConnectRequest, redirectTo, safeAuthorizeUrl } from "../../components/providers/labels";
@@ -48,6 +53,8 @@ export function ConnectPage() {
   const search = useSearch({ from: "/connect/$provider" });
   const requestId = typeof search.request === "string" ? search.request : "";
   const titleId = useId();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const view = useQuery({
     queryKey: ["connect", "request", requestId],
     queryFn: async () => unwrap(await api.GET("/v1/connect/requests/{requestId}", { params: { path: { requestId } } })),
@@ -68,10 +75,19 @@ export function ConnectPage() {
       redirectTo.go(target);
     },
   });
+  const allow = useMutation({
+    mutationFn: async (r: ConnectRequest) => unwrap(await api.POST("/v1/connect/requests/{requestId}/confirm", { params: { path: { requestId: r.id } } })),
+    onSuccess: (out) => navigate({ to: "/connect/done", search: { provider: out.provider.slug, result: "connected" } }),
+    // The account changed since the page loaded (no longer connected with the scopes): look again, the page then offers the provider.
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) void qc.invalidateQueries({ queryKey: ["connect", "request", requestId] });
+    },
+  });
   // A request for another provider than the link names is refused: the page never shows one provider and starts another.
   const problem: unknown = !requestId ? "missing" : view.data && view.data.provider.slug !== provider ? "mismatch" : view.error != null ? view.error : null;
   // Continue can find the link expired (or used in another tab): say so the same way.
-  const startProblem = start.error instanceof ApiError && (start.error.status === 404 || start.error.status === 410) ? start.error : null;
+  const expired = (e: unknown) => (e instanceof ApiError && (e.status === 404 || e.status === 410) ? e : null);
+  const startProblem = expired(start.error) ?? expired(allow.error);
   const shown = problem ?? startProblem;
   const providerName = view.data?.provider.name;
   useEffect(() => {
@@ -95,6 +111,7 @@ export function ConnectPage() {
                   titleId={titleId}
                   email={me.user.email}
                   start={{ run: () => start.mutate(view.data!), pending: start.isPending, error: startProblem ? null : start.error }}
+                  allow={{ run: () => allow.mutate(view.data!), pending: allow.isPending, error: startProblem ? null : allow.error }}
                   leaving={leaving}
                 />
               )

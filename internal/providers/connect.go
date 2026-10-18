@@ -113,12 +113,17 @@ type RequestView struct {
 	Granted, RequestScopes []string
 	AccountLabel           *string
 	// Reason is why connecting is needed now (ReasonNotConnected,
-	// ReasonNeedsReconsent or ReasonMissingScopes), from the connection as
+	// ReasonNeedsReconsent, ReasonMissingScopes or ReasonServerNotAllowed),
+	// from the connection and the server's grant as
 	// it is now; the stored reason only when it already covers the request.
 	Reason string
 	// The gateway as it is now (or as it was, when deleted).
 	GatewaySlug, GatewayName string
 	GatewayExists            bool
+	// Server is the MCP server the link was made for, with its team: the
+	// one the person is asked to allow (nil for an oauth server's own
+	// sign-in, which is the server's alone).
+	Server *ServerRef
 	// AuthorizationServerHost is an oauth server's authorization server
 	// host ("": a platform provider), for "act as you at github.com".
 	AuthorizationServerHost string
@@ -158,6 +163,19 @@ func (s *Service) GetRequest(ctx context.Context, a authz.Actor, id string) (Req
 	}
 	v := RequestView{Request: r, ID: id, Provider: ref, Granted: []string{}, GatewaySlug: r.GatewaySlug, GatewayName: r.GatewayName,
 		Reason: ReasonNotConnected}
+	var sv dbgen.McpServer
+	if p.Kind != KindMCPServer {
+		// The server this link allows, as it is now: a link for another
+		// origin (or provider) than the server has now is no longer valid.
+		if sv, err = requestServer(ctx, s.q, r); err != nil {
+			return RequestView{}, err
+		}
+		sr, err := s.q.GetServerRef(ctx, sv.ID)
+		if err != nil {
+			return RequestView{}, err
+		}
+		v.Server = &ServerRef{ID: sr.ID, Slug: sr.Slug, Name: sr.Name, TeamSlug: sr.TeamSlug, TeamName: sr.TeamName}
+	}
 	if p.Kind == KindMCPServer {
 		as := deref(p.AuthorizationServer)
 		if as == "" {
@@ -174,6 +192,8 @@ func (s *Service) GetRequest(ctx context.Context, a authz.Actor, id string) (Req
 			v.Reason = ReasonNeedsReconsent
 		case !Covers(c.Scopes, r.RequiredScopes):
 			v.Granted, v.Reason = nonNil(c.Scopes), ReasonMissingScopes
+		case p.Kind != KindMCPServer && !s.hasGrant(ctx, c, sv, r.RequiredScopes):
+			v.Granted, v.Reason = nonNil(c.Scopes), ReasonServerNotAllowed
 		default:
 			// Connected since the link was made: nothing is missing now.
 			v.Granted, v.Reason = nonNil(c.Scopes), r.Reason
@@ -188,6 +208,13 @@ func (s *Service) GetRequest(ctx context.Context, a authz.Actor, id string) (Req
 		return RequestView{}, err
 	}
 	return v, nil
+}
+
+// hasGrant: the person's connection is allowed for the server at its
+// current origin, for scopes (a lookup failure counts as not allowed).
+func (s *Service) hasGrant(ctx context.Context, c dbgen.ProviderConnection, sv dbgen.McpServer, scopes []string) bool {
+	g, err := s.q.GetProviderServerGrant(ctx, dbgen.GetProviderServerGrantParams{ConnectionID: c.ID, ServerID: sv.ID})
+	return err == nil && g.Origin == registry.OriginOf(sv.URL) && Covers(g.Scopes, scopes)
 }
 
 func (s *Service) refOf(ctx context.Context, q *dbgen.Queries, p dbgen.AuthProvider) (ProviderRef, error) {
@@ -273,6 +300,13 @@ func (s *Service) Start(ctx context.Context, a authz.Actor, in StartInput) (Star
 		}
 		if r.ProviderID != p.ID {
 			return Started{}, apperr.Conflict("provider_mismatch", "This link is for another provider")
+		}
+		if p.Kind != KindMCPServer {
+			// The link is for one server at one origin; if either changed it
+			// can't be used to connect either.
+			if _, err := requestServer(ctx, s.q, r); err != nil {
+				return Started{}, err
+			}
 		}
 		d := r.IDDigest
 		requestDig, required = &d, nonNil(r.RequiredScopes)
@@ -509,13 +543,19 @@ func (s *Service) Callback(ctx context.Context, in CallbackInput) (string, error
 		expires = &t
 	}
 	actor := authz.Actor{UserID: in.User.ID, PlatformRole: in.User.PlatformRole, RequestID: in.RequestID, ClientIP: in.ClientIP}
-	setup := false
+	setup, grantSkipped := false, false
 	err = store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
-		if err := s.store(ctx, q, actor, in.User, p, st, tok, granted, label, expires); err != nil {
+		row, viaRequest, err := s.store(ctx, q, actor, in.User, p, st, tok, granted, label, expires)
+		if err != nil {
 			return err
 		}
 		if !st.SetupServerID.Valid {
-			return nil
+			// The consent link also allows the server it was made for, when
+			// this callback used it up and the provider granted what it asks.
+			if viaRequest && p.Kind != KindMCPServer {
+				grantSkipped, err = s.grantFromRequest(ctx, q, actor, in.User, p, row, st, granted)
+			}
+			return err
 		}
 		// The setup sign-in counts only for an editor (or above) of the
 		// server's team, checked again now.
@@ -551,16 +591,46 @@ func (s *Service) Callback(ctx context.Context, in CallbackInput) (string, error
 	switch {
 	case len(missing) > 0:
 		return done(p.Slug, ResultMissingScopes, missing), nil
+	case grantSkipped:
+		// Connected, but the link's server moved or went meanwhile: nothing
+		// was allowed; the next call asks again.
+		return done(p.Slug, ResultExpired, nil), nil
 	case st.ReturnTo != nil && SafeReturnPath(*st.ReturnTo):
 		return *st.ReturnTo, nil
 	}
 	return done(p.Slug, ResultConnected, nil), nil
 }
 
+// grantFromRequest allows, after a connect that used the link up, the server
+// the link was made for (at the origin it was made for), for the scopes the
+// link names, when the provider granted them all. skipped: the link's server
+// is gone or changed, so nothing was allowed.
+func (s *Service) grantFromRequest(ctx context.Context, q *dbgen.Queries, a authz.Actor, u dbgen.User, p dbgen.AuthProvider,
+	conn dbgen.ProviderConnection, st dbgen.ProviderAuthState, granted []string) (skipped bool, err error) {
+	r, err := q.GetConnectRequest(ctx, *st.RequestDigest)
+	if errors.Is(store.NotFound(err), store.ErrNotFound) || (err == nil && (r.UserID != u.ID || r.ProviderID != p.ID)) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	if !Covers(granted, r.RequiredScopes) {
+		return false, nil // reported as missing scopes
+	}
+	sv, err := requestServer(ctx, q, r)
+	if errors.Is(err, errServerChanged) || errors.Is(err, errRequestExpired) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	_, err = s.recordGrant(ctx, q, a, u, p, conn, sv, nonNil(r.RequiredScopes), true)
+	return false, err
+}
+
 // store saves new tokens as the person's active connection and uses up the
-// request.
+// request (viaRequest: this call did).
 func (s *Service) store(ctx context.Context, q *dbgen.Queries, a authz.Actor, u dbgen.User, p dbgen.AuthProvider, st dbgen.ProviderAuthState,
-	tok tokenSet, granted []string, label string, expires *time.Time) error {
+	tok tokenSet, granted []string, label string, expires *time.Time) (dbgen.ProviderConnection, bool, error) {
+	var row0 dbgen.ProviderConnection
 	var labelPtr *string
 	if label != "" {
 		labelPtr = &label
@@ -568,7 +638,7 @@ func (s *Service) store(ctx context.Context, q *dbgen.Queries, a authz.Actor, u 
 	cur, err := q.LockProviderConnection(ctx, dbgen.LockProviderConnectionParams{UserID: u.ID, ProviderID: p.ID})
 	reconnect := err == nil
 	if err != nil && !errors.Is(store.NotFound(err), store.ErrNotFound) {
-		return err
+		return row0, false, err
 	}
 	id := uuid.New()
 	if reconnect {
@@ -576,11 +646,11 @@ func (s *Service) store(ctx context.Context, q *dbgen.Queries, a authz.Actor, u 
 	}
 	access, err := s.seal(id, "access", tok.Access)
 	if err != nil {
-		return err
+		return row0, false, err
 	}
 	refresh, err := s.seal(id, "refresh", tok.Refresh)
 	if err != nil {
-		return err
+		return row0, false, err
 	}
 	if reconnect && refresh == nil && cur.Status == StatusActive && cur.RefreshTokenCipher != nil {
 		// Some providers (Google) only send a refresh token on first consent;
@@ -596,13 +666,13 @@ func (s *Service) store(ctx context.Context, q *dbgen.Queries, a authz.Actor, u 
 			AccountLabel: labelPtr, AccessTokenCipher: access, RefreshTokenCipher: refresh, ExpiresAt: expires})
 	}
 	if err != nil {
-		return err
+		return row0, false, err
 	}
 	viaRequest := false
 	if st.RequestDigest != nil {
 		n, err := q.MarkConnectRequestUsed(ctx, *st.RequestDigest)
 		if err != nil {
-			return err
+			return row0, false, err
 		}
 		viaRequest = n > 0
 	}
@@ -613,7 +683,7 @@ func (s *Service) store(ctx context.Context, q *dbgen.Queries, a authz.Actor, u 
 	e.After = connectionSnapshot(row)
 	e.Metadata = map[string]any{"name": displayName(u) + " · " + p.Name, "scopes": granted, "reconnect": reconnect,
 		"viaRequest": viaRequest, "provider": p.Slug}
-	return audit.Record(ctx, q, e)
+	return row, viaRequest, audit.Record(ctx, q, e)
 }
 
 // Cleanup deletes expired authorization states, and connect requests a day

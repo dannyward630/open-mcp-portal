@@ -192,7 +192,7 @@ WHERE pc.user_id = @user_id
 ORDER BY p.name, p.id;
 
 -- name: GetServerRef :one
-SELECT s.id, s.slug, s.name, t.slug AS team_slug FROM mcp_servers s JOIN teams t ON t.id = s.team_id WHERE s.id = $1;
+SELECT s.id, s.slug, s.name, t.slug AS team_slug, t.name AS team_name FROM mcp_servers s JOIN teams t ON t.id = s.team_id WHERE s.id = $1;
 
 -- name: ListProviderConnectionsForProvider :many
 SELECT * FROM provider_connections WHERE provider_id = @provider_id ORDER BY id;
@@ -200,18 +200,20 @@ SELECT * FROM provider_connections WHERE provider_id = @provider_id ORDER BY id;
 -- name: InsertConnectRequest :one
 INSERT INTO provider_connect_requests (
     id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name,
-    capability_id, capability_kind, exposed_name, capability_title, expires_at
+    capability_id, capability_kind, exposed_name, capability_title, expires_at, server_id, server_origin
 ) VALUES (
     @id_digest, @id_cipher, @user_id, @provider_id, @required_scopes, @reason, @gateway_id, @gateway_slug, @gateway_name,
-    @capability_id, @capability_kind, @exposed_name, @capability_title, @expires_at
+    @capability_id, @capability_kind, @exposed_name, @capability_title, @expires_at, @server_id, @server_origin
 )
 RETURNING *;
 
 -- name: FindOpenConnectRequest :one
--- A person's unused request for the same capability, provider and scopes
--- that stays valid for at least valid_until, to answer with the same link.
+-- A person's unused request for the same capability, provider, scopes, server
+-- and server origin that stays valid for at least valid_until, to answer with
+-- the same link.
 SELECT * FROM provider_connect_requests
 WHERE user_id = @user_id AND provider_id = @provider_id AND gateway_id = @gateway_id AND capability_id = @capability_id
+  AND server_id = @server_id AND server_origin = @server_origin
   AND required_scopes = @required_scopes::text[] AND used_at IS NULL AND expires_at > @valid_until
 ORDER BY created_at DESC
 LIMIT 1;
@@ -248,3 +250,33 @@ DELETE FROM provider_auth_states WHERE state_digest = $1 RETURNING *;
 
 -- name: DeleteExpiredProviderAuthStates :execrows
 DELETE FROM provider_auth_states WHERE expires_at < now();
+
+-- name: GetProviderServerGrant :one
+SELECT * FROM provider_server_grants WHERE connection_id = @connection_id AND server_id = @server_id;
+
+-- name: LockProviderServerGrant :one
+SELECT * FROM provider_server_grants WHERE connection_id = @connection_id AND server_id = @server_id FOR UPDATE;
+
+-- name: UpsertProviderServerGrant :one
+-- The person allows a server to use a connection, at an origin, for scopes.
+INSERT INTO provider_server_grants (connection_id, server_id, origin, scopes)
+VALUES (@connection_id, @server_id, @origin, @scopes)
+ON CONFLICT (connection_id, server_id)
+DO UPDATE SET origin = EXCLUDED.origin, scopes = EXCLUDED.scopes, consented_at = now()
+RETURNING *;
+
+-- name: DeleteProviderServerGrantsForServer :execrows
+-- A server's URL origin or provider changed, or it was deleted: nobody's
+-- consent counts for what it is now.
+DELETE FROM provider_server_grants WHERE server_id = @server_id;
+
+-- name: ListProviderServerGrantsForUser :many
+-- The servers a person's connections are allowed for, by server name.
+SELECT g.connection_id, g.server_id, g.origin, g.scopes, g.consented_at, s.slug AS server_slug, s.name AS server_name,
+       t.slug AS team_slug, t.name AS team_name
+FROM provider_server_grants g
+JOIN provider_connections pc ON pc.id = g.connection_id
+JOIN mcp_servers s ON s.id = g.server_id
+JOIN teams t ON t.id = s.team_id
+WHERE pc.user_id = @user_id
+ORDER BY s.name, s.id;

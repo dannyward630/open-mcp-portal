@@ -21,6 +21,11 @@ export type ServerRequirement = Schemas["McpServerRequirement"];
 export type RequirementOverride = Schemas["CapabilityRequirementOverride"];
 export type ConnectRequest = Schemas["ConnectRequest"];
 export type ProviderRef = Schemas["ProviderRef"];
+export type ConnectServer = Schemas["ConnectServer"];
+export type ProviderServerGrant = Schemas["ProviderServerGrant"];
+
+/** "Status (Platform tools)": the server a person is asked to allow, with its team (F-3, decision 60). */
+export const serverWithTeam = (s: Pick<ConnectServer, "name" | "teamName">) => `${s.name} (${s.teamName})`;
 
 /** An MCP server's own sign-in (docs/phase7-upstream-oauth.md): a server-bound provider, named after its server. */
 export const isServerSignIn = (p: Pick<ProviderRef, "kind">) => p.kind === "mcp_server";

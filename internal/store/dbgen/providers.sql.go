@@ -99,6 +99,20 @@ func (q *Queries) DeleteProviderConnection(ctx context.Context, id uuid.UUID) er
 	return err
 }
 
+const deleteProviderServerGrantsForServer = `-- name: DeleteProviderServerGrantsForServer :execrows
+DELETE FROM provider_server_grants WHERE server_id = $1
+`
+
+// A server's URL origin or provider changed, or it was deleted: nobody's
+// consent counts for what it is now.
+func (q *Queries) DeleteProviderServerGrantsForServer(ctx context.Context, serverID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProviderServerGrantsForServer, serverID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteServerProvider = `-- name: DeleteServerProvider :exec
 DELETE FROM auth_providers WHERE server_id = $1 AND kind = 'mcp_server'
 `
@@ -122,9 +136,10 @@ func (q *Queries) DeleteStaleConnectRequests(ctx context.Context, before time.Ti
 }
 
 const findOpenConnectRequest = `-- name: FindOpenConnectRequest :one
-SELECT id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, capability_title, created_at, expires_at, used_at FROM provider_connect_requests
+SELECT id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, capability_title, created_at, expires_at, used_at, server_id, server_origin FROM provider_connect_requests
 WHERE user_id = $1 AND provider_id = $2 AND gateway_id = $3 AND capability_id = $4
-  AND required_scopes = $5::text[] AND used_at IS NULL AND expires_at > $6
+  AND server_id = $5 AND server_origin = $6
+  AND required_scopes = $7::text[] AND used_at IS NULL AND expires_at > $8
 ORDER BY created_at DESC
 LIMIT 1
 `
@@ -134,18 +149,23 @@ type FindOpenConnectRequestParams struct {
 	ProviderID     uuid.UUID
 	GatewayID      uuid.UUID
 	CapabilityID   uuid.UUID
+	ServerID       uuid.NullUUID
+	ServerOrigin   *string
 	RequiredScopes []string
 	ValidUntil     time.Time
 }
 
-// A person's unused request for the same capability, provider and scopes
-// that stays valid for at least valid_until, to answer with the same link.
+// A person's unused request for the same capability, provider, scopes, server
+// and server origin that stays valid for at least valid_until, to answer with
+// the same link.
 func (q *Queries) FindOpenConnectRequest(ctx context.Context, arg FindOpenConnectRequestParams) (ProviderConnectRequest, error) {
 	row := q.db.QueryRow(ctx, findOpenConnectRequest,
 		arg.UserID,
 		arg.ProviderID,
 		arg.GatewayID,
 		arg.CapabilityID,
+		arg.ServerID,
+		arg.ServerOrigin,
 		arg.RequiredScopes,
 		arg.ValidUntil,
 	)
@@ -167,6 +187,8 @@ func (q *Queries) FindOpenConnectRequest(ctx context.Context, arg FindOpenConnec
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
+		&i.ServerID,
+		&i.ServerOrigin,
 	)
 	return i, err
 }
@@ -222,7 +244,7 @@ func (q *Queries) GetAuthProvider(ctx context.Context, id uuid.UUID) (AuthProvid
 }
 
 const getConnectRequest = `-- name: GetConnectRequest :one
-SELECT id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, capability_title, created_at, expires_at, used_at FROM provider_connect_requests WHERE id_digest = $1
+SELECT id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, capability_title, created_at, expires_at, used_at, server_id, server_origin FROM provider_connect_requests WHERE id_digest = $1
 `
 
 func (q *Queries) GetConnectRequest(ctx context.Context, idDigest string) (ProviderConnectRequest, error) {
@@ -245,6 +267,8 @@ func (q *Queries) GetConnectRequest(ctx context.Context, idDigest string) (Provi
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
+		&i.ServerID,
+		&i.ServerOrigin,
 	)
 	return i, err
 }
@@ -275,6 +299,29 @@ func (q *Queries) GetProviderConnection(ctx context.Context, arg GetProviderConn
 		&i.RefreshedAt,
 		&i.LastUsedAt,
 		&i.LastErrorClass,
+	)
+	return i, err
+}
+
+const getProviderServerGrant = `-- name: GetProviderServerGrant :one
+SELECT id, connection_id, server_id, origin, scopes, consented_at FROM provider_server_grants WHERE connection_id = $1 AND server_id = $2
+`
+
+type GetProviderServerGrantParams struct {
+	ConnectionID uuid.UUID
+	ServerID     uuid.UUID
+}
+
+func (q *Queries) GetProviderServerGrant(ctx context.Context, arg GetProviderServerGrantParams) (ProviderServerGrant, error) {
+	row := q.db.QueryRow(ctx, getProviderServerGrant, arg.ConnectionID, arg.ServerID)
+	var i ProviderServerGrant
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectionID,
+		&i.ServerID,
+		&i.Origin,
+		&i.Scopes,
+		&i.ConsentedAt,
 	)
 	return i, err
 }
@@ -330,7 +377,7 @@ func (q *Queries) GetServerProvider(ctx context.Context, serverID uuid.NullUUID)
 }
 
 const getServerRef = `-- name: GetServerRef :one
-SELECT s.id, s.slug, s.name, t.slug AS team_slug FROM mcp_servers s JOIN teams t ON t.id = s.team_id WHERE s.id = $1
+SELECT s.id, s.slug, s.name, t.slug AS team_slug, t.name AS team_name FROM mcp_servers s JOIN teams t ON t.id = s.team_id WHERE s.id = $1
 `
 
 type GetServerRefRow struct {
@@ -338,6 +385,7 @@ type GetServerRefRow struct {
 	Slug     string
 	Name     string
 	TeamSlug string
+	TeamName string
 }
 
 func (q *Queries) GetServerRef(ctx context.Context, id uuid.UUID) (GetServerRefRow, error) {
@@ -348,6 +396,7 @@ func (q *Queries) GetServerRef(ctx context.Context, id uuid.UUID) (GetServerRefR
 		&i.Slug,
 		&i.Name,
 		&i.TeamSlug,
+		&i.TeamName,
 	)
 	return i, err
 }
@@ -463,12 +512,12 @@ func (q *Queries) InsertAuthProvider(ctx context.Context, arg InsertAuthProvider
 const insertConnectRequest = `-- name: InsertConnectRequest :one
 INSERT INTO provider_connect_requests (
     id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name,
-    capability_id, capability_kind, exposed_name, capability_title, expires_at
+    capability_id, capability_kind, exposed_name, capability_title, expires_at, server_id, server_origin
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-    $10, $11, $12, $13, $14
+    $10, $11, $12, $13, $14, $15, $16
 )
-RETURNING id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, capability_title, created_at, expires_at, used_at
+RETURNING id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, capability_title, created_at, expires_at, used_at, server_id, server_origin
 `
 
 type InsertConnectRequestParams struct {
@@ -486,6 +535,8 @@ type InsertConnectRequestParams struct {
 	ExposedName     string
 	CapabilityTitle string
 	ExpiresAt       time.Time
+	ServerID        uuid.NullUUID
+	ServerOrigin    *string
 }
 
 func (q *Queries) InsertConnectRequest(ctx context.Context, arg InsertConnectRequestParams) (ProviderConnectRequest, error) {
@@ -504,6 +555,8 @@ func (q *Queries) InsertConnectRequest(ctx context.Context, arg InsertConnectReq
 		arg.ExposedName,
 		arg.CapabilityTitle,
 		arg.ExpiresAt,
+		arg.ServerID,
+		arg.ServerOrigin,
 	)
 	var i ProviderConnectRequest
 	err := row.Scan(
@@ -523,6 +576,8 @@ func (q *Queries) InsertConnectRequest(ctx context.Context, arg InsertConnectReq
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
+		&i.ServerID,
+		&i.ServerOrigin,
 	)
 	return i, err
 }
@@ -1026,6 +1081,60 @@ func (q *Queries) ListProviderConnectionsForUser(ctx context.Context, userID uui
 	return items, nil
 }
 
+const listProviderServerGrantsForUser = `-- name: ListProviderServerGrantsForUser :many
+SELECT g.connection_id, g.server_id, g.origin, g.scopes, g.consented_at, s.slug AS server_slug, s.name AS server_name,
+       t.slug AS team_slug, t.name AS team_name
+FROM provider_server_grants g
+JOIN provider_connections pc ON pc.id = g.connection_id
+JOIN mcp_servers s ON s.id = g.server_id
+JOIN teams t ON t.id = s.team_id
+WHERE pc.user_id = $1
+ORDER BY s.name, s.id
+`
+
+type ListProviderServerGrantsForUserRow struct {
+	ConnectionID uuid.UUID
+	ServerID     uuid.UUID
+	Origin       string
+	Scopes       []string
+	ConsentedAt  time.Time
+	ServerSlug   string
+	ServerName   string
+	TeamSlug     string
+	TeamName     string
+}
+
+// The servers a person's connections are allowed for, by server name.
+func (q *Queries) ListProviderServerGrantsForUser(ctx context.Context, userID uuid.UUID) ([]ListProviderServerGrantsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listProviderServerGrantsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProviderServerGrantsForUserRow{}
+	for rows.Next() {
+		var i ListProviderServerGrantsForUserRow
+		if err := rows.Scan(
+			&i.ConnectionID,
+			&i.ServerID,
+			&i.Origin,
+			&i.Scopes,
+			&i.ConsentedAt,
+			&i.ServerSlug,
+			&i.ServerName,
+			&i.TeamSlug,
+			&i.TeamName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAuthProvider = `-- name: LockAuthProvider :one
 SELECT id, slug, name, kind, preset, enabled, client_id, client_secret_cipher, client_secret_hint, token_auth_method, pkce, authorization_url, token_url, revocation_url, userinfo_url, default_scopes, scope_param, scope_separator, token_response_format, extra_authorize_params, logo_url, revision, created_by, created_at, updated_by, updated_at, server_id, link_provider_id, registration, resource, resource_metadata_url, authorization_server, issuer, scopes_supported, send_resource, iss_param_supported, client_secret_expires_at, discovered_at FROM auth_providers WHERE id = $1 FOR UPDATE
 `
@@ -1127,6 +1236,29 @@ func (q *Queries) LockProviderConnectionByID(ctx context.Context, id uuid.UUID) 
 		&i.RefreshedAt,
 		&i.LastUsedAt,
 		&i.LastErrorClass,
+	)
+	return i, err
+}
+
+const lockProviderServerGrant = `-- name: LockProviderServerGrant :one
+SELECT id, connection_id, server_id, origin, scopes, consented_at FROM provider_server_grants WHERE connection_id = $1 AND server_id = $2 FOR UPDATE
+`
+
+type LockProviderServerGrantParams struct {
+	ConnectionID uuid.UUID
+	ServerID     uuid.UUID
+}
+
+func (q *Queries) LockProviderServerGrant(ctx context.Context, arg LockProviderServerGrantParams) (ProviderServerGrant, error) {
+	row := q.db.QueryRow(ctx, lockProviderServerGrant, arg.ConnectionID, arg.ServerID)
+	var i ProviderServerGrant
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectionID,
+		&i.ServerID,
+		&i.Origin,
+		&i.Scopes,
+		&i.ConsentedAt,
 	)
 	return i, err
 }
@@ -1693,6 +1825,41 @@ func (q *Queries) UpdateServerProvider(ctx context.Context, arg UpdateServerProv
 		&i.IssParamSupported,
 		&i.ClientSecretExpiresAt,
 		&i.DiscoveredAt,
+	)
+	return i, err
+}
+
+const upsertProviderServerGrant = `-- name: UpsertProviderServerGrant :one
+INSERT INTO provider_server_grants (connection_id, server_id, origin, scopes)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (connection_id, server_id)
+DO UPDATE SET origin = EXCLUDED.origin, scopes = EXCLUDED.scopes, consented_at = now()
+RETURNING id, connection_id, server_id, origin, scopes, consented_at
+`
+
+type UpsertProviderServerGrantParams struct {
+	ConnectionID uuid.UUID
+	ServerID     uuid.UUID
+	Origin       string
+	Scopes       []string
+}
+
+// The person allows a server to use a connection, at an origin, for scopes.
+func (q *Queries) UpsertProviderServerGrant(ctx context.Context, arg UpsertProviderServerGrantParams) (ProviderServerGrant, error) {
+	row := q.db.QueryRow(ctx, upsertProviderServerGrant,
+		arg.ConnectionID,
+		arg.ServerID,
+		arg.Origin,
+		arg.Scopes,
+	)
+	var i ProviderServerGrant
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectionID,
+		&i.ServerID,
+		&i.Origin,
+		&i.Scopes,
+		&i.ConsentedAt,
 	)
 	return i, err
 }

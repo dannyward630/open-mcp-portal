@@ -6,7 +6,7 @@ import type { Schemas } from "../api/client";
 import { redirectTo } from "../components/providers/labels";
 import { NARROW_QUERY } from "@/lib/bitop-utils";
 import { myTeam, page, user } from "./fixtures";
-import { connection, connectionId, googleId, providerId, providerRef, providerSummaries } from "./fixtures-providers";
+import { connection, connectionId, connectServer, googleId, providerId, providerRef, providerSummaries } from "./fixtures-providers";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 const authorizeUrl = "https://github.com/login/oauth/authorize?client_id=Iv1.abc123&state=s1";
@@ -38,6 +38,25 @@ describe("Account › My connections", () => {
     expect(g).toHaveTextContent("Not used yet");
     await waitFor(() => expect(document.title).toBe("My connections · Open MCP Portal"));
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("lists the servers an account is allowed for, with their teams; a connection nobody may use says so", async () => {
+    const u = userEvent.setup();
+    const allowedServers = [
+      { server: connectServer(), origin: "https://tools.example.com", scopes: ["repo"], consentedAt: "2026-10-16T08:00:00Z" },
+      { server: connectServer({ id: "s2", slug: "docs", name: "Docs", teamSlug: "writers", teamName: "Writers" }), origin: "https://docs.example.com", scopes: ["repo"], consentedAt: "2026-10-16T08:01:00Z" },
+    ];
+    mockApi(routes({ "GET /v1/me/connections": () => [connection({ allowedServers }), google] }));
+    renderApp("/settings/connections");
+    const table = await screen.findByRole("table", { name: "Your connected accounts" });
+    const github = (await within(table).findByText("GitHub")).closest("tr")!;
+    expect(github).toHaveTextContent("GitHub tools (Platform tools), Docs (Writers)");
+    expect(github).toHaveTextContent("GitHub tools: https://tools.example.com");
+    expect(within(table).getByText("Google").closest("tr")).toHaveTextContent("None yet");
+    // Disconnecting says the servers are asked again.
+    await u.click(within(table).getByRole("button", { name: "Actions for GitHub" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Disconnect…" }));
+    expect(await screen.findByRole("alertdialog", { name: "Disconnect GitHub?" })).toHaveTextContent("You will also be asked again to allow each of the 2 servers that may use it now.");
   });
 
   it("explains when connections are needed when there are none", async () => {

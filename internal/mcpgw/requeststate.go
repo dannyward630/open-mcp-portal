@@ -395,6 +395,8 @@ func (rc *request) consentMessage(o gateways.Offer, c *providers.ConsentNeeded) 
 			verb = "Sign in again to"
 		}
 		what = fmt.Sprintf("%s %s%s", verb, name, scopes)
+	case c.Reason == providers.ReasonServerNotAllowed:
+		what = fmt.Sprintf("Allow %s to use your %s account%s", serverLabel(o), name, scopes)
 	default:
 		verb := "Connect your"
 		switch c.Reason {
@@ -404,6 +406,9 @@ func (rc *request) consentMessage(o gateways.Offer, c *providers.ConsentNeeded) 
 			verb = "Reconnect your"
 		}
 		what = fmt.Sprintf("%s %s account%s", verb, name, scopes)
+	}
+	if c.Reason == providers.ReasonServerNotAllowed && !c.Provider.ServerBound() {
+		return fmt.Sprintf("%s for %s in the %s gateway.", what, o.ExposedName, rc.gateway.Name)
 	}
 	return fmt.Sprintf("%s to use %s in the %s gateway.", what, o.ExposedName, rc.gateway.Name)
 }

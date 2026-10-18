@@ -46,6 +46,7 @@ func (a *api) providerRoutes() []route {
 		{"POST", "/v1/me/connections/start", a.session(a.startMyConnection)},
 		{"DELETE", "/v1/me/connections/{connectionId}", a.session(a.revokeMyConnection)},
 		{"GET", "/v1/connect/requests/{requestId}", a.session(a.getConnectRequest)},
+		{"POST", "/v1/connect/requests/{requestId}/confirm", a.session(a.confirmConnectRequest)},
 		{"PUT", "/v1/teams/{team}/mcp-servers/{serverId}/capabilities/{capabilityId}/requirement", a.session(a.setTeamMcpCapabilityRequirement)},
 		{"GET", providers.CallbackPath, http.HandlerFunc(a.connectCallback)},
 	}
@@ -145,8 +146,21 @@ func toAPIConnection(c providers.Connection) apitypes.ProviderConnection {
 	return apitypes.ProviderConnection{
 		Id: pc.ID, Provider: toAPIProviderRef(c.Provider), AccountLabel: pc.AccountLabel, Scopes: nonNilStrings(pc.Scopes),
 		Status: apitypes.ProviderConnectionStatus(pc.Status), ConnectedAt: pc.ConnectedAt, RefreshedAt: pc.RefreshedAt,
-		LastUsedAt: pc.LastUsedAt, ExpiresAt: pc.ExpiresAt, Refreshable: c.Refreshable(),
+		LastUsedAt: pc.LastUsedAt, ExpiresAt: pc.ExpiresAt, Refreshable: c.Refreshable(), AllowedServers: toAPIGrants(c.Servers),
 	}
+}
+
+func toAPIConnectServer(s providers.ServerRef) apitypes.ConnectServer {
+	return apitypes.ConnectServer{Id: s.ID, Slug: s.Slug, Name: s.Name, TeamSlug: s.TeamSlug, TeamName: s.TeamName}
+}
+
+func toAPIGrants(gs []providers.ServerGrant) []apitypes.ProviderServerGrant {
+	out := make([]apitypes.ProviderServerGrant, len(gs))
+	for i, g := range gs {
+		out[i] = apitypes.ProviderServerGrant{Server: toAPIConnectServer(g.Server), Origin: g.Origin, Scopes: nonNilStrings(g.Scopes),
+			ConsentedAt: g.ConsentedAt}
+	}
+	return out
 }
 
 // toAPIRequirement is an effective requirement (nil: none). connected is
@@ -344,13 +358,32 @@ func (a *api) startMyConnection(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, apitypes.ConnectStarted{AuthorizeUrl: st.AuthorizeURL, Scopes: st.Scopes, ExpiresAt: st.ExpiresAt})
 }
 
+func (a *api) confirmConnectRequest(w http.ResponseWriter, r *http.Request) {
+	id, _ := auth.FromContext(r.Context())
+	if id.SessionID == "" {
+		httpx.Error(w, http.StatusForbidden, "session_required", "Confirm from the web app")
+		return
+	}
+	c, err := a.Providers.ConfirmRequest(r.Context(), a.actor(r), r.PathValue("requestId"))
+	if failed(w, r, err) {
+		return
+	}
+	httpx.JSON(w, http.StatusOK, apitypes.ConnectConfirmed{Provider: toAPIProviderRef(c.Provider), Server: toAPIConnectServer(c.Server),
+		Scopes: nonNilStrings(c.Scopes)})
+}
+
 func (a *api) getConnectRequest(w http.ResponseWriter, r *http.Request) {
 	v, err := a.Providers.GetRequest(r.Context(), a.actor(r), r.PathValue("requestId"))
 	if failed(w, r, err) {
 		return
 	}
 	req := v.Request
-	httpx.JSON(w, http.StatusOK, apitypes.ConnectRequest{
+	var server *apitypes.ConnectServer
+	if v.Server != nil {
+		sv := toAPIConnectServer(*v.Server)
+		server = &sv
+	}
+	httpx.JSON(w, http.StatusOK, apitypes.ConnectRequest{Server: server,
 		Id: v.ID, Provider: toAPIProviderRef(v.Provider), Reason: apitypes.ConnectRequestReason(v.Reason),
 		RequiredScopes: nonNilStrings(req.RequiredScopes), RequestScopes: v.RequestScopes, GrantedScopes: v.Granted,
 		AccountLabel: v.AccountLabel, Gateway: apitypes.CallRef{Id: req.GatewayID, Slug: v.GatewaySlug, Name: v.GatewayName, Exists: v.GatewayExists},

@@ -10,7 +10,7 @@ import { axe } from "vitest-axe";
 import { redirectTo } from "../components/providers/labels";
 import { missingScopes, resultText, safeMissingScopes } from "../pages/connect/done";
 import { authConfig } from "./fixtures";
-import { connectRequest, providerId, providerSummaries, requestId } from "./fixtures-providers";
+import { connectRequest, connectServer, providerId, providerSummaries, requestId } from "./fixtures-providers";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
 const path = `/connect/github?request=${requestId}`;
@@ -35,6 +35,10 @@ describe("Connect page", () => {
     expect(request).toHaveTextContent("github-tools__create_issue (Create issue)");
     expect(request).toHaveTextContent("Support tools");
     expect(request).toHaveTextContent("octocat");
+    // The link is for one server: the page names it and its team, and says the token goes only to servers the person allows.
+    expect(request).toHaveTextContent("GitHub tools (Platform tools)");
+    expect(screen.getByText(/and GitHub tools \(Platform tools\) is allowed/)).toBeInTheDocument();
+    expect(screen.getByText(/sends it only to servers you allow, starting with GitHub tools \(Platform tools\)/)).toBeInTheDocument();
     const scopes = screen.getByRole("list", { name: "GitHub will ask you to allow" });
     const items = within(scopes).getAllByRole("listitem");
     expect(items[0]).toHaveTextContent("read:org");
@@ -64,6 +68,64 @@ describe("Connect page", () => {
     expect(screen.getByText("Taking you to GitHub…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue to GitHub" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
+
+  describe("a server that isn't allowed yet (the account is connected with the scopes)", () => {
+    const allowed = (extra = {}) => connectRequest({ reason: "server_not_allowed", requiredScopes: ["repo"], requestScopes: ["read:org", "repo"], grantedScopes: ["read:org", "repo"], ...extra });
+
+    it("says which server and team it allows, for which scopes, and allows it without leaving for the provider", async () => {
+      const u = userEvent.setup();
+      const go = vi.spyOn(redirectTo, "go").mockImplementation(() => {});
+      const { calls, container } = open({
+        [`GET /v1/connect/requests/${requestId}`]: () => allowed(),
+        [`POST /v1/connect/requests/${requestId}/confirm`]: () => ({ provider: connectRequest().provider, server: connectServer(), scopes: ["repo"] }),
+        "GET /v1/auth-providers": () => providerSummaries,
+      });
+      expect(await screen.findByRole("heading", { level: 1, name: "Allow GitHub tools (Platform tools) to use your GitHub account" })).toBeInTheDocument();
+      expect(screen.getByText(/is served by GitHub tools \(Platform tools\), which you haven't allowed to use your GitHub account yet/)).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "The request" })).toHaveTextContent("GitHub tools (Platform tools)");
+      // Only what the server asks for, not the union the provider would be asked for.
+      const scopes = screen.getByRole("list", { name: "GitHub tools may use" });
+      expect(within(scopes).getAllByRole("listitem")).toHaveLength(1);
+      expect(within(scopes).getByRole("listitem")).toHaveTextContent("repo");
+      expect(screen.getByText(/Nothing is sent to GitHub: it already has your account/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Continue to GitHub/ })).toBeNull();
+      expect(await axe(container)).toHaveNoViolations();
+      expect(calls.some((c) => c.method === "POST")).toBe(false);
+
+      await u.click(screen.getByRole("button", { name: "Allow GitHub tools" }));
+      expect(await screen.findByRole("heading", { level: 1, name: "Connected to GitHub" })).toBeInTheDocument();
+      const post = calls.find((c) => c.method === "POST")!;
+      expect(post.url).toBe(`/v1/connect/requests/${requestId}/confirm`);
+      expect(post.headers.get("X-CSRF-Token")).toBe("csrf-123");
+      expect(calls.some((c) => c.url === "/v1/me/connections/start")).toBe(false);
+      expect(go).not.toHaveBeenCalled();
+    });
+
+    it("looks again when the account changed meanwhile (409): the page then goes to the provider", async () => {
+      const u = userEvent.setup();
+      let reads = 0;
+      open({
+        [`GET /v1/connect/requests/${requestId}`]: () => (reads++ === 0 ? allowed() : connectRequest()),
+        [`POST /v1/connect/requests/${requestId}/confirm`]: () => Reply.error(409, "connect_required", "Your account isn't connected with the access this server needs; continue to the provider first"),
+      });
+      await u.click(await screen.findByRole("button", { name: "Allow GitHub tools" }));
+      expect(await screen.findByRole("button", { name: "Continue to GitHub" })).toBeInTheDocument();
+      expect(screen.getByText(/continue to the provider first/)).toBeInTheDocument();
+    });
+
+    it("says a link for a server that moved, or one that expires meanwhile, is no longer valid", async () => {
+      const u = userEvent.setup();
+      const { unmount } = open({ [`GET /v1/connect/requests/${requestId}`]: () => Reply.error(410, "connect_request_server_changed", "The server's address changed") });
+      expect(await screen.findByRole("heading", { level: 1, name: "This link expired" })).toBeInTheDocument();
+      unmount();
+      open({
+        [`GET /v1/connect/requests/${requestId}`]: () => allowed(),
+        [`POST /v1/connect/requests/${requestId}/confirm`]: () => Reply.error(410, "connect_request_expired", "Expired"),
+      });
+      await u.click(await screen.findByRole("button", { name: "Allow GitHub tools" }));
+      expect(await screen.findByRole("heading", { level: 1, name: "This link expired" })).toBeInTheDocument();
+    });
   });
 
   it("cancels without contacting anyone", async () => {

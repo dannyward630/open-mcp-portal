@@ -20,7 +20,9 @@ import (
 //     service_account; recorded denied);
 //  2. of a turned-off provider is refused (-32010 provider_disabled;
 //     recorded denied);
-//  3. without an active connection covering the scopes gets a consent link
+//  3. without an active connection covering the scopes, or with one the
+//     person hasn't allowed this server to use (at the origin its URL has
+//     now; reason server_not_allowed), gets a consent link
 //     (-32042 URLElicitationRequiredError, the link also in the message;
 //     a modern client that declared URL elicitation gets an
 //     input_required result instead, one that didn't a tool error or
@@ -49,6 +51,11 @@ func kindNoun(kind string) string {
 		return "resource"
 	}
 	return "tool"
+}
+
+// serverLabel names the server and its team, as the consent page does.
+func serverLabel(o gateways.Offer) string {
+	return fmt.Sprintf("%s (%s)", o.Server.Name, o.TeamSlug)
 }
 
 func scopeNote(scopes []string) string {
@@ -151,6 +158,10 @@ func (rc *request) needsAuthorization(o gateways.Offer, c *providers.ConsentNeed
 		}
 		msg = fmt.Sprintf("%s needs you to %s %s%s. Open %s, then try again.", o.ExposedName, verb, name, scopes, c.URL)
 		elicit = fmt.Sprintf("Sign in to %s%s to use %s in the %s gateway.", name, scopes, o.ExposedName, rc.gateway.Name)
+	case c.Reason == providers.ReasonServerNotAllowed:
+		msg = fmt.Sprintf("%s needs you to allow %s to use your %s account%s. Open %s to review and allow it, then try again.",
+			o.ExposedName, serverLabel(o), name, scopes, c.URL)
+		elicit = fmt.Sprintf("Allow %s to use your %s account%s for %s in the %s gateway.", serverLabel(o), name, scopes, o.ExposedName, rc.gateway.Name)
 	case c.Reason == providers.ReasonMissingScopes:
 		msg = fmt.Sprintf("%s needs more access to your %s account%s. Open %s to grant it, then try again.", o.ExposedName, name, scopes, c.URL)
 	case c.Reason == providers.ReasonNeedsReconsent:

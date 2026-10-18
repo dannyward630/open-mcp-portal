@@ -716,6 +716,14 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 				return err
 			}
 		}
+		// People allowed this server to receive their provider token at the
+		// origin and for the provider it had then (F-3): not for another.
+		// A path-only edit keeps the grants.
+		if reason := grantResetReason(cur, row); reason != "" {
+			if err := resetProviderGrants(ctx, q, a, ta.team.ID, id, reason, originChange(cur.URL, row.URL)); err != nil {
+				return err
+			}
+		}
 		after, err := effectiveAll(ctx, q, row, ps)
 		if err != nil {
 			return err
@@ -1042,6 +1050,19 @@ func unchanged(cur dbgen.McpServer, p dbgen.UpdateMCPServerParams, valueChanged 
 		(capture == nil || *capture == cur.CapturePayloads)
 }
 
+// grantResetReason says why an update ends people's grants for a server
+// ("": it doesn't): the URL moved to another origin, or the requirement
+// names another provider (or none).
+func grantResetReason(cur, row dbgen.McpServer) string {
+	switch {
+	case !sameOrigin(cur.URL, row.URL):
+		return "origin_changed"
+	case row.AuthProviderID != cur.AuthProviderID:
+		return "provider_changed"
+	}
+	return ""
+}
+
 func setIf[T any](dst *T, v *T) {
 	if v != nil {
 		*dst = *v
@@ -1081,6 +1102,9 @@ func (s *Service) Delete(ctx context.Context, a authz.Actor, ref string, id uuid
 				return err
 			}
 		} else if err != nil && !errors.Is(store.NotFound(err), store.ErrNotFound) {
+			return err
+		}
+		if err := resetProviderGrants(ctx, q, a, ta.team.ID, id, "server_deleted", nil); err != nil {
 			return err
 		}
 		if err := q.DeleteMCPServer(ctx, id); err != nil {

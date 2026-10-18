@@ -498,6 +498,8 @@ type ProviderConnectRequest struct {
 	CreatedAt       time.Time
 	ExpiresAt       time.Time
 	UsedAt          *time.Time
+	ServerID        uuid.NullUUID
+	ServerOrigin    *string
 }
 
 type ProviderConnection struct {
@@ -514,6 +516,15 @@ type ProviderConnection struct {
 	RefreshedAt        *time.Time
 	LastUsedAt         *time.Time
 	LastErrorClass     *string
+}
+
+type ProviderServerGrant struct {
+	ID           uuid.UUID
+	ConnectionID uuid.UUID
+	ServerID     uuid.UUID
+	Origin       string
+	Scopes       []string
+	ConsentedAt  time.Time
 }
 
 type RateLimitCounter struct {

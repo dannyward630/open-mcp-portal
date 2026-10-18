@@ -1,6 +1,12 @@
 package registry
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/uuid"
+
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
+)
 
 func TestOriginOf(t *testing.T) {
 	for _, c := range []struct {
@@ -32,5 +38,29 @@ func TestOriginOf(t *testing.T) {
 	}
 	if originOf("https://Api.Example.com:443/mcp") != "https://api.example.com" || originOf("http://h:8080/x") != "http://h:8080" {
 		t.Errorf("origin spelling: %q %q", originOf("https://Api.Example.com:443/mcp"), originOf("http://h:8080/x"))
+	}
+}
+
+// F-3: a grant to receive a person's provider token survives a path-only
+// edit and nothing else about the URL or the requirement's provider.
+func TestGrantResetReason(t *testing.T) {
+	p1, p2 := uuid.NullUUID{UUID: uuid.New(), Valid: true}, uuid.NullUUID{UUID: uuid.New(), Valid: true}
+	sv := func(url string, p uuid.NullUUID) dbgen.McpServer { return dbgen.McpServer{URL: url, AuthProviderID: p} }
+	for _, c := range []struct {
+		name      string
+		cur, next dbgen.McpServer
+		want      string
+	}{
+		{"same", sv("https://a.example/mcp", p1), sv("https://a.example/mcp", p1), ""},
+		{"path only", sv("https://a.example/mcp", p1), sv("https://A.example:443/v2/mcp/", p1), ""},
+		{"host", sv("https://a.example/mcp", p1), sv("https://b.example/mcp", p1), "origin_changed"},
+		{"port", sv("https://a.example/mcp", p1), sv("https://a.example:8443/mcp", p1), "origin_changed"},
+		{"scheme", sv("https://a.example/mcp", p1), sv("http://a.example/mcp", p1), "origin_changed"},
+		{"other provider", sv("https://a.example/mcp", p1), sv("https://a.example/mcp", p2), "provider_changed"},
+		{"requirement removed", sv("https://a.example/mcp", p1), sv("https://a.example/mcp", uuid.NullUUID{}), "provider_changed"},
+	} {
+		if got := grantResetReason(c.cur, c.next); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }

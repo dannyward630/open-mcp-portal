@@ -69,6 +69,8 @@ const actionLabels: Record<string, string> = {
   "provider_connection.create": "Connected account",
   "provider_connection.refresh_failed": "Account needs reconnecting",
   "provider_connection.revoke": "Disconnected account",
+  "provider_connection.server_allow": "Allowed a server to use an account",
+  "mcp_server.provider_grants_reset": "Ended permission to use people's accounts",
   // Operations (docs/phase6-operations.md).
   "settings.limits_update": "Changed rate limits",
   "team.limits_update": "Changed team rate limits",
@@ -106,6 +108,13 @@ export const connectionRevokeReasons: Record<string, string> = {
   server_deleted: "when its MCP server was deleted",
 };
 
+/** Why people's permission for a server to use their accounts ended (mcp_server.provider_grants_reset, metadata.reason). */
+export const grantsResetReasons: Record<string, string> = {
+  origin_changed: "after its URL moved to another host",
+  provider_changed: "after the account it requires changed",
+  server_deleted: "when it was deleted",
+};
+
 /** Why a published server went back to review (mcp_server.publish_request, metadata.reason). */
 export const publishRequestReasons: Record<string, string> = {
   url_changed: "after its URL changed",
@@ -125,8 +134,16 @@ export const oauthRevokeReasons: Record<string, string> = {
 export function actionLabel(action: string, entry?: Partial<Pick<AuditEntry, "after" | "metadata">>) {
   const known = actionLabels[action];
   // A disconnection says why, when the reason is one we know ("Disconnected app after the person was suspended").
-  const reason = action === "oauth.revoke" || action === "provider_connection.revoke" || action === "mcp_server.publish_request" ? entry?.metadata?.reason : undefined;
-  const reasons = action === "oauth.revoke" ? oauthRevokeReasons : action === "mcp_server.publish_request" ? publishRequestReasons : connectionRevokeReasons;
+  const withReason = ["oauth.revoke", "provider_connection.revoke", "mcp_server.publish_request", "mcp_server.provider_grants_reset"];
+  const reason = withReason.includes(action) ? entry?.metadata?.reason : undefined;
+  const reasons =
+    action === "oauth.revoke"
+      ? oauthRevokeReasons
+      : action === "mcp_server.publish_request"
+        ? publishRequestReasons
+        : action === "mcp_server.provider_grants_reset"
+          ? grantsResetReasons
+          : connectionRevokeReasons;
   if (known && typeof reason === "string" && reasons[reason]) return `${known} ${reasons[reason]}`;
   const via = action === "mcp_call.payload_view" ? entry?.metadata?.via : undefined;
   if (known && typeof via === "string" && payloadViewVia[via]) return `${known} ${payloadViewVia[via]}`;

@@ -8,6 +8,7 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/gateways"
 	"github.com/ncecere/open-mcp-portal/internal/identity"
 	"github.com/ncecere/open-mcp-portal/internal/providers"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
 	"github.com/ncecere/open-mcp-portal/internal/upstream"
 	"github.com/ncecere/open-mcp-portal/internal/upstream/oauthmeta"
 )
@@ -150,5 +151,5 @@ func (rc *request) exchange(o gateways.Offer, rec *calls.Call, cred *providers.C
 
 func (rc *request) callContext(o gateways.Offer) providers.CallContext {
 	return providers.CallContext{User: rc.principal.user, Gateway: rc.gateway, CapabilityID: o.Capability.ID, Kind: o.Capability.Kind,
-		ExposedName: o.ExposedName, Title: o.Capability.Title}
+		ServerID: o.Server.ID, ServerOrigin: registry.OriginOf(o.Server.URL), ExposedName: o.ExposedName, Title: o.Capability.Title}
 }

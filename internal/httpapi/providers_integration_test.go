@@ -127,6 +127,12 @@ func rpcErr(out map[string]any) (code float64, msg string, data map[string]any) 
 // consentURL checks a -32042 answer and returns its link.
 func (e *provEnv) consentURL(out map[string]any, reason string) string {
 	e.t.Helper()
+	return e.consentURLFor(out, reason, e.provider.Slug)
+}
+
+// consentURLFor is consentURL for the provider with the given slug.
+func (e *provEnv) consentURLFor(out map[string]any, reason, slug string) string {
+	e.t.Helper()
 	code, msg, data := rpcErr(out)
 	if code != -32042 {
 		e.t.Fatalf("want -32042, got %v", out)
@@ -137,14 +143,14 @@ func (e *provEnv) consentURL(out map[string]any, reason string) string {
 	}
 	el := els[0].(map[string]any)
 	link, _ := el["url"].(string)
-	if el["mode"] != "url" || !strings.HasPrefix(link, e.app.URL+"/connect/"+e.provider.Slug+"?request=") ||
-		!strings.Contains(msg, link) || el["elicitationId"] != strings.TrimPrefix(link, e.app.URL+"/connect/"+e.provider.Slug+"?request=") ||
+	if el["mode"] != "url" || !strings.HasPrefix(link, e.app.URL+"/connect/"+slug+"?request=") ||
+		!strings.Contains(msg, link) || el["elicitationId"] != strings.TrimPrefix(link, e.app.URL+"/connect/"+slug+"?request=") ||
 		!strings.Contains(el["message"].(string), "SUPPORT gateway") {
 		e.t.Fatalf("-32042 = %q %v", msg, el)
 	}
 	var last string
 	_ = e.app.Pool.QueryRow(context.Background(), `SELECT outcome || ' ' || error_class || ' ' || provider_slug FROM mcp_calls ORDER BY id DESC LIMIT 1`).Scan(&last)
-	if last != "needs_authorization "+reason+" "+e.provider.Slug {
+	if last != "needs_authorization "+reason+" "+slug {
 		e.t.Fatalf("recorded %q, want needs_authorization %s", last, reason)
 	}
 	return link
@@ -827,6 +833,15 @@ func TestConnectResponseFormatsAndAdmin(t *testing.T) {
 		t.Fatalf("slack = %s", to)
 	}
 	e.setRequirement(map[string]any{"providerId": slack.Id, "scopes": []string{"users:read"}})
+	// Connected with the scopes, but the server isn't allowed yet: the link
+	// goes to the confirm step, which makes no request to the provider.
+	slackLink := e.consentURLFor(e.callTool(e.key, "status__provider_token"), "server_not_allowed", "slack")
+	slackAuthorizes, slackTokenReqs := slackOAuth.AuthorizeRequests(), slackOAuth.TokenRequests()
+	code, ec = e.member.call("POST", "/v1/connect/requests/"+requestID(slackLink)+"/confirm", nil, nil, nil)
+	mustCode(t, "allow the server", code, ec, 200, "")
+	if slackOAuth.AuthorizeRequests() != slackAuthorizes || slackOAuth.TokenRequests() != slackTokenReqs {
+		t.Fatal("allowing a server contacted the provider")
+	}
 	rep := e.providerReport(e.callTool(e.key, "status__provider_token"))
 	if issued := slackOAuth.Issued(); rep.Provider != "slack" || rep.TokenSHA256 != testutil.TokenDigest(issued[0]) {
 		t.Fatalf("slack report = %+v", rep)
