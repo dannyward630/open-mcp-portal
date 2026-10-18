@@ -119,8 +119,9 @@ with an effective requirement:
 
 The gateway is stateless (JSON responses, no session stream), so it never sends `notifications/elicitation/complete`.
 The person retries the call; the spec allows manual retry. Client capabilities are only sent on `initialize`, so the
-gateway can't tell whether a later request comes from a client that supports URL elicitation. Every client therefore
-gets `-32042`, and its `message` carries the link for clients that only show errors. The URL contains only an opaque
+gateway can't tell whether a later request comes from a client that supports URL elicitation. Every legacy client
+therefore gets `-32042` (a modern 2026-07-28 request states its capabilities each time: with URL elicitation it gets an
+input request, without it a tool error or `-32010`, [mcp-protocol.md](mcp-protocol.md)), and the `message` carries the link for clients that only show errors. The URL contains only an opaque
 ID: no personal data, and it doesn't sign anyone in. Static header names `MCP-Gateway-Provider` and
 `MCP-Gateway-Provider-Token` become reserved (`400 invalid_auth_header`), like `MCP-Gateway-Identity`.
 

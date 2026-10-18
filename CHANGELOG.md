@@ -23,7 +23,7 @@ now speak the new protocol era next to 2024-11-05 to 2025-11-25, chosen per requ
 - "Connect your account" as a multi round-trip request: modern clients that declare URL elicitation get an
   `input_required` result with the existing connect link and a sealed `requestState` (AES-GCM, key derived from
   `ENCRYPTION_KEY`; bound to the person, gateway, request and parameters; 10 minutes) and retry; declines return
-  "authorization declined". Everyone else keeps `-32042`.
+  "authorization declined". A modern client that did not declare URL elicitation gets no `-32042` (the revision forbids it): a tool call answers a tool error and a prompt or resource read `-32010`, with the same link in the message. Legacy clients keep `-32042`.
 - Dynamic client registration accepts and echoes `application_type` (`web` or `native`); documented as deprecated.
 - `cmd/fakemcp -schema-tools`; `secrets.Box.Derive`. The MCP conformance suite was run against a gateway
   (results in docs/mcp-protocol.md).

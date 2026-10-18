@@ -175,7 +175,7 @@ type Handler struct {
 	// them (nil: never).
 	Capture *capture.Service
 	// Secrets derives the key that protects requestState (the consent
-	// input request of the modern era; nil: consent is -32042 for everyone).
+	// input request of the modern era; nil: consent is -32042 for legacy clients and a plain error for modern ones).
 	Secrets *secrets.Box
 	Pool    *pgxpool.Pool
 	AppURL  string

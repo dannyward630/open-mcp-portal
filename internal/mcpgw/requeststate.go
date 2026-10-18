@@ -22,8 +22,9 @@ import (
 )
 
 // "Connect your account" as a multi round-trip request (MCP 2026-07-28,
-// docs/mcp-protocol.md "Consent"). Where a legacy client (or a modern one
-// that doesn't declare URL elicitation) gets JSON-RPC -32042, a modern
+// docs/mcp-protocol.md "Consent"). Where a legacy client gets JSON-RPC
+// -32042 (and a modern one that doesn't declare URL elicitation a tool error
+// or -32010 with the link, delegated.go), a modern
 // client that declares elicitation.url gets an InputRequiredResult: one
 // elicitation/create request in URL mode, with the same /connect/... link,
 // and a requestState. The person opens the link, the client retries the
@@ -351,7 +352,7 @@ func (rc *request) declined(o gateways.Offer) {
 
 // consentInputRequired answers a modern request whose client declared URL
 // elicitation with the consent link as an input request (ok false: the
-// caller falls back to -32042, as when the gateway has no key).
+// caller falls back to the plain answer, as when the gateway has no key).
 func (rc *request) consentInputRequired(o gateways.Offer, c *providers.ConsentNeeded, rec *calls.Call, class string) bool {
 	box := rc.h.states()
 	if box == nil || !rc.urlElicitation() {

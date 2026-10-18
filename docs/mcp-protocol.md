@@ -12,7 +12,7 @@ servers](#the-portal-as-a-client-of-your-servers) (`internal/upstream`).
 | Every request carries | nothing required | `_meta` `io.modelcontextprotocol/protocolVersion` and `…/clientCapabilities`; headers `MCP-Protocol-Version`, `Mcp-Method` and, for calls and reads, `Mcp-Name` |
 | Results | as before | `resultType`, `_meta` `…/serverInfo`; lists and reads also `ttlMs` and `cacheScope` |
 | `ping`, `logging/setLevel`, session ids | `ping` answers; no sessions either | removed |
-| "Connect your account" | JSON-RPC `-32042` | `input_required` result (clients with URL elicitation) |
+| "Connect your account" | JSON-RPC `-32042` | `input_required` result (clients with URL elicitation); otherwise a tool error or `-32010` with the link in the message |
 
 ## Which era a request is
 
@@ -113,9 +113,13 @@ OAuth-protected server, phase 7), the answer depends on the client:
   who asked" check is unchanged. There is no `elicitationId` (removed in 2026-07-28). The message names the provider or
   the server's own sign-in, the scopes, the capability and the gateway, and says whether it is a first connection, more
   access or a reconnection. The call is recorded `needs_authorization` as before and nothing reaches your server.
-- **Modern request without URL elicitation, and every legacy request:** the JSON-RPC error `-32042` with the link in
-  `data.elicitations` and in the message, exactly as before. (2026-07-28 says implementations must not emit `-32042`;
-  see "Deviations".)
+- **Modern request without URL elicitation:** no `-32042` (2026-07-28 says implementations must not emit it). A `tools/call`
+  gets a normal result with `isError: true` and the link in its text ("... Open <link> to connect it, then try again.");
+  `prompts/get` and `resources/read`, which have no tool result, get the JSON-RPC error `-32010` with `data.reason`
+  (`not_connected`, `missing_scopes`, `needs_reconsent`), `data.provider` and the link in the message. The link is the same
+  one, and the call is recorded `needs_authorization` as before.
+- **Every legacy request:** the JSON-RPC error `-32042` with the link in `data.elicitations` and in the message, exactly
+  as before.
 
 The person opens the link, then the client **retries the original request** with `requestState` echoed and
 `inputResponses`. The gateway verifies the state, then re-runs every normal check, so the person may be connected now
@@ -324,9 +328,6 @@ For servers in `oauth` mode ([phase7-upstream-oauth.md](phase7-upstream-oauth.md
 
 ## Deviations from the specification
 
-- **`-32042` is still sent to modern clients that don't declare URL elicitation.** 2026-07-28 says implementations of it
-  must not emit `-32042`; there is no other way to give such a client the link, and the message carries it. Change it
-  (for example to `-32010` with a reason) if a strict client needs that.
 - **Rate limit.** `-32029` (legacy) is inside the range reserved for the specification in 2026-07-28, so modern requests
   get code `429` (the HTTP status) instead. The status, `Retry-After`, and `data` are the same.
 - **Refusals** keep our grandfathered codes `-32001` (HTTP-level refusals) and `-32010` (a refusal with a reason), in the

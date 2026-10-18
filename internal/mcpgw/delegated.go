@@ -23,7 +23,8 @@ import (
 //  3. without an active connection covering the scopes gets a consent link
 //     (-32042 URLElicitationRequiredError, the link also in the message;
 //     a modern client that declared URL elicitation gets an
-//     input_required result instead; recorded needs_authorization) and
+//     input_required result instead, one that didn't a tool error or
+//     -32010 with the link; recorded needs_authorization) and
 //     nothing is forwarded;
 //  4. with a token expiring within a minute refreshes it first; a provider
 //     that can't be reached is -32010 provider_unavailable (recorded
@@ -121,14 +122,18 @@ func (rc *request) providerDisabled(req *registry.Requirement, rec *calls.Call) 
 // needsAuthorization answers URLElicitationRequiredError (MCP 2025-11-25)
 // with one URL elicitation. Legacy clients only state their capabilities on
 // initialize, which the stateless gateway doesn't keep, so every legacy
-// client gets it (and so does a modern one without URL elicitation), and the
+// client gets it, and the
 // message carries the link too for clients that only show errors. The URL
 // holds an opaque ID only: it signs nobody in, and works only in the
 // person's own browser session.
 //
 // A modern request (2026-07-28) from a client that declared URL elicitation
 // gets the same link as a multi round-trip input request instead
-// (requeststate.go); nothing in the link, or elsewhere, changes.
+// (requeststate.go); nothing in the link, or elsewhere, changes. A modern
+// request from a client that did not declare it gets no -32042 (the revision
+// says not to send it to such a client): a tool call answers a tool error
+// (isError) and a prompt or resource read a -32010 error, both with the
+// link in the message.
 func (rc *request) needsAuthorization(o gateways.Offer, c *providers.ConsentNeeded, rec *calls.Call, class string) {
 	if rc.consentInputRequired(o, c, rec, class) {
 		return
@@ -156,12 +161,20 @@ func (rc *request) needsAuthorization(o gateways.Offer, c *providers.ConsentNeed
 	if elicit == "" {
 		elicit = fmt.Sprintf("Connect your %s account%s to use %s in the %s gateway.", name, scopes, o.ExposedName, rc.gateway.Name)
 	}
-	data := map[string]any{"elicitations": []map[string]any{{
-		"mode": "url", "elicitationId": c.RequestID, "url": c.URL, "message": elicit,
-	}}}
-	n := rc.failData(codeURLElicitationRequired, msg, data)
 	if class == "" {
 		class = c.Reason
+	}
+	var n int64
+	switch {
+	case rc.modern && o.Capability.Kind == upstream.KindTool:
+		n = rc.reply(map[string]any{"content": []map[string]any{{"type": "text", "text": msg}}, "isError": true})
+	case rc.modern:
+		n = rc.failData(codeDenied, msg, map[string]any{"reason": class, "provider": c.Provider.Slug})
+	default:
+		data := map[string]any{"elicitations": []map[string]any{{
+			"mode": "url", "elicitationId": c.RequestID, "url": c.URL, "message": elicit,
+		}}}
+		n = rc.failData(codeURLElicitationRequired, msg, data)
 	}
 	rec.Outcome, rec.ErrorClass = calls.OutcomeNeedsAuthorization, class
 	rc.record(*rec, n)

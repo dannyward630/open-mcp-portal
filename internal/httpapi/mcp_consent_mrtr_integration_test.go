@@ -160,17 +160,19 @@ func TestConsentAsInputRequired(t *testing.T) {
 		t.Fatalf("answer = %v", out)
 	}
 
-	// Everyone else keeps -32042: a modern client without URL elicitation (none,
-	// form only), and legacy clients.
+	// A modern client without URL elicitation (none, form only) gets no -32042
+	// (2026-07-28 forbids it): a tool error with the same link in its text.
 	for name, caps := range map[string]map[string]any{
 		"no capabilities": {}, "elicitation without modes": {"elicitation": map[string]any{}},
 		"form only": {"elicitation": map[string]any{"form": map[string]any{}}}, "sampling only": {"sampling": map[string]any{}},
 	} {
 		got := e.mcall(e.key, "tools/call", toolCall(tool, nil), caps)
-		if l := e.consentURL(got, "not_connected"); l != link {
+		if l := plainConsentLink(t, got, e.app.URL, e.provider.Slug); l != link {
 			t.Errorf("%s: link %s", name, l)
 		}
+		e.lastCall("needs_authorization not_connected github")
 	}
+	// Legacy clients keep -32042.
 	e.consentURL(e.callTool(e.key, tool), "not_connected")
 
 	// The person hasn't connected yet: the retry asks again, with the same
@@ -480,12 +482,13 @@ func TestConsentWithSDKClient(t *testing.T) {
 		t.Fatalf("third call = %+v %v (asked %d)", res, err, n)
 	}
 
-	// A client without URL elicitation (the SDK's default) gets -32042 as an
-	// error it can show.
+	// A client without URL elicitation (the SDK's default) gets a tool error
+	// it can show, with the link in its text (not -32042).
 	plain := connectEra(t, e.app, "support", e.key, "", nil)
 	e.scalar(`DELETE FROM provider_connections WHERE user_id = $1 RETURNING 'x'`, e.userID("blair@localhost"))
-	if _, err := plain.CallTool(ctx, &mcp.CallToolParams{Name: "status__provider_token"}); err == nil || !strings.Contains(err.Error(), "/connect/github?request=") {
-		t.Fatalf("plain modern client = %v", err)
+	res, err = plain.CallTool(ctx, &mcp.CallToolParams{Name: "status__provider_token"})
+	if err != nil || res == nil || !res.IsError || len(res.Content) != 1 || !strings.Contains(fmt.Sprint(res.Content[0].(*mcp.TextContent).Text), "/connect/github?request=") {
+		t.Fatalf("plain modern client = %+v %v", res, err)
 	}
 }
 
@@ -532,10 +535,11 @@ func TestUpstreamOAuthConsentAsInputRequired(t *testing.T) {
 	if e.pm.Requests() != pmBefore {
 		t.Fatal("the server was contacted without a connection")
 	}
-	// Without URL elicitation: -32042 with the same link.
-	if l := e.link(call(nil, nil), slug, "not_connected"); l != link {
+	// Without URL elicitation: a tool error (no -32042 for a modern client) with the same link.
+	if l := plainConsentLink(t, call(nil, nil), e.app.URL, slug); l != link {
 		t.Fatalf("link %s vs %s", l, link)
 	}
+	e.recorded("needs_authorization not_connected " + slug)
 	if to := e.connectVia(e.member, providerID, link); !strings.Contains(to, "result=connected") {
 		t.Fatalf("connect = %s", to)
 	}
@@ -546,4 +550,30 @@ func TestUpstreamOAuthConsentAsInputRequired(t *testing.T) {
 	if who := whoamiOf(t, done); !who.Verified || who.BearerSHA256 == "" {
 		t.Fatalf("whoami = %+v", who)
 	}
+}
+
+// plainConsentLink checks the answer a modern client that did not declare URL
+// elicitation gets for a tool that needs a connection: a tool error (isError),
+// not a JSON-RPC error, and not -32042, with the /connect link in its text.
+func plainConsentLink(t *testing.T, out map[string]any, appURL, slug string) string {
+	t.Helper()
+	if out["error"] != nil {
+		t.Fatalf("a JSON-RPC error, want a tool error: %v", out)
+	}
+	r := resultOf(t, out)
+	content, _ := r["content"].([]any)
+	if r["isError"] != true || len(content) != 1 || r["resultType"] != "complete" {
+		t.Fatalf("answer = %v", out)
+	}
+	text, _ := content[0].(map[string]any)["text"].(string)
+	prefix := appURL + "/connect/" + slug + "?request="
+	i := strings.Index(text, prefix)
+	if i < 0 {
+		t.Fatalf("no link in %q", text)
+	}
+	link := text[i:]
+	if j := strings.IndexAny(link, " ,"); j >= 0 {
+		link = link[:j]
+	}
+	return link
 }
