@@ -3,6 +3,10 @@
 Last updated: 2026-10-18. Open MCP Portal (formerly Open MCP Gateway, decision 46), version 0.2.0, **cut on 2026-10-18**
 (release notes: [releases/v0.2.0.md](releases/v0.2.0.md); the first release is [v0.1.0](releases/v0.1.0.md)).
 
+## Since v0.2.0 (unreleased, branch `v021-features`)
+
+Built, see [CHANGELOG.md](../CHANGELOG.md): a manual **Test connection** sends the editor's identity token and says when the server refuses it (decision 61; the limit is stated there: a server that refuses only at tool execution still passes), and `OAUTH_MAX_REGISTERED_CLIENTS` caps Dynamic Client Registration (threat model H-4, cap done). Verified by Go tests against PostgreSQL (the Test with a fake upstream that refuses `Authorization` at the HTTP level, with the token verified against the JWKS, and the cap with concurrent registrations) and the web tests. Not tried against DeepWiki itself or in a browser.
+
 ## v0.2.0 (2026-10-18)
 
 Built: MCP 2026-07-28 toward clients and toward upstream servers ([mcp-protocol.md](mcp-protocol.md); migration `00016`), the admin

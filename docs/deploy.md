@@ -69,6 +69,7 @@ file named by `OMP_CONFIG_FILE`. Each secret can also be read from a file named 
 | `API_KEY_PEPPER_PREVIOUS` | while rotating (secret) | The old pepper: keys and tokens made with it keep working, and keys are re-digested on use. |
 | `METRICS_ADDR` | optional | Prometheus `/metrics` on its own listener, for example `:9090` (empty: off). See [Metrics](#metrics). |
 | `RETENTION_INTERVAL`, `RETENTION_BATCH_SIZE` | optional | How often old data is deleted (default 15m) and rows per transaction (1000). Periods are set in Admin › Retention. |
+| `OAUTH_MAX_REGISTERED_CLIENTS` | optional | Cap on live OAuth clients registered through the open `POST /oauth/register` (default `1000`; `0` = no cap; 0 to 1000000). Counts registrations used in the last 30 days; over it, registration answers `503 temporarily_unavailable` until one expires. Apps that identify themselves with a metadata document aren't counted. |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID` | yes | The only production sign-in method. The redirect URI to register is `${APP_URL}/auth/callback`. |
 | `OIDC_CLIENT_SECRET` | yes (secret) | |
 | `BOOTSTRAP_ADMIN_SUBJECT` | first install | The OIDC `sub` made platform admin on first sign-in. It takes effect once. |

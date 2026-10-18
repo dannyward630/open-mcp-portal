@@ -22,7 +22,7 @@ resource indicators, PKCE S256, RFC 9207 `iss`), like Grounded.
 | `GET /.well-known/oauth-authorization-server` | AS metadata: code + PKCE S256 only, public clients (`none`), CIMD supported, DCR endpoint |
 | `GET /oauth/authorize` | Authorization code + PKCE; requires `resource=<APP_URL>/mcp/{slug}` exactly; signs the person in (existing OIDC session or redirect) then shows consent in the SPA |
 | `POST /oauth/token` | `authorization_code` and `refresh_token` grants |
-| `POST /oauth/register` | Dynamic Client Registration (public clients only, rate limited, unused registrations expire after 30 days) |
+| `POST /oauth/register` | Dynamic Client Registration (public clients only, rate limited, at most `OAUTH_MAX_REGISTERED_CLIENTS` live registrations, unused registrations expire after 30 days) |
 | `POST /oauth/revoke` | RFC 7009 |
 
 - **Clients:** Client ID Metadata Documents preferred (fetched with the SSRF guard, ≤16 KiB, no redirects, cached);
@@ -119,7 +119,11 @@ Code: `internal/oauth` (authorization server: `authorize.go`, `clients.go`, `met
   (production: https only). No proxy, no redirects, 5 s, ≤ 16 KiB, `application/json` (or `+json`), `client_id` must
   equal the URL, cached for `max-age` clamped to 1 min–1 h (10 min default). DCR: public clients only, IDs `ompcl_…`,
   10/min/address, unused registrations deleted after 30 days (on the next registration; an expired one is refused at
-  once); audited `oauth.client_register` by the system with the client IP.
+  once); audited `oauth.client_register` by the system with the client IP. Since v0.2.1 at most
+  `OAUTH_MAX_REGISTERED_CLIENTS` (default 1000, `0` = no cap) registrations used within the 30 days may exist: the
+  count, the deletion of expired ones and the insert run in one transaction under an advisory lock, and over the cap
+  the answer is `503 temporarily_unavailable` (OAuth error body, no `Retry-After`: a slot frees only when a
+  registration has gone unused for 30 days), logged, not audited. Metadata-document clients aren't rows and never count.
 - **Trusted clients.** `oauth_settings` (one row, own revision), seeded with Claude, Claude Code and VS Code. Entries
   must be https metadata-document URLs with a path (`422 invalid_client_id`, `details.index`, `details.reason`
   `not_metadata_url`/`duplicate`/`too_many`; a label over 100 characters is `400 invalid_label`). Read from the database
@@ -134,7 +138,8 @@ Code: `internal/oauth` (authorization server: `authorize.go`, `clients.go`, `met
   token or junk is a no-op `200`. Connected apps: `DELETE /v1/me/oauth-grants/{id}` (reason `user`), platform admins
   `DELETE /v1/admin/users/{id}/oauth-grants/{id}` (reason `admin`; auditors `403`). Unknown user on the admin list: `404`.
 - **Rate limits** per address and process (in memory, like sign-in): 60/min on authorize, token and revoke, 10/min on
-  register; `429 slow_down` with `Retry-After`.
+  register; `429 slow_down` with `Retry-After`. Registration also has the global cap above (`503`, not `429`: it
+  isn't about the caller's rate).
 - **Audit:** `oauth.client_register` (target `oauth_client`), `oauth.consent`, `oauth.token_issue` (`grantType`),
   `oauth.revoke` (`reason`; `token: access` for a single access token) on target `oauth_grant` (label
   "client · gateway"; team set for team gateways on consent and revoke), `settings.oauth_clients_update` (target

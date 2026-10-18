@@ -50,6 +50,24 @@ func TestSigningKeyPrepublish(t *testing.T) {
 	}
 }
 
+func TestOAuthMaxRegisteredClients(t *testing.T) {
+	c, err := LoadFrom("", env(map[string]string{}))
+	if err != nil || c.OAuthMaxRegisteredClients != 1000 {
+		t.Fatalf("default = %d %v", c.OAuthMaxRegisteredClients, err)
+	}
+	for value, want := range map[string]int{"0": 0, "1": 1, " 250 ": 250, "1000000": 1_000_000} {
+		if c, err = LoadFrom("", env(map[string]string{"OAUTH_MAX_REGISTERED_CLIENTS": value})); err != nil || c.OAuthMaxRegisteredClients != want {
+			t.Errorf("%q = %d %v, want %d", value, c.OAuthMaxRegisteredClients, err, want)
+		}
+	}
+	for _, bad := range []string{"-1", "1000001", "many", "1.5", ""} {
+		_, err := LoadFrom("", env(map[string]string{"OAUTH_MAX_REGISTERED_CLIENTS": bad}))
+		if err == nil || !strings.Contains(err.Error(), "OAUTH_MAX_REGISTERED_CLIENTS") {
+			t.Errorf("%q: err = %v, want one naming the setting", bad, err)
+		}
+	}
+}
+
 func TestFileThenEnvPrecedenceAndSecretFiles(t *testing.T) {
 	dir := t.TempDir()
 	secret := filepath.Join(dir, "secret")

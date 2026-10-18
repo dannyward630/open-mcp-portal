@@ -4,7 +4,7 @@ When someone calls a tool, gets a prompt or reads a resource through a gateway, 
 
 The caller is either a **person** (with a personal API key, or through an MCP client they connected with OAuth sign-in) or a team **service account** (a headless agent, CI job or script; decisions 22 and 23). The `principal_type` claim says which.
 
-Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`) are served from the definitions approved in the portal, so your server only receives calls (`tools/call`, `prompts/get`, `resources/read`). A read arrives with your own URI (the portal strips its `omp://{server-slug}/` prefix). Each call also performs the MCP handshake again, because the portal is stateless.
+Lists (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`) are served from the definitions approved in the portal, so your server only receives calls (`tools/call`, `prompts/get`, `resources/read`), plus the handshake and lists of an editor's **Test connection** (below). A read arrives with your own URI (the portal strips its `omp://{server-slug}/` prefix). Each call also performs the MCP handshake again, because the portal is stateless.
 
 ## Where the token arrives
 
@@ -31,6 +31,20 @@ retries, then asks the person to sign in again) and `403` with `error="insuffici
 more access (the portal asks for it if your team's reviewed scopes or your `scopes_supported` include it). Scheduled
 health checks send an unauthenticated `initialize`; your `401` challenge counts as healthy ("requires sign-in").
 
+## What a Test sends
+
+An editor's **Test connection** (decision 61) behaves like a call for a server whose Send identity is on: it does the handshake (`initialize` or `server/discover`) and the lists with an identity token for **the person who pressed the button**, in the same header a call uses (table above). It calls no tool. The token is the same kind as a call's, with these values where a call names a gateway and a tool:
+
+| Claim | In a Test |
+|---|---|
+| `principal_type`, `sub`, `email`, `name`, `teams` | The editor, as for a call from them |
+| `aud` | Your server's URL, as registered |
+| `gateway` | `omp:test`. No gateway slug can look like this (slugs are lowercase letters, digits and hyphens), so a server that decides by gateway can't mistake a test for traffic |
+| `tool`, `prompt`, `resource` | **None of them is set** (a call sets exactly one) |
+| `client` | `Test connection` (no `client_verified`) |
+
+If your server answers a Test's request with `401` or `403` but accepts the same request without the token, the portal reports that the server refuses the identity token (and to turn Send identity token off, or to accept it). A public server that refuses any `Authorization` header is the usual case. This catches only a server that refuses at the HTTP level: one that accepts the request and rejects the token when a tool runs still passes a Test. Refresh, discovery and the scheduled health checks send **no** identity token, and an automation token's Test has no person to name, so it sends none either.
+
 ## What to check
 
 | Item | Value |
@@ -52,7 +66,7 @@ The claims:
 | `teams` | Slugs of the teams the person belongs to; for a service account, its own team only |
 | `gateway` | The gateway's slug |
 | `tool` / `prompt` | The exposed name of the tool (`tools/call`) or prompt (`prompts/get`), `{server-slug}__{name}` |
-| `resource` | The exposed URI read (`resources/read`): `omp://{server-slug}/{your-uri}`, for example `omp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set |
+| `resource` | The exposed URI read (`resources/read`): `omp://{server-slug}/{your-uri}`, for example `omp://status/status://services/email`. Exactly one of `tool`, `prompt` and `resource` is set on a call (none in a [Test](#what-a-test-sends)) |
 | `client` | For a client connected with OAuth, the client's name as it signed in (such as `Claude Code`), with `client_verified`. Otherwise the MCP client's `clientInfo.name` when the request carried it, else the name of the API key or service account key |
 | `client_verified` | Present whenever `client` comes from an OAuth client. `true`: the client is identified by a Client ID Metadata Document, so its name is vouched for by the host that publishes it. `false`: the client registered itself (Dynamic Client Registration) and its name is **self-asserted**: anyone can register any name, so don't trust `client` for decisions in that case. Absent for API keys and service account keys (then `client` is the MCP client's or the key's own label, never verified) |
 | `provider` | The slug of the auth provider whose user token came with this call in `MCP-Gateway-Provider-Token` (see [Provider tokens](#provider-tokens)). **Absent** when the call carries no provider token |

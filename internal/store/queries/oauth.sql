@@ -25,6 +25,15 @@ RETURNING *;
 UPDATE oauth_clients SET last_used_at = now()
 WHERE client_id = $1 AND last_used_at < now() - interval '1 minute';
 
+-- name: LockOAuthClients :exec
+-- Serialises registrations across replicas (transaction lock), so the cap on
+-- live registered clients holds under concurrent requests.
+SELECT pg_advisory_xact_lock(hashtextextended('omp.oauth-clients', 0));
+
+-- name: CountLiveOAuthClients :one
+-- Registered clients used since unused_since (the ones ResolveClient accepts).
+SELECT count(*) FROM oauth_clients WHERE last_used_at > @unused_since;
+
 -- name: DeleteUnusedOAuthClients :exec
 DELETE FROM oauth_clients WHERE last_used_at <= @unused_since;
 

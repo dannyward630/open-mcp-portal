@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -214,9 +215,25 @@ type Registered struct {
 	ApplicationType string
 }
 
+// errRegistrationsFull answers a registration when the cap on live registered
+// clients is reached: 503 temporarily_unavailable (RFC 6749 §4.1.2.1's code
+// for a server that can't serve now). It is the server's state, not the
+// caller's rate (that is 429 slow_down, per address), and RFC 7591 has no
+// error for it. No Retry-After: a slot frees only when some registration
+// goes unused for 30 days, which no client should wait for.
+func errRegistrationsFull() *Error {
+	return &Error{Code: "temporarily_unavailable", Status: http.StatusServiceUnavailable,
+		Description: "This portal has reached its limit of registered apps. Ask its administrator, or connect with an app that identifies itself with a Client ID Metadata Document."}
+}
+
 // Register registers a public client (RFC 7591). Registrations unused for
-// 30 days are deleted first. Audited as oauth.client_register by the
-// system (no person is signed in), with the caller's address.
+// 30 days are deleted first, and when OAUTH_MAX_REGISTERED_CLIENTS is set
+// and that many live registrations remain, the request is refused (503
+// temporarily_unavailable; the count and the insert are one transaction
+// under a lock, so replicas can't overshoot the cap together). Audited as
+// oauth.client_register by the system (no person is signed in), with the
+// caller's address; a refusal is logged, not audited (an unauthenticated
+// caller could fill the append-only audit log with it).
 func (s *Service) Register(ctx context.Context, m ClientMetadata, requestID, clientIP string) (Registered, error) {
 	c, bad := m.check()
 	if bad != nil {
@@ -228,8 +245,25 @@ func (s *Service) Register(ctx context.Context, m ClientMetadata, requestID, cli
 	c.ID, c.Kind = newToken(clientPrefix), KindRegistered
 	var out Registered
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
-		if err := q.DeleteUnusedOAuthClients(ctx, s.now().Add(-ClientUnusedTTL)); err != nil {
+		unusedSince := s.now().Add(-ClientUnusedTTL)
+		if s.maxClients > 0 {
+			if err := q.LockOAuthClients(ctx); err != nil {
+				return err
+			}
+		}
+		if err := q.DeleteUnusedOAuthClients(ctx, unusedSince); err != nil {
 			return err
+		}
+		if s.maxClients > 0 {
+			n, err := q.CountLiveOAuthClients(ctx, unusedSince)
+			if err != nil {
+				return err
+			}
+			if n >= int64(s.maxClients) {
+				s.Log.WarnContext(ctx, "oauth client registration refused: the cap on registered clients is reached",
+					"registered", n, "max", s.maxClients, "request_id", requestID)
+				return errRegistrationsFull()
+			}
 		}
 		row, err := q.InsertOAuthClient(ctx, dbgen.InsertOAuthClientParams{
 			ClientID: c.ID, ClientName: c.Name, RedirectUris: c.RedirectURIs, ClientUri: ptr(c.URI), LogoUri: ptr(c.LogoURI),
