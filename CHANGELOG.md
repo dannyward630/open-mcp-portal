@@ -6,6 +6,28 @@ Notable changes to Open MCP Portal, one entry per release. Design notes for each
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, minor releases may include
 breaking changes; the entry says how to adapt.
 
+## Unreleased (0.2.0)
+
+**MCP 2026-07-28, server side** ([docs/mcp-protocol.md](docs/mcp-protocol.md), decision 51). Gateways at `/mcp/{slug}`
+now speak the new protocol era next to 2024-11-05 to 2025-11-25, chosen per request; legacy clients see no change.
+
+- `server/discover` (supported versions, capabilities, identity); required `_meta`, `MCP-Protocol-Version`,
+  `Mcp-Method` and `Mcp-Name` validated against the body (`400`, `HeaderMismatch` `-32020`; unsupported version
+  `-32022` with the supported list; unknown methods `404` `-32601`); `Mcp-Param-*` headers validated for tools with
+  `x-mcp-header`.
+- Results carry `resultType` and `_meta` `serverInfo`; lists, discovery and reads carry `ttlMs` and
+  `cacheScope: "private"` (lists differ per person, never public); lists sorted by exposed name.
+- Any JSON Schema `outputSchema` and any JSON `structuredContent` pass through to modern clients (legacy clients
+  still get object schemas only); resource not found is `-32602` (legacy `-32002`); `ping` and `logging/setLevel`
+  are method not found; the rate-limit code is `429` instead of `-32029` for modern requests.
+- "Connect your account" as a multi round-trip request: modern clients that declare URL elicitation get an
+  `input_required` result with the existing connect link and a sealed `requestState` (AES-GCM, key derived from
+  `ENCRYPTION_KEY`; bound to the person, gateway, request and parameters; 10 minutes) and retry; declines return
+  "authorization declined". Everyone else keeps `-32042`.
+- Dynamic client registration accepts and echoes `application_type` (`web` or `native`); documented as deprecated.
+- `cmd/fakemcp -schema-tools`; `secrets.Box.Derive`. The MCP conformance suite was run against a gateway
+  (results in docs/mcp-protocol.md).
+
 ## [0.1.0] - 2026-10-17
 
 The first release ([release notes](docs/releases/v0.1.0.md)): a self-hosted portal where teams register MCP servers, publish them to a company catalog, curate

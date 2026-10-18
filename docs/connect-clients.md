@@ -13,8 +13,10 @@ All three see only what the caller may use on that gateway, checked again on eve
 ## Tools that need your account on another service
 
 Some tools act as you on a third-party service (GitHub, Google, …). The first time you call one, the call fails with a
-link instead (JSON-RPC `-32042`; clients that support URL elicitation show it as a prompt, others show the error
-message, which contains the link). Open it in your browser while signed in to the portal: it shows the tool, the
+link instead. Clients of the 2026-07-28 protocol that support URL elicitation get it as an `input_required` result and
+retry the call themselves once you have connected; every other client gets the JSON-RPC error `-32042` (clients that
+support URL elicitation show it as a prompt, others show the error message, which contains the link)
+([mcp-protocol.md](mcp-protocol.md#consent-as-a-multi-round-trip-request)). Open it in your browser while signed in to the portal: it shows the tool, the
 gateway, the service and each permission (scope) asked for. Choose **Continue**, approve at the service, then run the tool
 again. The link works only for you, only once and for 10 minutes. Your connected accounts, and **Disconnect**, are under
 Account › My connections; **My gateways** shows which tools are connected. Service accounts can't use these tools.
@@ -84,7 +86,7 @@ Cursor shows a sign-in prompt for the server in its MCP settings.
 
 ### Apps without a metadata document
 
-Clients identify themselves either with a *Client ID Metadata Document* (an https URL their maker publishes; the consent page shows "From <host>") or, for older clients, by registering themselves (Dynamic Client Registration). Self-registered apps are marked **Unverified** on the consent page, with "It registered itself" (and the website it claims, if any): anyone can register any name, so allow one only if you just connected it yourself, and check the host the page says your answer goes to. They are never on the trusted list, a registration unused for 30 days expires (the app registers again), and call logs show their calls as "via <name> (unverified)". MCP servers see `client_verified: false` with such an app's name ([upstream-identity.md](upstream-identity.md)).
+Clients identify themselves either with a *Client ID Metadata Document* (an https URL their maker publishes; the consent page shows "From <host>") or, for older clients, by registering themselves (Dynamic Client Registration, which the 2026-07-28 revision deprecates but the portal keeps; it accepts `application_type` `web` or `native`). Self-registered apps are marked **Unverified** on the consent page, with "It registered itself" (and the website it claims, if any): anyone can register any name, so allow one only if you just connected it yourself, and check the host the page says your answer goes to. They are never on the trusted list, a registration unused for 30 days expires (the app registers again), and call logs show their calls as "via <name> (unverified)". MCP servers see `client_verified: false` with such an app's name ([upstream-identity.md](upstream-identity.md)).
 
 If the browser shows **"Can't connect this app"**, the app's request was refused before anything was shared, for example an unknown app, a redirect address the app never registered, or a metadata document the portal can't fetch. Nothing is sent to the app in that case. Errors after that (no PKCE, a URL that isn't one of your gateways, a gateway you can't use) go back to the app, which usually shows them.
 

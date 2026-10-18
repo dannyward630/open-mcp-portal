@@ -721,3 +721,26 @@ func TestMCPSDKClientBothEras(t *testing.T) {
 		})
 	}
 }
+
+// Over a rate limit a modern request is 429 with code 429 (-32029 is in the
+// range 2026-07-28 reserves for itself); legacy requests keep -32029.
+func TestMCPRateLimitCodeByEra(t *testing.T) {
+	e := newRuntimeEnv(t)
+	code, ec := e.putLimits(limit("credential_per_minute", 2, nil), limit("person_per_minute", 1000, nil))
+	mustCode(t, "limits", code, ec, 200, "")
+	freshWindow(t, e.app.Pool)
+	for i := 0; i < 2; i++ {
+		if code, _, out := rawModern(t, e.app, "support", e.key.Secret, "tools/list", nil, nil, nil); code != 200 || out["error"] != nil {
+			t.Fatalf("request %d = %d %v", i+1, code, out)
+		}
+	}
+	code, hdr, out := rawModern(t, e.app, "support", e.key.Secret, "tools/call", map[string]any{"name": "status__whoami"}, nil, nil)
+	_, _, data := rpcErr(out)
+	if code != 429 || rpcErrorCode(out) != 429 || hdr.Get("Retry-After") == "" || data["reason"] != "rate_limited" || data["limit"] != "credential_per_minute" {
+		t.Fatalf("modern over the limit = %d %v", code, out)
+	}
+	code, _, out = rawMCP(t, e.app, "POST", "support", e.key.Secret, rpc(1, "tools/list", nil), nil)
+	if code != 429 || rpcErrorCode(out) != -32029 {
+		t.Fatalf("legacy over the limit = %d %v", code, out)
+	}
+}

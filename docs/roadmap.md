@@ -35,12 +35,17 @@ Decided out of scope:
 
 ### A. Speak both protocol eras (L)
 
+**Status:** the server side (`/mcp/{slug}`, consent as a multi-round-trip request, authorization alignment, and the
+MCP conformance suite run against a gateway) is **done**: [mcp-protocol.md](mcp-protocol.md). The client side
+(upstream era negotiation, relaying elicitation, streaming, trace context) and the SDK matrix with real clients are
+still open.
+
 The portal keeps serving 2025-11-25 and earlier clients exactly as today and adds the 2026-07-28 era, chosen **per
 request** (decision 51). The spec's own compatibility rule applies: a request carrying the new `_meta` and
 `MCP-Protocol-Version: 2026-07-28` is modern; `initialize` means legacy.
 
-**As the server your clients talk to** (`/mcp/{slug}`). Today `server/discover` answers "method not found" and clients
-fall back to `initialize`.
+**As the server your clients talk to** (`/mcp/{slug}`) — *done*. (Before this, `server/discover` answered "method not
+found" and clients fell back to `initialize`.)
 
 | Change | Notes |
 | --- | --- |
