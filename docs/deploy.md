@@ -18,12 +18,12 @@ Released images are `ghcr.io/ncecere/open-mcp-portal:vX.Y.Z` (and `latest` for f
 (linux/amd64 and linux/arm64) with SBOM and provenance attestations, signed with cosign (keyless, GitHub Actions OIDC):
 
 ```sh
-docker pull ghcr.io/ncecere/open-mcp-portal:v0.2.0
-docker run --rm ghcr.io/ncecere/open-mcp-portal:v0.2.0 version     # open-mcp-portal 0.2.0 (<commit>)
+docker pull ghcr.io/ncecere/open-mcp-portal:v0.2.1
+docker run --rm ghcr.io/ncecere/open-mcp-portal:v0.2.1 version     # open-mcp-portal 0.2.1 (<commit>)
 
 # Pin the digest from the GitHub Release, and verify it first (cosign v3 or newer):
 cosign verify ghcr.io/ncecere/open-mcp-portal@sha256:<digest> \
-  --certificate-identity https://github.com/ncecere/open-mcp-portal/.github/workflows/image.yml@refs/tags/v0.2.0 \
+  --certificate-identity https://github.com/ncecere/open-mcp-portal/.github/workflows/image.yml@refs/tags/v0.2.1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -175,13 +175,13 @@ pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `A
 
 ### Image
 
-The base references `ghcr.io/ncecere/open-mcp-portal` and sets its tag to `v0.2.0` through a Kustomize `images:` entry.
+The base references `ghcr.io/ncecere/open-mcp-portal` and sets its tag to `v0.2.1` through a Kustomize `images:` entry.
 A tag can move, so pin the digest of the release you verified in your overlay (the digest wins over the tag):
 
 ```yaml
 images:
   - name: ghcr.io/ncecere/open-mcp-portal
-    newTag: v0.2.0
+    newTag: v0.2.1
     digest: sha256:<digest from the GitHub Release>
 ```
 
@@ -458,5 +458,5 @@ recomputed without the key, so rotation happens on use:
 - No dashboards, alert rules or tracing (metrics: [Metrics](#metrics)). Logs are JSON on stdout.
 - No in-cluster PostgreSQL component, backup CronJob or restore procedure. Bring your own Postgres and backups.
 - The kind smoke test ([Smoke test](#smoke-test)) does not cover ingress, TLS, OIDC, the default CNI's (kindnet) NetworkPolicy enforcement, zones, upgrades between releases or restores.
-- Images are published only for releases (`v*` tags), not for every commit on `main`. The example overlay pins v0.2.0's digest: use the digest from the release you install.
+- Images are published only for releases (`v*` tags), not for every commit on `main`. The example overlay pins the digest of the release it names: use the digest from the release you install.
 - No Helm chart and no HorizontalPodAutoscaler.

@@ -6,9 +6,9 @@ Notable changes to Open MCP Portal, one entry per release. Design notes for each
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, minor releases may include
 breaking changes; the entry says how to adapt.
 
-## Unreleased
+## [0.2.1] - 2026-10-18
 
-Changes on `main` since v0.2.0.
+Small changes since v0.2.0 ([release notes](docs/releases/v0.2.1.md)). No migration.
 
 - **Test connection sends the identity token** ([registry.md](docs/registry.md#health), [upstream-identity.md](docs/upstream-identity.md#what-a-test-sends), decision 61). Found with DeepWiki's public server, which refuses any `Authorization` header on a call while registration, Test, refresh and health checks all passed. A manual Test of a server with **Send identity token** on now sends the identity token of the editor who pressed it (`gateway` `omp:test`, no `tool`, `client` `Test connection`). If the server answers `401` or `403` to that and accepts the same request without the token, the Test fails (class `auth`, the server's HTTP status) with "Turn off Send identity token for this server, or have the server accept the token." Refresh and scheduled checks still send no token, and an automation token's Test (no person) sends none. **Not caught:** a server that accepts the request and refuses only when a tool runs (HTTP 200 with `isError`, which is what DeepWiki does) still passes Test. The help text of the switch says what is sent and that some public servers refuse it. No API contract change.
 - **Cap on dynamically registered OAuth clients** ([deploy.md](docs/deploy.md), threat model H-4). `OAUTH_MAX_REGISTERED_CLIENTS` (default `1000`, `0` = no cap) bounds the clients registered through the open `POST /oauth/register` that were used in the last 30 days; over it the endpoint answers `503 temporarily_unavailable`. Clients that use a metadata document aren't counted. **Upgrade note:** an installation with more than 1000 live registrations stops accepting new ones until some expire; set the variable higher (or `0`) first if that matters. The per-address limit (10 a minute) is unchanged.

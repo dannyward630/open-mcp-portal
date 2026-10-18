@@ -362,6 +362,23 @@ The review read `internal/auth`, `authz`, `httpapi`, `mcpgw`, `oauth`, `provider
 - **H-11** Split database roles (migration owner and runtime) and revoke `UPDATE`/`DELETE` on the append-only tables from the runtime role.
 - **H-12** Idle session timeout and a session list ("sign out everywhere").
 
+### Status of the hardening ideas (reviewed 2026-10-18, for v0.2.1)
+
+| Idea | Status | Why, and what it needs |
+| --- | --- | --- |
+| H-1 loopback redirects of trusted clients | **Open, accepted for now** | A loopback redirect is how desktop clients such as Claude Code sign in, and skipping consent is what "trusted" means; asking every time defeats it. What limits it today: the person must be signed in in their browser, the code is PKCE-bound, and the token is bound to one gateway. A one-time notice on a trusted client's first use is the candidate change; it is a product decision. |
+| H-2 `sendIdentity` default | **Partly addressed (v0.2.1, decision 61)** | The help text says what is sent; a manual Test sends the token and diagnoses a server that refuses it with HTTP 401 or 403. A server that accepts the request and rejects only when a tool runs (DeepWiki's public endpoint) still passes Test, so the first real call fails until the switch is off. Only changing the default (off for public hosts) removes that, and it reverses decision 45: the owner's decision. |
+| H-3 anonymous CIMD fetch | **Open, low** | The fetch is guarded against SSRF and bounded; fixing it reorders the authorization flow (fetch after sign-in), which needs care with real clients. |
+| H-4 open client registration | **Cap done (v0.2.1)** | `OAUTH_MAX_REGISTERED_CLIENTS`; the per-address limit of 10 a minute already existed. What remains: one caller behind a shared ingress can fill the cap, and no browser-only check. |
+| H-5 per-provider allow-list; per-call scopes | **Open** | Roadmap v0.3 (credentials): it is a feature (admin settings, UI, migration), not a patch. The ReadHeaderTimeout part is done. |
+| H-6 upstream error text relayed | **Reviewed, kept** | It is capped at 300 characters and redacted. It proved useful in practice: DeepWiki's own message ("Authentication is not allowed on the public DeepWiki endpoint") told the person what was wrong. Revisit if a server's errors are found to leak. |
+| H-7 proxy and cookie checks | **Partly done** | `ENCRYPTION_KEY` and `API_KEY_PEPPER` must differ (done). Open: warn when `TRUSTED_PROXIES` is empty behind a proxy, and a `__Host-` cookie name. |
+| H-8 refresh token lifetime | **Open** | Needs a lifetime chosen (it forces re-sign-in after that long for every client): the owner's decision. |
+| H-9 image and scan hardening | **Partly done** | `govulncheck` and `npm audit` block CI; Dependabot alerts and security updates are on (2026-10-18). Open: base images by digest, Trivy failing on fixable high severities. |
+| H-10 off-host audit export | **Open** | Operational: needs a destination. The audit log is append-only and exportable as CSV. |
+| H-11 split database roles | **Open** | Needs separate migration and runtime connection strings in the product, then CloudNativePG roles in a deployment. |
+| H-12 idle timeout and session list | **Open** | A product change with a default to choose. |
+
 ## 10. v0.2 additions under review
 
 These are designs, not code. They are reviewed here so tests exist before the first line is merged. Sources: [notifications.md](notifications.md), [automation-tokens.md](automation-tokens.md), and the "connect your account becomes native" part of [roadmap.md](roadmap.md) section A.

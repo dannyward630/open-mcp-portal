@@ -21,12 +21,12 @@ resources:
   # With the Prometheus Operator's CRDs installed, add:
   # - servicemonitor.yaml
 
-# Pin by digest (never a mutable tag). This is v0.2.0's; take the digest of the release you deploy from its GitHub Release
+# Pin by digest (never a mutable tag). Take the digest of the release you deploy from its GitHub Release
 # (open-mcp-portal-<tag>.digest.txt) and verify the signature first (docs/deploy.md).
 images:
   - name: ghcr.io/ncecere/open-mcp-portal
-    newTag: v0.2.0
-    digest: sha256:54033a775d1f15748588de86d57ed3c4c09a28e372d77105003c273210a82541
+    newTag: v0.2.1
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 configMapGenerator:
   - name: open-mcp-portal-config
