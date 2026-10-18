@@ -70,12 +70,18 @@ type ProviderRef struct {
 type ServerRef struct {
 	ID                   uuid.UUID
 	Slug, Name, TeamSlug string
+	// TeamName is set where the team is shown by name (grants, consent).
+	TeamName string
 }
 
 // Connection is a person's connection as listed: never a token.
 type Connection struct {
 	Connection dbgen.ProviderConnection
 	Provider   ProviderRef
+	// Servers are the MCP servers the person allowed to use this
+	// connection (a platform provider's grants, F-3); none for a
+	// server-bound provider, whose connection is for its server.
+	Servers []ServerGrant
 }
 
 // Refreshable reports whether a refresh token is held.
@@ -86,10 +92,20 @@ func (s *Service) list(ctx context.Context, userID uuid.UUID) ([]Connection, err
 	if err != nil {
 		return nil, err
 	}
+	grants, err := s.q.ListProviderServerGrantsForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Connection, len(rows))
 	for i, r := range rows {
 		out[i] = Connection{Connection: r.ProviderConnection, Provider: ProviderRef{ID: r.ProviderConnection.ProviderID,
-			Slug: r.ProviderSlug, Name: r.ProviderName, Preset: r.ProviderPreset, LogoURL: r.ProviderLogoUrl, Kind: r.ProviderKind}}
+			Slug: r.ProviderSlug, Name: r.ProviderName, Preset: r.ProviderPreset, LogoURL: r.ProviderLogoUrl, Kind: r.ProviderKind},
+			Servers: []ServerGrant{}}
+		for _, g := range grants {
+			if g.ConnectionID == r.ProviderConnection.ID {
+				out[i].Servers = append(out[i].Servers, serverGrantOf(g))
+			}
+		}
 		if r.ServerID.Valid {
 			out[i].Provider.Server = &ServerRef{ID: r.ServerID.UUID, Slug: deref(r.ServerSlug), Name: deref(r.ServerName),
 				TeamSlug: deref(r.ServerTeamSlug)}

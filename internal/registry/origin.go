@@ -1,9 +1,14 @@
 package registry
 
 import (
+	"context"
 	"net/url"
 	"strings"
 
+	"github.com/google/uuid"
+
+	"github.com/ncecere/open-mcp-portal/internal/audit"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
 	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
@@ -33,6 +38,10 @@ func originOf(raw string) string {
 	}
 	return scheme + "://" + host
 }
+
+// OriginOf is the canonical origin of a server URL (see originOf). Consent
+// to send a person's provider token to a server is bound to it (F-3).
+func OriginOf(raw string) string { return originOf(raw) }
 
 // sameOrigin reports whether two URLs have the same origin.
 func sameOrigin(a, b string) bool { return originOf(a) == originOf(b) }
@@ -66,4 +75,22 @@ func originChange(before, after string) map[string]any {
 		return nil
 	}
 	return map[string]any{"oldOrigin": originOf(before), "newOrigin": originOf(after)}
+}
+
+// resetProviderGrants deletes every person's grant to use their provider
+// connection at a server (F-3): its URL moved to another origin, its
+// provider changed or went, or it is being deleted. Audited, when there was
+// any, as mcp_server.provider_grants_reset (a count; no names, no secrets).
+func resetProviderGrants(ctx context.Context, q *dbgen.Queries, a authz.Actor, teamID, serverID uuid.UUID, reason string, extra map[string]any) error {
+	n, err := q.DeleteProviderServerGrantsForServer(ctx, serverID)
+	if err != nil || n == 0 {
+		return err
+	}
+	e := a.Audit("mcp_server.provider_grants_reset", "mcp_server", serverID.String())
+	e.TeamID = teamID
+	e.Metadata = map[string]any{"reason": reason, "grantsDeleted": n}
+	for k, v := range extra {
+		e.Metadata[k] = v
+	}
+	return audit.Record(ctx, q, e)
 }

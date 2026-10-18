@@ -31,6 +31,10 @@ const (
 	ReasonNotConnected   = "not_connected"
 	ReasonMissingScopes  = "missing_scopes"
 	ReasonNeedsReconsent = "needs_reconsent"
+	// ReasonServerNotAllowed: the person is connected with scopes that
+	// cover the call, but hasn't allowed this server (at its current
+	// origin, for these scopes) to use the connection (F-3).
+	ReasonServerNotAllowed = "server_not_allowed"
 )
 
 // CallContext is the call that needs a credential.
@@ -38,12 +42,19 @@ type CallContext struct {
 	User         dbgen.User
 	Gateway      dbgen.Gateway
 	CapabilityID uuid.UUID
+	// ServerID and ServerOrigin are the server the capability belongs to and
+	// the origin (registry.OriginOf) of the URL the call goes to: consent is
+	// bound to both.
+	ServerID     uuid.UUID
+	ServerOrigin string
 	// Kind, ExposedName and Title describe the capability to the person.
 	Kind, ExposedName, Title string
 }
 
 // Credential is what a call carries: the provider and the bare access
-// token. The token goes only to the server whose capability requires it.
+// token. The token goes only to the server whose capability requires it and
+// that the person allowed, at the origin they allowed it (a platform
+// provider's grant, F-3).
 // For an oauth server's own sign-in (Provider.Kind mcp_server) Resource is
 // the only URL the token may be sent to, and Refreshable says a refresh
 // token is held (an upstream 401 gets one refresh and retry).
@@ -110,6 +121,17 @@ func (s *Service) Credential(ctx context.Context, req *registry.Requirement, cc 
 	case !Covers(c.Scopes, req.Scopes):
 		return Credential{}, s.needConsent(ctx, prov, req.Scopes, cc, ReasonMissingScopes)
 	}
+	if p.Kind != KindMCPServer {
+		// A platform provider's token goes only to a server the person
+		// allowed, at the origin they allowed it (an oauth server's own
+		// connection is for that server already).
+		ok, err := s.serverAllowed(ctx, c, req.Scopes, cc)
+		if err != nil {
+			return Credential{}, err
+		} else if !ok {
+			return Credential{}, s.needConsent(ctx, prov, req.Scopes, cc, ReasonServerNotAllowed)
+		}
+	}
 	if c.ExpiresAt != nil && c.ExpiresAt.Before(s.now().Add(RefreshAhead)) {
 		c, err = s.refreshConnection(ctx, p, c)
 		observeRefresh(p.Slug, err)
@@ -132,6 +154,19 @@ func (s *Service) Credential(ctx context.Context, req *registry.Requirement, cc 
 		s.Log.WarnContext(ctx, "could not record a connection's use", "err", err)
 	}
 	return Credential{Provider: prov, AccessToken: token, Resource: deref(p.Resource), Refreshable: c.RefreshTokenCipher != nil}, nil
+}
+
+// serverAllowed reports whether the person allowed the call's server to use
+// connection c: a grant whose origin is the origin the call goes to and whose
+// scopes cover the requirement.
+func (s *Service) serverAllowed(ctx context.Context, c dbgen.ProviderConnection, scopes []string, cc CallContext) (bool, error) {
+	g, err := s.q.GetProviderServerGrant(ctx, dbgen.GetProviderServerGrantParams{ConnectionID: c.ID, ServerID: cc.ServerID})
+	if errors.Is(store.NotFound(err), store.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return cc.ServerOrigin != "" && g.Origin == cc.ServerOrigin && Covers(g.Scopes, scopes), nil
 }
 
 // ErrInsufficientScope: an oauth server asked for scopes the person
@@ -458,7 +493,8 @@ func (s *Service) request(ctx context.Context, p registry.Provider, scopes []str
 	var id string
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		open, err := q.FindOpenConnectRequest(ctx, dbgen.FindOpenConnectRequestParams{UserID: cc.User.ID, ProviderID: p.ID,
-			GatewayID: cc.Gateway.ID, CapabilityID: cc.CapabilityID, RequiredScopes: scopes, ValidUntil: s.now().Add(2 * time.Minute)})
+			GatewayID: cc.Gateway.ID, CapabilityID: cc.CapabilityID, RequiredScopes: scopes, ValidUntil: s.now().Add(2 * time.Minute),
+			ServerID: uuid.NullUUID{UUID: cc.ServerID, Valid: true}, ServerOrigin: &cc.ServerOrigin})
 		if err == nil {
 			if b, err := s.box.Open(open.IDCipher, requestAAD(open.IDDigest)); err == nil {
 				id = string(b)
@@ -481,6 +517,7 @@ func (s *Service) request(ctx context.Context, p registry.Provider, scopes []str
 			IDDigest: digest, IDCipher: ct, UserID: cc.User.ID, ProviderID: p.ID, RequiredScopes: scopes, Reason: reason,
 			GatewayID: cc.Gateway.ID, GatewaySlug: cc.Gateway.Slug, GatewayName: cc.Gateway.Name, CapabilityID: cc.CapabilityID,
 			CapabilityKind: cc.Kind, ExposedName: cc.ExposedName, CapabilityTitle: string(title), ExpiresAt: s.now().Add(RequestTTL),
+			ServerID: uuid.NullUUID{UUID: cc.ServerID, Valid: true}, ServerOrigin: &cc.ServerOrigin,
 		}); err != nil {
 			return err
 		}
