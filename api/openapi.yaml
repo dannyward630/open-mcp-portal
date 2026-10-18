@@ -10,6 +10,16 @@ info:
     Every route served by the application must be listed here; a test enforces it. MCP endpoints (`/mcp/{slug}`),
     OAuth protocol endpoints and `/.well-known/*` are documented in docs/.
 
+    Automation tokens (docs/automation-tokens.md): `Authorization: Bearer ompadm_...` (platform-admin token) or
+    `omppub_...` (team publisher token) authenticates `/v1/*` only, with no cookie, CSRF token or Origin; MCP
+    credentials (`omp_`, `omp_sa_`, `ompat_`) never authorize `/v1` and automation tokens never authorize `/mcp`.
+    An operation accepts tokens only when it has the extension `x-omp-token-scopes` (a list; a token needs at
+    least one of the listed scopes, and a `:write` scope includes its `:read`). Every other operation answers a
+    token with `403 token_not_allowed`; creating and revoking tokens answers `403 session_required`. A missing,
+    unknown, expired or revoked token, or an MCP credential, is `401 invalid_token`. A team token reaches only
+    its own team: another team is `404`, like a non-member. A test enforces that exactly the annotated operations
+    accept tokens.
+
     '
 tags:
 - name: operations
@@ -44,6 +54,10 @@ tags:
   description: How long call records, captured payloads, the audit log and usage rollups are kept
 - name: usage
   description: Hourly usage rollups of calls through gateways
+- name: notifications
+  description: In-app inbox, preferences, webhook destinations and email status (docs/notifications.md)
+- name: automation-tokens
+  description: Tokens for CI and scripts that call /v1 (docs/automation-tokens.md); never valid for /mcp
 paths:
   /healthz:
     get:
@@ -459,6 +473,8 @@ paths:
       tags:
       - admin
       operationId: adminListUsers
+      x-omp-token-scopes:
+      - platform:read
       summary: All users (platform admins and auditors), with how many teams each belongs to
       parameters:
       - $ref: '#/components/parameters/SearchParam'
@@ -495,6 +511,8 @@ paths:
       tags:
       - admin
       operationId: adminGetUser
+      x-omp-token-scopes:
+      - platform:read
       summary: A user and their team memberships
       responses:
         '200':
@@ -560,6 +578,8 @@ paths:
       tags:
       - admin
       operationId: adminListTeams
+      x-omp-token-scopes:
+      - platform:read
       summary: All teams (platform admins and auditors)
       parameters:
       - $ref: '#/components/parameters/SearchParam'
@@ -588,6 +608,8 @@ paths:
       tags:
       - admin
       operationId: adminCreateTeam
+      x-omp-token-scopes:
+      - platform:write
       summary: Create a team and assign its first owner
       requestBody:
         required: true
@@ -620,6 +642,8 @@ paths:
       tags:
       - admin
       operationId: adminGetTeam
+      x-omp-token-scopes:
+      - platform:read
       summary: A team with membership counts
       responses:
         '200':
@@ -644,6 +668,8 @@ paths:
       tags:
       - admin
       operationId: adminUpdateTeam
+      x-omp-token-scopes:
+      - platform:write
       summary: Change team details, or archive/unarchive it
       parameters:
       - $ref: '#/components/parameters/IfMatchHeader'
@@ -717,6 +743,8 @@ paths:
       tags:
       - admin
       operationId: adminListAudit
+      x-omp-token-scopes:
+      - platform:read
       summary: The platform-wide audit log (platform admins and auditors)
       parameters:
       - $ref: '#/components/parameters/CursorParam'
@@ -747,6 +775,8 @@ paths:
       tags:
       - admin
       operationId: adminGetAuditEntry
+      x-omp-token-scopes:
+      - platform:read
       summary: One entry of the platform-wide audit log, for a linked entry (platform admins and auditors)
       responses:
         '200':
@@ -773,6 +803,8 @@ paths:
       tags:
       - mcp-servers
       operationId: listTeamMcpServers
+      x-omp-token-scopes:
+      - servers:read
       summary: The team's MCP servers (members and above; platform staff read any team)
       parameters:
       - $ref: '#/components/parameters/SearchParam'
@@ -796,6 +828,8 @@ paths:
       tags:
       - mcp-servers
       operationId: createTeamMcpServer
+      x-omp-token-scopes:
+      - servers:write
       summary: Register a remote MCP server (editors and above); reads its capabilities at once
       description: >-
         409 slug_taken when another server uses the slug. 422 url_not_allowed when the URL is refused
@@ -851,6 +885,8 @@ paths:
       tags:
       - mcp-servers
       operationId: detectTeamMcpServerAuth
+      x-omp-token-scopes:
+      - servers:write
       summary: Probe a URL and report how the MCP server wants clients to sign in (editors and above); changes nothing
       description: >-
         Sends one unauthenticated MCP initialize request to url (no identity token, no header) and follows the MCP
@@ -900,6 +936,8 @@ paths:
       tags:
       - mcp-servers
       operationId: getTeamMcpServer
+      x-omp-token-scopes:
+      - servers:read
       summary: One of the team's servers
       responses:
         '200':
@@ -922,6 +960,8 @@ paths:
       tags:
       - mcp-servers
       operationId: updateTeamMcpServer
+      x-omp-token-scopes:
+      - servers:write
       summary: Change a server's settings (editors and above); the slug never changes
       description: 'requirement: omit to keep, null to remove (capability overrides with mode scopes go back to inherit;
         so do they when the provider changes). A newly chosen provider must be enabled (422 provider_not_found); a
@@ -993,6 +1033,8 @@ paths:
       tags:
       - mcp-servers
       operationId: testTeamMcpServer
+      x-omp-token-scopes:
+      - servers:write
       summary: Connect and list capabilities without saving them (editors and above); stored as a health check
       description: For an oauth server the test signs in with the setup connection (McpServer.oauth.setupConnection;
         readAs names its person). Without an active one it fails with errorClass auth and setupRequired true.
@@ -1020,6 +1062,8 @@ paths:
       tags:
       - mcp-servers
       operationId: refreshTeamMcpServer
+      x-omp-token-scopes:
+      - servers:write
       summary: Read the server's tools, resources, resource templates and prompts again (editors and above)
       description: 502 discovery_failed (details is an McpTestResult) when the server can't be read. For an oauth
         server capabilities are read with the setup connection; 409 setup_reconsent_required (details.status missing
@@ -1100,6 +1144,8 @@ paths:
       tags:
       - mcp-servers
       operationId: listTeamMcpCapabilities
+      x-omp-token-scopes:
+      - servers:read
       summary: Everything the server listed at its last refresh, including gone capabilities
       parameters:
       - $ref: '#/components/parameters/CapabilityKindParam'
@@ -1213,6 +1259,8 @@ paths:
       tags:
       - mcp-servers
       operationId: listTeamMcpHealthChecks
+      x-omp-token-scopes:
+      - servers:read
       summary: The server's recent health checks, newest first (at most 50)
       responses:
         '200':
@@ -1238,6 +1286,8 @@ paths:
       tags:
       - mcp-servers
       operationId: publishTeamMcpServer
+      x-omp-token-scopes:
+      - servers:write
       summary: Publish to the company catalog (team owners and admins)
       description: Under approval_required the server becomes pending until a platform admin reviews it; under self_publish
         it is published at once and its current capabilities are approved. 409 not_refreshed when the server has
@@ -1274,6 +1324,8 @@ paths:
       tags:
       - mcp-servers
       operationId: unpublishTeamMcpServer
+      x-omp-token-scopes:
+      - servers:write
       summary: Withdraw a pending request or remove a published server from the catalog (team owners and admins)
       responses:
         '200':
@@ -1300,6 +1352,8 @@ paths:
       tags:
       - mcp-servers
       operationId: getTeamPublishing
+      x-omp-token-scopes:
+      - servers:read
       summary: How this team's servers reach the company catalog
       responses:
         '200':
@@ -1368,6 +1422,8 @@ paths:
       tags:
       - admin
       operationId: adminListMcpServers
+      x-omp-token-scopes:
+      - platform:read
       summary: Every team's MCP servers (platform admins and auditors)
       parameters:
       - $ref: '#/components/parameters/SearchParam'
@@ -1427,6 +1483,8 @@ paths:
       tags:
       - admin
       operationId: adminGetMcpServer
+      x-omp-token-scopes:
+      - platform:read
       summary: Any team's server
       responses:
         '200':
@@ -1454,6 +1512,8 @@ paths:
       tags:
       - admin
       operationId: adminListMcpCapabilities
+      x-omp-token-scopes:
+      - platform:read
       summary: Any server's capabilities
       parameters:
       - $ref: '#/components/parameters/CapabilityKindParam'
@@ -1482,6 +1542,8 @@ paths:
       tags:
       - admin
       operationId: adminListMcpHealthChecks
+      x-omp-token-scopes:
+      - platform:read
       summary: Any server's recent health checks, newest first (at most 50; platform admins and auditors)
       responses:
         '200':
@@ -1570,6 +1632,8 @@ paths:
       tags:
       - admin
       operationId: adminGetPublishingSettings
+      x-omp-token-scopes:
+      - platform:read
       summary: The platform's default publishing policy (platform admins and auditors)
       responses:
         '200':
@@ -1629,6 +1693,8 @@ paths:
       tags:
       - admin
       operationId: adminGetNetworkSettings
+      x-omp-token-scopes:
+      - platform:read
       summary: The allowlist of internal networks and hosts MCP servers may use (platform admins and auditors)
       description: entries are the platform admins' (editable); deploymentEntries come from UPSTREAM_ALLOWED_NETWORKS
         and are read-only. Loopback, link-local (including cloud metadata), unspecified, multicast and broadcast
@@ -1730,6 +1796,8 @@ paths:
       tags:
       - admin
       operationId: adminGetTeamPublishing
+      x-omp-token-scopes:
+      - platform:read
       summary: A team's publishing override (platform admins and auditors)
       responses:
         '200':
@@ -2057,6 +2125,8 @@ paths:
       tags:
       - admin
       operationId: adminListGateways
+      x-omp-token-scopes:
+      - platform:read
       summary: Every gateway, team and platform (platform admins and auditors)
       parameters:
       - $ref: '#/components/parameters/SearchParam'
@@ -2093,6 +2163,8 @@ paths:
       tags:
       - admin
       operationId: adminCreateGateway
+      x-omp-token-scopes:
+      - platform:write
       summary: Create a platform gateway (platform admins)
       description: 409 slug_taken.
       requestBody:
@@ -2129,6 +2201,8 @@ paths:
       tags:
       - admin
       operationId: adminGetGateway
+      x-omp-token-scopes:
+      - platform:read
       summary: Any gateway
       responses:
         '200':
@@ -2153,6 +2227,8 @@ paths:
       tags:
       - admin
       operationId: adminUpdateGateway
+      x-omp-token-scopes:
+      - platform:write
       summary: Change a platform gateway (platform admins); a team gateway can only be switched off here
       description: 403 team_gateway when changing anything but enabled on a team gateway.
       parameters:
@@ -2208,6 +2284,8 @@ paths:
       tags:
       - admin
       operationId: adminListGatewayCapabilities
+      x-omp-token-scopes:
+      - platform:read
       summary: Any gateway's selection
       responses:
         '200':
@@ -2232,6 +2310,8 @@ paths:
       tags:
       - admin
       operationId: adminSetGatewayCapabilities
+      x-omp-token-scopes:
+      - platform:write
       summary: Replace a platform gateway's selection (platform admins); If-Match is the gateway's revision
       description: Platform gateways may select approved, listed tools and prompts of published, enabled servers
         only, and minRole must be absent. Same 422 codes as the team operation; 403 team_gateway for a team gateway.
@@ -2275,6 +2355,8 @@ paths:
       tags:
       - admin
       operationId: adminListGatewayOptions
+      x-omp-token-scopes:
+      - platform:read
       summary: Capabilities a platform gateway may select (platform admins and auditors)
       description: Approved, listed tools, prompts, resources and resource templates of published, enabled servers.
         Resource templates that use RFC 6570 expressions other than {var} and {+var} are left out.
@@ -2298,6 +2380,8 @@ paths:
       tags:
       - admin
       operationId: adminListGatewayGrants
+      x-omp-token-scopes:
+      - platform:read
       summary: Who may use a platform gateway (platform admins and auditors)
       responses:
         '200':
@@ -2321,6 +2405,8 @@ paths:
       tags:
       - admin
       operationId: adminAddGatewayGrant
+      x-omp-token-scopes:
+      - platform:write
       summary: Grant a platform gateway to a team, a user or an SSO group (platform admins)
       description: 403 team_gateway for a team gateway. 409 grant_exists. 404 subject_not_found for an unknown team
         or user.
@@ -2363,6 +2449,8 @@ paths:
       tags:
       - admin
       operationId: adminRemoveGatewayGrant
+      x-omp-token-scopes:
+      - platform:write
       summary: Remove a grant (platform admins); takes effect on the next call
       responses:
         '200':
@@ -2376,6 +2464,8 @@ paths:
       tags:
       - admin
       operationId: adminListCalls
+      x-omp-token-scopes:
+      - platform:read
       summary: Every call through every gateway (platform admins and auditors)
       parameters:
       - $ref: '#/components/parameters/CallGatewayParam'
@@ -2674,6 +2764,8 @@ paths:
       - admin
       - oauth
       operationId: adminListUserOAuthGrants
+      x-omp-token-scopes:
+      - platform:read
       summary: A person's connected apps (platform admins and auditors)
       responses:
         '200':
@@ -2702,6 +2794,8 @@ paths:
       - admin
       - oauth
       operationId: adminRevokeUserOAuthGrant
+      x-omp-token-scopes:
+      - platform:write
       summary: Disconnect a person's app (platform admins)
       responses:
         '200':
@@ -2716,6 +2810,8 @@ paths:
       - admin
       - oauth
       operationId: adminGetTrustedClients
+      x-omp-token-scopes:
+      - platform:read
       summary: Clients that skip the consent screen (platform admins and auditors)
       responses:
         '200':
@@ -3031,6 +3127,8 @@ paths:
       tags:
       - admin
       operationId: adminListServiceAccounts
+      x-omp-token-scopes:
+      - platform:read
       summary: Every team's service accounts (platform admins and auditors)
       description: q matches the account's name and its team's slug and name. An unknown team lists nothing.
       parameters:
@@ -3090,6 +3188,8 @@ paths:
       - admin
       - auth-providers
       operationId: adminListAuthProviders
+      x-omp-token-scopes:
+      - platform:read
       summary: Every auth provider, enabled or not (platform admins and auditors)
       description: At most 100 providers exist, so this is not paged. The client secret is never returned.
       responses:
@@ -3160,6 +3260,8 @@ paths:
       - admin
       - auth-providers
       operationId: adminGetAuthProvider
+      x-omp-token-scopes:
+      - platform:read
       summary: One auth provider (platform admins and auditors)
       responses:
         '200':
@@ -3254,6 +3356,8 @@ paths:
       - admin
       - auth-providers
       operationId: adminListAuthProviderPresets
+      x-omp-token-scopes:
+      - platform:read
       summary: Built-in starting points for common providers (platform admins and auditors)
       description: A preset only pre-fills the create form; the provider stores whatever is sent. Values in braces in
         a preset's URLs (such as {tenant}) are listed in urlParameters for the form to ask for.
@@ -3281,6 +3385,8 @@ paths:
       - admin
       - connections
       operationId: adminListUserConnections
+      x-omp-token-scopes:
+      - platform:read
       summary: A person's connected accounts, without tokens (platform admins and auditors)
       responses:
         '200':
@@ -3309,6 +3415,8 @@ paths:
       - admin
       - connections
       operationId: adminRevokeUserConnection
+      x-omp-token-scopes:
+      - platform:write
       summary: Disconnect a person's account (platform admins)
       description: As revokeMyConnection, audited with reason admin. Auditors get 403.
       responses:
@@ -3445,6 +3553,8 @@ paths:
       tags:
       - admin
       operationId: adminGetLimitSettings
+      x-omp-token-scopes:
+      - platform:read
       summary: Rate limits on /mcp/{slug} (platform admins and auditors)
       description: The platform default and, for keys teams can override, the ceiling of each limit
         (docs/phase6-operations.md "Rate limits"). Counters are shared by every replica (PostgreSQL, fixed one-minute
@@ -3458,6 +3568,8 @@ paths:
       tags:
       - admin
       operationId: adminUpdateLimitSettings
+      x-omp-token-scopes:
+      - platform:write
       summary: Change rate limit defaults and ceilings (platform admins)
       description: Each listed key is replaced; keys not listed keep their values. 422 invalid_limit with details.key
         and details.reason (default_above_ceiling, not_overridable when a ceiling is set on a key teams can't override,
@@ -3491,6 +3603,8 @@ paths:
       tags:
       - admin
       operationId: adminGetTeamLimits
+      x-omp-token-scopes:
+      - platform:read
       summary: A team's rate limit overrides and effective limits (platform admins and auditors)
       responses:
         '200':
@@ -3503,6 +3617,8 @@ paths:
       tags:
       - admin
       operationId: adminUpdateTeamLimits
+      x-omp-token-scopes:
+      - platform:write
       summary: Set or clear a team's rate limit overrides (platform admins); If-Match is the team's revision
       description: Each listed key is replaced (value null inherits the platform default); keys not listed are kept.
         Only service_account_per_minute and gateway_per_minute can be overridden. 422 invalid_limit with details.key
@@ -3551,6 +3667,8 @@ paths:
       tags:
       - admin
       operationId: adminGetCaptureSettings
+      x-omp-token-scopes:
+      - platform:read
       summary: Payload capture settings - built-in redaction rules and the admins' extra patterns (platform admins and
         auditors)
       responses:
@@ -3625,6 +3743,8 @@ paths:
       tags:
       - admin
       operationId: adminGetRetentionSettings
+      x-omp-token-scopes:
+      - platform:read
       summary: How long call records, captured payloads, the audit log and usage rollups are kept (platform admins and
         auditors)
       responses:
@@ -3668,6 +3788,8 @@ paths:
       tags:
       - admin
       operationId: adminGetTeamRetention
+      x-omp-token-scopes:
+      - platform:read
       summary: A team's retention overrides and effective periods (platform admins and auditors)
       responses:
         '200':
@@ -3769,6 +3891,8 @@ paths:
       tags:
       - admin
       operationId: adminGetCall
+      x-omp-token-scopes:
+      - platform:read
       summary: One call record (platform admins and auditors)
       responses:
         '200':
@@ -3832,6 +3956,8 @@ paths:
       tags:
       - admin
       operationId: adminGetUsage
+      x-omp-token-scopes:
+      - platform:read
       summary: Usage of every gateway and server (platform admins and auditors)
       description: As getTeamUsage, over every call; team narrows to one team's scope (an unknown team reports
         nothing).
@@ -3859,7 +3985,987 @@ paths:
           $ref: '#/components/responses/ErrorReply'
         '403':
           $ref: '#/components/responses/ErrorReply'
+  /v1/admin/overview:
+    get:
+      tags:
+      - admin
+      operationId: adminGetOverview
+      x-omp-token-scopes:
+      - platform:read
+      summary: Headline counts and what needs attention across the platform (platform admins and auditors)
+      description: 'Computed when asked (no cache, Cache-Control: no-store) from the registry, gateways, keys, connections,
+        notification outbox and the hourly usage rollups; the figures lag the call log by the rollup''s few minutes (last24h.rolledUpTo).
+        attention lists up to 20 items per kind, most severe first (severity, then at); totals has the exact number per kind
+        and truncated says whether any kind was cut. Published servers only for server_failing, capabilities_changed and upstream_signin_lapsed:
+        a team''s private servers are the team''s business (getTeamAttention). Items carry a link the web app routes on. 403
+        for everyone but platform admins and auditors. docs/admin-overview.md.'
+      responses:
+        '200':
+          description: Overview
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AdminOverview'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/attention:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - teams
+      operationId: getTeamAttention
+      summary: 'What needs the team''s attention: failing servers, changed capabilities, pending reviews, expiring keys (team
+        members; platform staff read any team)'
+      description: 'Every member sees what they can already open: failing servers (enabled, any publish state), capabilities_changed,
+        upstream_signin_lapsed and review_pending (servers waiting for a platform review). Only the team''s owners and admins
+        (and platform staff) also see service_account_keys_expiring, automation_tokens_expiring (within 14 days) and notification_failures,
+        because those lists are theirs. An archived team answers 200 with no items (its servers are unavailable). 404 team_not_found
+        for people outside the team, like every team route. Connections that need re-consent are personal (Account > Connections)
+        and service accounts can''t use them, so there is no such item here.'
+      responses:
+        '200':
+          description: Attention items for the team
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamAttention'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/notifications:
+    get:
+      tags:
+      - notifications
+      operationId: listMyNotifications
+      summary: The caller's in-app notifications, newest first
+      description: Kept 90 days, read or not. unread=true lists only unread ones. unreadCount is the caller's total unread
+        count whatever the filter. Notifications only exist for events the caller received while in-app was on for that event
+        (getMyNotificationPreferences).
+      parameters:
+      - name: unread
+        in: query
+        required: false
+        description: Only unread notifications
+        schema:
+          type: boolean
+          default: false
+      - $ref: '#/components/parameters/CursorParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: A page of notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationPage'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/notifications/unread-count:
+    get:
+      tags:
+      - notifications
+      operationId: getMyUnreadNotificationCount
+      summary: How many notifications the caller hasn't read (the bell)
+      description: Cheap enough to poll every minute.
+      responses:
+        '200':
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationUnreadCount'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/notifications/read-all:
+    post:
+      tags:
+      - notifications
+      operationId: markAllMyNotificationsRead
+      summary: Mark every unread notification of the caller as read
+      description: Idempotent. marked is how many changed.
+      responses:
+        '200':
+          description: Marked
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationMarked'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/notifications/{notificationId}/read:
+    parameters:
+    - $ref: '#/components/parameters/NotificationIdParam'
+    post:
+      tags:
+      - notifications
+      operationId: markMyNotificationRead
+      summary: Mark one of the caller's notifications as read
+      description: Idempotent. 404 notification_not_found for another person's notification or one already deleted.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/me/notification-preferences:
+    get:
+      tags:
+      - notifications
+      operationId: getMyNotificationPreferences
+      summary: The caller's notification preferences, one row per event they can receive
+      description: 'Only events the caller can receive are listed: team events for the roles they hold, publish.requested
+        for platform admins, key.expiring and connection.needs_reconsent for everyone. Defaults: in-app on, email on (custom=false).
+        email only takes effect when emailAvailable (the operator configured SMTP).'
+      responses:
+        '200':
+          description: Preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationPreferences'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+    put:
+      tags:
+      - notifications
+      operationId: updateMyNotificationPreferences
+      summary: Change the caller's preferences for some events
+      description: Events not listed keep their value. 400 invalid_event for an unknown event; 422 not_receivable (details.events)
+        for an event the caller can't receive. Not audited (personal settings).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesUpdate'
+      responses:
+        '200':
+          description: Updated preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationPreferences'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/notification-destinations:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - notifications
+      operationId: listTeamNotificationDestinations
+      summary: The team's webhook destinations (team owners and admins; platform staff read any team)
+      description: 'A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook
+        URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown
+        once on creation and on rotation. Format slack is unsigned ({"text": ...}).'
+      responses:
+        '200':
+          description: Destinations ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationDestination'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - notifications
+      operationId: createTeamNotificationDestination
+      summary: Add a webhook destination (team owners and admins, browser session only)
+      description: 'A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook
+        URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown
+        once on creation and on rotation. Format slack is unsigned ({"text": ...}). 400 invalid_name, invalid_format. 409
+        name_taken (names are unique within the scope), too_many_destinations (at most 10 per team and 10 for the platform),
+        team_archived. 422 url_not_allowed (details.reason: invalid, too_long, userinfo, fragment, scheme, private_address,
+        blocked_address; the same address policy and internal-network allowlist as MCP servers, checked again on every delivery),
+        invalid_events (details.events lists what this destination can''t receive; at least one event is required). Events
+        a team destination can receive: server.unhealthy, server.recovered, capability.changed, publish.decided, upstream_signin.lapsed,
+        key.expiring (service-account keys and publisher tokens).'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationDestinationCreate'
+      responses:
+        '201':
+          description: Created; secret is shown only now (null for slack)
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestinationCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/notification-destinations/{destinationId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    get:
+      tags:
+      - notifications
+      operationId: getTeamNotificationDestination
+      summary: One destination
+      description: 'A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook
+        URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown
+        once on creation and on rotation. Format slack is unsigned ({"text": ...}).'
+      responses:
+        '200':
+          description: Destination
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestination'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - notifications
+      operationId: updateTeamNotificationDestination
+      summary: Change a destination (team owners and admins, browser session only)
+      description: Format can't change (create another destination). Sending url replaces the sealed URL (checked as on creation);
+        leaving it out keeps it. Turning enabled back on after an automatic stop (disabledReason failures) clears the failure
+        count. 409 name_taken, team_archived. 412 and 428 for If-Match. 422 as on creation.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationDestinationUpdate'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestination'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - notifications
+      operationId: deleteTeamNotificationDestination
+      summary: Delete a destination and its delivery log (team owners and admins, browser session only)
+      description: Deliveries still waiting for it are dropped.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/notification-destinations/{destinationId}/test:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    post:
+      tags:
+      - notifications
+      operationId: testTeamNotificationDestination
+      summary: Send a test message now (team owners and admins, browser session only)
+      description: Sends a payload of type test (or the same text to a slack destination) straight away, through the same
+        address checks and signing as real deliveries, and reports the outcome in the 200 body (ok false with errorClass,
+        not an HTTP error). Not stored in the delivery log. 429 rate_limited after 10 tests per destination per hour. 409
+        team_archived.
+      responses:
+        '200':
+          description: The outcome of the test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationTestResult'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '429':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/notification-destinations/{destinationId}/rotate-secret:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    post:
+      tags:
+      - notifications
+      operationId: rotateTeamNotificationDestinationSecret
+      summary: Make a new signing secret (team owners and admins, browser session only)
+      description: Returns the new secret once. For graceHours (default 24, 0 to 72) every delivery carries a signature for
+        the new secret and one for the old, so receivers can switch without dropping messages; 0 ends the old secret now.
+        409 not_signed for a slack destination, team_archived. Audited; the secret never is.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSecretRotate'
+      responses:
+        '200':
+          description: Rotated; secret is shown only now
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestinationSecret'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/notification-destinations/{destinationId}/deliveries:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    get:
+      tags:
+      - notifications
+      operationId: listTeamNotificationDeliveries
+      summary: The destination's last 50 deliveries (team owners and admins; platform staff read any team)
+      description: 'Newest first, from the delivery queue (kept 14 days): state, attempts, last HTTP status and error class.
+        Never the payload, the URL or response bodies.'
+      responses:
+        '200':
+          description: Up to 50 deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationDelivery'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/notification-destinations:
+    get:
+      tags:
+      - notifications
+      operationId: adminListNotificationDestinations
+      x-omp-token-scopes:
+      - platform:read
+      summary: The platform's webhook destinations (platform admins and auditors)
+      description: 'A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook
+        URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown
+        once on creation and on rotation. Format slack is unsigned ({"text": ...}).'
+      responses:
+        '200':
+          description: Destinations ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationDestination'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - notifications
+      operationId: adminCreateNotificationDestination
+      summary: Add a webhook destination (platform admins, browser session only)
+      description: 'A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook
+        URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown
+        once on creation and on rotation. Format slack is unsigned ({"text": ...}). 400 invalid_name, invalid_format. 409
+        name_taken (names are unique within the scope), too_many_destinations (at most 10 per team and 10 for the platform),
+        team_archived. 422 url_not_allowed (details.reason: invalid, too_long, userinfo, fragment, scheme, private_address,
+        blocked_address; the same address policy and internal-network allowlist as MCP servers, checked again on every delivery),
+        invalid_events (details.events lists what this destination can''t receive; at least one event is required). A platform
+        destination receives publish.requested and key.expiring for platform tokens; with teamEvents true it also receives
+        the other non-personal events of every team (422 invalid_events when events lists one of those and teamEvents is false).'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationDestinationCreate'
+      responses:
+        '201':
+          description: Created; secret is shown only now (null for slack)
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestinationCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/notification-destinations/{destinationId}:
+    parameters:
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    get:
+      tags:
+      - notifications
+      operationId: adminGetNotificationDestination
+      x-omp-token-scopes:
+      - platform:read
+      summary: One destination
+      description: 'A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook
+        URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown
+        once on creation and on rotation. Format slack is unsigned ({"text": ...}).'
+      responses:
+        '200':
+          description: Destination
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestination'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    patch:
+      tags:
+      - notifications
+      operationId: adminUpdateNotificationDestination
+      summary: Change a destination (platform admins, browser session only)
+      description: Format can't change (create another destination). Sending url replaces the sealed URL (checked as on creation);
+        leaving it out keeps it. Turning enabled back on after an automatic stop (disabledReason failures) clears the failure
+        count. 409 name_taken, team_archived. 412 and 428 for If-Match. 422 as on creation.
+      parameters:
+      - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationDestinationUpdate'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestination'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '412':
+          $ref: '#/components/responses/ErrorReply'
+        '422':
+          $ref: '#/components/responses/ErrorReply'
+        '428':
+          $ref: '#/components/responses/ErrorReply'
+    delete:
+      tags:
+      - notifications
+      operationId: adminDeleteNotificationDestination
+      summary: Delete a destination and its delivery log (platform admins, browser session only)
+      description: Deliveries still waiting for it are dropped.
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/notification-destinations/{destinationId}/test:
+    parameters:
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    post:
+      tags:
+      - notifications
+      operationId: adminTestNotificationDestination
+      summary: Send a test message now (platform admins, browser session only)
+      description: Sends a payload of type test (or the same text to a slack destination) straight away, through the same
+        address checks and signing as real deliveries, and reports the outcome in the 200 body (ok false with errorClass,
+        not an HTTP error). Not stored in the delivery log. 429 rate_limited after 10 tests per destination per hour. 409
+        team_archived.
+      responses:
+        '200':
+          description: The outcome of the test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationTestResult'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '429':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/notification-destinations/{destinationId}/rotate-secret:
+    parameters:
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    post:
+      tags:
+      - notifications
+      operationId: adminRotateNotificationDestinationSecret
+      summary: Make a new signing secret (platform admins, browser session only)
+      description: Returns the new secret once. For graceHours (default 24, 0 to 72) every delivery carries a signature for
+        the new secret and one for the old, so receivers can switch without dropping messages; 0 ends the old secret now.
+        409 not_signed for a slack destination, team_archived. Audited; the secret never is.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSecretRotate'
+      responses:
+        '200':
+          description: Rotated; secret is shown only now
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDestinationSecret'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/notification-destinations/{destinationId}/deliveries:
+    parameters:
+    - $ref: '#/components/parameters/NotificationDestinationIdParam'
+    get:
+      tags:
+      - notifications
+      operationId: adminListNotificationDeliveries
+      x-omp-token-scopes:
+      - platform:read
+      summary: The destination's last 50 deliveries (platform admins and auditors)
+      description: 'Newest first, from the delivery queue (kept 14 days): state, attempts, last HTTP status and error class.
+        Never the payload, the URL or response bodies.'
+      responses:
+        '200':
+          description: Up to 50 deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationDelivery'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/settings/notifications:
+    get:
+      tags:
+      - notifications
+      operationId: adminGetNotificationSettings
+      x-omp-token-scopes:
+      - platform:read
+      summary: Email and delivery status (platform admins and auditors)
+      description: 'Email is configured by the operator with SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM
+        and SMTP_TLS and is off without SMTP_HOST. Shown: whether it is on, the From address, host, port, TLS mode and whether
+        it authenticates, never the username or password. Also the delivery queue''s state.'
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationSettings'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/settings/notifications/test-email:
+    post:
+      tags:
+      - notifications
+      operationId: adminTestEmail
+      summary: Send a test email to the caller's own address (platform admins)
+      description: 'Always to the caller''s own address (never an address from the request), through the configured SMTP server,
+        and reports the outcome in the 200 body (ok false with errorClass: not_allowed, connect, tls, auth, rejected, address,
+        timeout). 409 email_not_configured when SMTP_HOST is unset. 429 rate_limited after 5 tests per hour per admin. Audited
+        as settings.notifications_test_email.'
+      responses:
+        '200':
+          description: The outcome of the test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationTestResult'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '429':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/token:
+    get:
+      tags:
+      - automation-tokens
+      operationId: getToken
+      x-omp-token-scopes:
+      - platform:read
+      - platform:write
+      - servers:read
+      - servers:write
+      summary: Describe the automation token used for this request (for CI debugging)
+      description: Returns the token's kind, name, scopes, team and expiry (never the secret). Takes any valid automation
+        token whatever its scopes. 401 invalid_token for a request without one (a browser session doesn't count), or with
+        an unknown, expired or revoked one, or an MCP credential (omp_, omp_sa_, ompat_). docs/automation-tokens.md.
+      responses:
+        '200':
+          description: The token
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AutomationToken'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '429':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/automation-tokens:
+    get:
+      tags:
+      - automation-tokens
+      operationId: adminListAutomationTokens
+      x-omp-token-scopes:
+      - platform:read
+      summary: Platform-admin tokens, including revoked and expired ones from the last 30 days (platform admins and auditors)
+      description: Newest first. Never the secret. blockedReason creator_not_platform_admin marks a token that is refused
+        because the person who made it is no longer an active platform admin.
+      responses:
+        '200':
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationToken'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - automation-tokens
+      operationId: adminCreateAutomationToken
+      summary: Create a platform-admin token (platform admins, browser session only); the secret is shown once
+      description: 'Prefix ompadm_. Scopes platform:read and/or platform:write (write includes read). expiresInDays 1-365,
+        default 90: tokens always expire. 400 invalid_name, invalid_scopes, invalid_expiry. 409 too_many_tokens (at most 20
+        active platform tokens). Tokens authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed
+        here in a browser session only: a token that calls this operation gets 403 session_required.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationTokenCreate'
+      responses:
+        '201':
+          description: Created; the secret is shown only now
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AutomationTokenCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/admin/automation-tokens/{tokenId}:
+    parameters:
+    - $ref: '#/components/parameters/AutomationTokenIdParam'
+    delete:
+      tags:
+      - automation-tokens
+      operationId: adminRevokeAutomationToken
+      summary: Revoke a platform-admin token (platform admins, browser session only); takes effect on the next request
+      description: 'Revoking a revoked or expired token is a no-op. 404 token_not_found for a team token or an unknown ID.
+        Tokens authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed here in a browser session
+        only: a token that calls this operation gets 403 session_required.'
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/automation-tokens:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    get:
+      tags:
+      - automation-tokens
+      operationId: listTeamAutomationTokens
+      summary: The team's publisher tokens, including revoked and expired ones from the last 30 days (team owners and admins;
+        platform staff read any team)
+      description: Newest first. Never the secret. Members and editors get 403.
+      responses:
+        '200':
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AutomationToken'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+    post:
+      tags:
+      - automation-tokens
+      operationId: createTeamAutomationToken
+      summary: Create a team publisher token (team owners and admins, browser session only); the secret is shown once
+      description: 'Prefix omppub_. Owned by the team: it keeps working when its creator leaves. Scopes servers:read and/or
+        servers:write (write includes read), limited to this team''s MCP servers. expiresInDays 1-365, default 90. 400 invalid_name,
+        invalid_scopes, invalid_expiry. 409 too_many_tokens (at most 20 active per team), team_archived. Platform roles get
+        403 through team routes. Tokens authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed
+        here in a browser session only: a token that calls this operation gets 403 session_required.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationTokenCreate'
+      responses:
+        '201':
+          description: Created; the secret is shown only now
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AutomationTokenCreated'
+        '400':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/teams/{team}/automation-tokens/{tokenId}:
+    parameters:
+    - $ref: '#/components/parameters/TeamParam'
+    - $ref: '#/components/parameters/AutomationTokenIdParam'
+    delete:
+      tags:
+      - automation-tokens
+      operationId: revokeTeamAutomationToken
+      summary: Revoke a team token (team owners and admins, browser session only); takes effect on the next request
+      description: 'Revoking a revoked or expired token is a no-op. 404 token_not_found for another team''s token. Tokens
+        authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed here in a browser session only:
+        a token that calls this operation gets 403 session_required.'
+      responses:
+        '200':
+          $ref: '#/components/responses/OkReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
 components:
+  securitySchemes:
+    AutomationToken:
+      type: http
+      scheme: bearer
+      description: An automation token (ompadm_ or omppub_), accepted only by operations with x-omp-token-scopes, on /v1/* only. Not used as an operation-level security requirement so generated clients stay as they are.
   headers:
     ETag:
       description: Quoted revision, for If-Match on the next update
@@ -3881,11 +4987,12 @@ components:
       name: actorKind
       in: query
       required: false
-      description: Only entries by the system
+      description: 'Only entries by the system (system) or by automation tokens (automation_token)'
       schema:
         type: string
         enum:
         - system
+        - automation_token
     AuditActorParam:
       name: actorUserId
       in: query
@@ -4168,6 +5275,28 @@ components:
       schema:
         type: boolean
         default: false
+    NotificationIdParam:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    NotificationDestinationIdParam:
+      name: destinationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AutomationTokenIdParam:
+      name: tokenId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
     AuditPageReply:
       description: A page of audit entries, newest first
@@ -4351,6 +5480,7 @@ components:
           - user
           - api_key
           - system
+          - automation_token
         userId:
           type: string
           format: uuid
@@ -4361,6 +5491,18 @@ components:
         apiKeyName:
           type: string
           description: The API key used (api_key actors)
+        automationTokenId:
+          type: string
+          format: uuid
+          description: The automation token (automation_token actors; no userId)
+        automationTokenName:
+          type: string
+          description: The token's name as recorded when it acted
+        automationTokenKind:
+          type: string
+          enum:
+          - platform_admin
+          - team_publisher
     AuditEntry:
       type: object
       required:
@@ -4388,6 +5530,7 @@ components:
           - user
           - api_key
           - system
+          - automation_token
         actorUserId:
           type: string
           format: uuid
@@ -5174,6 +6317,11 @@ components:
             static Authorization header or is in oauth mode). false: the JWT is not sent to this server at all (no
             header), recommended for servers run outside the company such as GitHub''s hosted MCP server, so names,
             emails and teams are not sent to a third party. Absent from servers before Phase 7 (true)'
+        protocol:
+          allOf:
+          - $ref: '#/components/schemas/McpServerProtocol'
+          nullable: true
+          description: The MCP protocol version the portal last negotiated with the upstream server (set by refresh, health checks and test); read-only. Null until the first successful exchange.
         revision:
           $ref: '#/components/schemas/Revision'
         createdAt:
@@ -8763,3 +9911,1243 @@ components:
         truncated:
           type: boolean
           description: More rows than limit (totals still cover everything)
+    TeamRef:
+      type: object
+      description: A team, as named in overviews, notifications and tokens
+      required:
+      - id
+      - slug
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+    LinkTarget:
+      type: object
+      description: 'Where the web app goes for an item (docs/admin-overview.md, Link targets). server: the server page (team
+        page for members, Admin > Servers for platform staff); servers: the team''s server list; review_queue: Admin > Publishing;
+        gateways: Admin > Gateways; service_account / service_accounts: the team''s service accounts; automation_tokens: Admin
+        > Automation tokens; team_automation_tokens: the team''s Settings > Automation tokens; auth_providers: Admin > Auth
+        providers; usage: Admin > Usage; notification_settings: Admin > Notifications; team_notification_settings: the team''s
+        Settings > Notifications; account_connections: Account > Connections; account_api_keys: Account > API keys.'
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - server
+          - servers
+          - review_queue
+          - gateways
+          - service_account
+          - service_accounts
+          - automation_tokens
+          - team_automation_tokens
+          - auth_providers
+          - usage
+          - notification_settings
+          - team_notification_settings
+          - account_connections
+          - account_api_keys
+        id:
+          type: string
+          description: The object's ID for singular types (server, service_account)
+        teamSlug:
+          type: string
+          description: The team's slug, for team pages and for the team's server or service account
+    AttentionKind:
+      type: string
+      enum:
+      - server_failing
+      - upstream_signin_lapsed
+      - review_pending
+      - capabilities_changed
+      - personal_keys_expiring
+      - service_account_keys_expiring
+      - automation_tokens_expiring
+      - connections_reconsent
+      - gateways_disabled
+      - rate_limited
+      - notification_failures
+      description: 'server_failing: one item per enabled server whose latest health check failed (at = failing since). upstream_signin_lapsed:
+        one per oauth-mode server whose setup sign-in needs re-consent (at = since). review_pending: one item, count = servers
+        waiting for a platform review, at = the oldest request. capabilities_changed: one per published server with changed
+        or unapproved capabilities (count = how many, held back from the catalog). personal_keys_expiring: count of personal
+        API keys expiring within 14 days (platform overview only; no link: they belong to individuals). service_account_keys_expiring:
+        one per team, count = keys expiring within 14 days (at = the earliest expiry). automation_tokens_expiring: one for platform
+        tokens and one per team, count within 14 days. connections_reconsent: count of people''s connections that need re-consent
+        (setup sign-ins of servers are upstream_signin_lapsed instead). gateways_disabled: count of switched-off gateways of
+        active teams. rate_limited: calls refused by a rate limit in the last 24 hours. notification_failures: failing webhook
+        destinations (stopped automatically, or 3 or more failures in a row) plus one if email had a failed delivery in the
+        last 24 hours.'
+    AttentionSeverity:
+      type: string
+      enum:
+      - critical
+      - warning
+      - info
+    AttentionSubject:
+      type: object
+      description: The server (or gateway) an item is about
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+    AttentionItem:
+      type: object
+      required:
+      - kind
+      - severity
+      - summary
+      properties:
+        kind:
+          $ref: '#/components/schemas/AttentionKind'
+        severity:
+          $ref: '#/components/schemas/AttentionSeverity'
+        summary:
+          type: string
+          description: One line in English, for scripts and logs; the web app builds its own wording from the fields
+        count:
+          type: integer
+          format: int64
+          description: How many, for kinds that count
+        at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'The time that matters for the kind (see AttentionKind): failing since, the oldest request, the earliest
+            expiry. Null when none.'
+        subject:
+          allOf:
+          - $ref: '#/components/schemas/AttentionSubject'
+          nullable: true
+        team:
+          allOf:
+          - $ref: '#/components/schemas/TeamRef'
+          nullable: true
+        link:
+          allOf:
+          - $ref: '#/components/schemas/LinkTarget'
+          nullable: true
+          description: Where to go; null when there is nowhere useful (personal keys)
+    OverviewCounts:
+      type: object
+      required:
+      - users
+      - teams
+      - servers
+      - publishedServers
+      - gateways
+      - serviceAccounts
+      - automationTokens
+      properties:
+        users:
+          type: integer
+          format: int64
+          description: Active people
+        teams:
+          type: integer
+          format: int64
+          description: Active teams
+        servers:
+          type: integer
+          format: int64
+        publishedServers:
+          type: integer
+          format: int64
+        gateways:
+          type: integer
+          format: int64
+          description: Gateways of active teams, and platform gateways
+        serviceAccounts:
+          type: integer
+          format: int64
+        automationTokens:
+          type: integer
+          format: int64
+          description: Active automation tokens (both kinds)
+    OverviewActivity:
+      type: object
+      description: The last 24 hourly rollup buckets (the current hour included), from the usage rollups
+      required:
+      - calls
+      - errors
+      - errorRate
+      - rateLimited
+      - rolledUpTo
+      properties:
+        calls:
+          type: integer
+          format: int64
+        errors:
+          type: integer
+          format: int64
+          description: Every outcome but ok, as Admin > Usage counts them (denied, rate_limited and needs_authorization included),
+            so the figures agree
+        errorRate:
+          type: number
+          format: double
+          nullable: true
+          description: errors / calls from 0 to 1; null without calls
+        rateLimited:
+          type: integer
+          format: int64
+        rolledUpTo:
+          type: string
+          format: date-time
+          nullable: true
+          description: Calls up to this time are included (rollups run every 5 minutes)
+    AdminOverview:
+      type: object
+      description: The platform overview (Admin > Overview)
+      required:
+      - generatedAt
+      - counts
+      - last24h
+      - attention
+      - totals
+      - truncated
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        counts:
+          $ref: '#/components/schemas/OverviewCounts'
+        last24h:
+          $ref: '#/components/schemas/OverviewActivity'
+        attention:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttentionItem'
+          description: At most 20 items per kind, most severe first
+        totals:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+          description: Exact number per AttentionKind (servers for per-server kinds, otherwise the sum of count); kinds with
+            nothing are left out. Larger than the items listed when truncated.
+        truncated:
+          type: boolean
+    TeamAttention:
+      type: object
+      description: The team overview's attention card
+      required:
+      - generatedAt
+      - attention
+      - totals
+      - truncated
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        attention:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttentionItem'
+        totals:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+          description: Exact number per AttentionKind (servers for per-server kinds, otherwise the sum of count); kinds with
+            nothing are left out. Larger than the items listed when truncated.
+        truncated:
+          type: boolean
+    NotificationEventType:
+      type: string
+      enum:
+      - server.unhealthy
+      - server.recovered
+      - capability.changed
+      - publish.requested
+      - publish.decided
+      - connection.needs_reconsent
+      - upstream_signin.lapsed
+      - key.expiring
+      description: 'server.unhealthy: 3 failed checks in a row, once per incident, a reminder every 24 hours while it lasts.
+        server.recovered. capability.changed: a published server''s definition changed or grew and is held back. publish.requested:
+        a server entered review (platform admins). publish.decided: approved or rejected (team owners and admins). connection.needs_reconsent:
+        a person''s connection to a provider or server lapsed (that person only). upstream_signin.lapsed: an oauth server''s
+        setup sign-in lapsed (editors and above). key.expiring: a key or token expires in 7 days. Webhooks can''t subscribe
+        to connection.needs_reconsent or to personal keys.'
+    NotificationItem:
+      type: object
+      required:
+      - id
+      - event
+      - title
+      - body
+      - team
+      - link
+      - createdAt
+      - readAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        event:
+          $ref: '#/components/schemas/NotificationEventType'
+        title:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 500
+        team:
+          allOf:
+          - $ref: '#/components/schemas/TeamRef'
+          nullable: true
+        link:
+          allOf:
+          - $ref: '#/components/schemas/LinkTarget'
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+    NotificationPage:
+      type: object
+      required:
+      - items
+      - unreadCount
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationItem'
+        nextCursor:
+          type: string
+          nullable: true
+        unreadCount:
+          type: integer
+          format: int64
+    NotificationUnreadCount:
+      type: object
+      required:
+      - count
+      properties:
+        count:
+          type: integer
+          format: int64
+    NotificationMarked:
+      type: object
+      required:
+      - marked
+      properties:
+        marked:
+          type: integer
+          format: int64
+    NotificationPreference:
+      type: object
+      required:
+      - event
+      - inApp
+      - email
+      - custom
+      properties:
+        event:
+          $ref: '#/components/schemas/NotificationEventType'
+        inApp:
+          type: boolean
+        email:
+          type: boolean
+        custom:
+          type: boolean
+          description: false while both values are the defaults
+    NotificationPreferences:
+      type: object
+      required:
+      - emailAvailable
+      - emailAddress
+      - items
+      properties:
+        emailAvailable:
+          type: boolean
+          description: The operator configured SMTP; without it email choices are kept but nothing is sent
+        emailAddress:
+          type: string
+          description: 'Where email goes: the address on the person''s profile'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationPreference'
+    NotificationPreferenceChange:
+      type: object
+      required:
+      - event
+      properties:
+        event:
+          $ref: '#/components/schemas/NotificationEventType'
+        inApp:
+          type: boolean
+        email:
+          type: boolean
+    NotificationPreferencesUpdate:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/NotificationPreferenceChange'
+    NotificationFormat:
+      type: string
+      enum:
+      - json
+      - slack
+      description: 'json: a signed JSON envelope (docs/notifications.md). slack: {"text": ...}, unsigned, for Slack-compatible
+        incoming webhooks.'
+    NotificationErrorClass:
+      type: string
+      enum:
+      - not_allowed
+      - connect
+      - tls
+      - timeout
+      - auth
+      - rejected
+      - server_error
+      - address
+      - expired
+      - internal
+      description: 'not_allowed: the address isn''t allowed (blocked or not in the internal-network allowlist, or a redirect).
+        connect: unreachable. tls: certificate or handshake problem (or STARTTLS missing). timeout. auth: SMTP login refused.
+        rejected: the destination answered 4xx (SMTP 5xx). server_error: it answered 5xx. address: the recipient address was
+        refused. expired: still undelivered after 24 hours. internal.'
+    NotificationDestinationHealth:
+      type: object
+      required:
+      - state
+      - consecutiveFailures
+      properties:
+        state:
+          type: string
+          enum:
+          - unknown
+          - ok
+          - failing
+        consecutiveFailures:
+          type: integer
+          format: int32
+        lastSuccessAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastFailureAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastErrorClass:
+          allOf:
+          - $ref: '#/components/schemas/NotificationErrorClass'
+          nullable: true
+    NotificationDestination:
+      type: object
+      description: 'A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook
+        URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown
+        once on creation and on rotation. Format slack is unsigned ({"text": ...}).'
+      required:
+      - id
+      - scope
+      - name
+      - format
+      - urlDisplay
+      - events
+      - teamEvents
+      - enabled
+      - hasSecret
+      - secretHint
+      - health
+      - revision
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum:
+          - team
+          - platform
+        team:
+          allOf:
+          - $ref: '#/components/schemas/TeamRef'
+          nullable: true
+        name:
+          type: string
+        format:
+          $ref: '#/components/schemas/NotificationFormat'
+        urlDisplay:
+          type: string
+          example: https://hooks.slack.com/...
+          description: Scheme and host only; the rest of the URL is never shown
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationEventType'
+        teamEvents:
+          type: boolean
+          description: 'Platform destinations: also receive the non-personal events of every team. Always false for team destinations.'
+        enabled:
+          type: boolean
+        disabledReason:
+          type: string
+          enum:
+          - failures
+          nullable: true
+          description: 'failures: stopped automatically after 20 failed attempts in a row'
+        hasSecret:
+          type: boolean
+        secretHint:
+          type: string
+          description: Last 4 characters of the signing secret, or empty
+        secretRotatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        previousSecretExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: While set and in the future, deliveries carry a signature for the previous secret too
+        health:
+          $ref: '#/components/schemas/NotificationDestinationHealth'
+        revision:
+          $ref: '#/components/schemas/Revision'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdByName:
+          type: string
+          nullable: true
+    NotificationDestinationCreate:
+      type: object
+      required:
+      - name
+      - format
+      - url
+      - events
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        format:
+          $ref: '#/components/schemas/NotificationFormat'
+        url:
+          type: string
+          maxLength: 1000
+          description: https, or http for a host in the internal-network allowlist. No user info or fragment; a query is allowed
+            (it is sealed and never shown).
+        events:
+          type: array
+          minItems: 1
+          maxItems: 8
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/NotificationEventType'
+        teamEvents:
+          type: boolean
+          default: false
+        enabled:
+          type: boolean
+          default: true
+    NotificationDestinationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        url:
+          type: string
+          maxLength: 1000
+        events:
+          type: array
+          minItems: 1
+          maxItems: 8
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/NotificationEventType'
+        teamEvents:
+          type: boolean
+        enabled:
+          type: boolean
+    NotificationDestinationCreated:
+      type: object
+      required:
+      - destination
+      properties:
+        destination:
+          $ref: '#/components/schemas/NotificationDestination'
+        secret:
+          type: string
+          nullable: true
+          description: The signing secret (ompwhs_ and 43 characters), shown only now; null for slack
+    NotificationSecretRotate:
+      type: object
+      properties:
+        graceHours:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 72
+          default: 24
+          description: 'How long the old secret keeps signing too (0: stop now)'
+    NotificationDestinationSecret:
+      type: object
+      required:
+      - destination
+      - secret
+      properties:
+        destination:
+          $ref: '#/components/schemas/NotificationDestination'
+        secret:
+          type: string
+          description: The new signing secret, shown only now
+    NotificationTestResult:
+      type: object
+      required:
+      - ok
+      - durationMs
+      - message
+      properties:
+        ok:
+          type: boolean
+        errorClass:
+          allOf:
+          - $ref: '#/components/schemas/NotificationErrorClass'
+          nullable: true
+        httpStatus:
+          type: integer
+          format: int32
+          nullable: true
+        durationMs:
+          type: integer
+          format: int32
+        message:
+          type: string
+          maxLength: 200
+          description: A short explanation safe to show; never the destination's response body
+    NotificationDelivery:
+      type: object
+      required:
+      - id
+      - eventId
+      - event
+      - state
+      - attempts
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        eventId:
+          type: string
+          format: uuid
+          description: The id of the event, as in the payload and X-OMP-Event-Id
+        event:
+          $ref: '#/components/schemas/NotificationEventType'
+        state:
+          type: string
+          enum:
+          - pending
+          - sent
+          - failed
+          - skipped
+          description: 'skipped: the destination was off or deleted, or the event no longer matched'
+        attempts:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        httpStatus:
+          type: integer
+          format: int32
+          nullable: true
+        errorClass:
+          allOf:
+          - $ref: '#/components/schemas/NotificationErrorClass'
+          nullable: true
+    NotificationEmailStatus:
+      type: object
+      required:
+      - configured
+      - authenticated
+      - sentLast24h
+      - failedLast24h
+      properties:
+        configured:
+          type: boolean
+          description: SMTP_HOST is set
+        from:
+          type: string
+          nullable: true
+        host:
+          type: string
+          nullable: true
+        port:
+          type: integer
+          format: int32
+          nullable: true
+        tls:
+          type: string
+          enum:
+          - starttls
+          - tls
+          - none
+          nullable: true
+        authenticated:
+          type: boolean
+          description: SMTP_USERNAME is set (the username and password are never shown)
+        sentLast24h:
+          type: integer
+          format: int64
+        failedLast24h:
+          type: integer
+          format: int64
+    NotificationSettings:
+      type: object
+      required:
+      - email
+      - webhooks
+      - queue
+      properties:
+        email:
+          $ref: '#/components/schemas/NotificationEmailStatus'
+        webhooks:
+          type: object
+          required:
+          - teamDestinations
+          - platformDestinations
+          - stopped
+          properties:
+            teamDestinations:
+              type: integer
+              format: int64
+            platformDestinations:
+              type: integer
+              format: int64
+            stopped:
+              type: integer
+              format: int64
+              description: Destinations stopped automatically after repeated failures
+        queue:
+          type: object
+          required:
+          - pending
+          - failedLast24h
+          - intervalSeconds
+          properties:
+            pending:
+              type: integer
+              format: int64
+            failedLast24h:
+              type: integer
+              format: int64
+            oldestPendingAt:
+              type: string
+              format: date-time
+              nullable: true
+            lastRunAt:
+              type: string
+              format: date-time
+              nullable: true
+            intervalSeconds:
+              type: integer
+              format: int32
+    NotificationServerRef:
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+      description: The server an event is about
+    ServerUnhealthyData:
+      type: object
+      required:
+      - server
+      - since
+      - consecutiveFailures
+      - reminder
+      properties:
+        server:
+          $ref: '#/components/schemas/NotificationServerRef'
+        since:
+          type: string
+          format: date-time
+          description: When the failing status began
+        consecutiveFailures:
+          type: integer
+          format: int32
+        errorClass:
+          type: string
+          description: McpErrorClass of the latest check
+        httpStatus:
+          type: integer
+          format: int32
+          nullable: true
+        reminder:
+          type: boolean
+          description: true for the daily reminders
+        failingHours:
+          type: integer
+          format: int32
+          description: Whole hours since, on reminders
+    ServerRecoveredData:
+      type: object
+      required:
+      - server
+      - since
+      - recoveredAt
+      - downtimeSeconds
+      properties:
+        server:
+          $ref: '#/components/schemas/NotificationServerRef'
+        since:
+          type: string
+          format: date-time
+        recoveredAt:
+          type: string
+          format: date-time
+        downtimeSeconds:
+          type: integer
+          format: int64
+    CapabilityChangedData:
+      type: object
+      required:
+      - server
+      - changedCount
+      - newCount
+      - held
+      - capabilities
+      - moreCount
+      properties:
+        server:
+          $ref: '#/components/schemas/NotificationServerRef'
+        changedCount:
+          type: integer
+          format: int32
+        newCount:
+          type: integer
+          format: int32
+        held:
+          type: boolean
+          description: 'Always true: held back from the catalog until approved'
+        capabilities:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required:
+            - kind
+            - name
+            - change
+            properties:
+              kind:
+                type: string
+                enum:
+                - tool
+                - resource
+                - resource_template
+                - prompt
+              name:
+                type: string
+                maxLength: 100
+              change:
+                type: string
+                enum:
+                - changed
+                - new
+        moreCount:
+          type: integer
+          format: int32
+    PublishRequestedData:
+      type: object
+      required:
+      - server
+      - reason
+      - requestedBy
+      properties:
+        server:
+          $ref: '#/components/schemas/NotificationServerRef'
+        reason:
+          type: string
+          enum:
+          - new
+          - url_changed
+          - upstream_auth_changed
+          - requirement_changed
+        note:
+          type: string
+          maxLength: 300
+        requestedBy:
+          type: object
+          required:
+          - kind
+          - name
+          properties:
+            kind:
+              type: string
+              enum:
+              - user
+              - automation_token
+            name:
+              type: string
+    PublishDecidedData:
+      type: object
+      required:
+      - server
+      - decision
+      - decidedBy
+      properties:
+        server:
+          $ref: '#/components/schemas/NotificationServerRef'
+        decision:
+          type: string
+          enum:
+          - approved
+          - rejected
+        note:
+          type: string
+          maxLength: 300
+        decidedBy:
+          type: object
+          required:
+          - name
+          properties:
+            name:
+              type: string
+    ConnectionNeedsReconsentData:
+      type: object
+      required:
+      - provider
+      - reason
+      properties:
+        provider:
+          type: object
+          required:
+          - slug
+          - name
+          properties:
+            slug:
+              type: string
+            name:
+              type: string
+        server:
+          allOf:
+          - $ref: '#/components/schemas/NotificationServerRef'
+          nullable: true
+        reason:
+          type: string
+          enum:
+          - refresh_failed
+          - upstream_rejected
+    UpstreamSigninLapsedData:
+      type: object
+      required:
+      - server
+      - since
+      properties:
+        server:
+          $ref: '#/components/schemas/NotificationServerRef'
+        since:
+          type: string
+          format: date-time
+        readAsName:
+          type: string
+          description: The person whose sign-in capabilities were read as
+    KeyExpiringData:
+      type: object
+      required:
+      - keyKind
+      - name
+      - expiresAt
+      - daysLeft
+      properties:
+        keyKind:
+          type: string
+          enum:
+          - personal
+          - service_account
+          - publisher_token
+          - platform_token
+        name:
+          type: string
+          description: The key's or token's name (never its prefix or secret)
+        expiresAt:
+          type: string
+          format: date-time
+        daysLeft:
+          type: integer
+          format: int32
+        serviceAccount:
+          allOf:
+          - type: object
+            required:
+            - id
+            - name
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+          nullable: true
+    NotificationTestData:
+      type: object
+      required:
+      - message
+      properties:
+        message:
+          type: string
+    NotificationPayload:
+      type: object
+      description: 'The body of a json webhook, at most 8 KiB. Signed: X-OMP-Signature is v1=<hex HMAC-SHA256 of timestamp +
+        "." + body>, with the timestamp in X-OMP-Timestamp (Unix seconds); during a secret rotation the header carries two v1=
+        values. Never contains secrets, header values, call arguments or results, or e-mail addresses.'
+      required:
+      - id
+      - type
+      - version
+      - occurredAt
+      - instance
+      - team
+      - url
+      - data
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The event's id; also the X-OMP-Event-Id header. Receivers de-duplicate on it (delivery is at least once).
+        type:
+          type: string
+          enum:
+          - server.unhealthy
+          - server.recovered
+          - capability.changed
+          - publish.requested
+          - publish.decided
+          - connection.needs_reconsent
+          - upstream_signin.lapsed
+          - key.expiring
+          - test
+        version:
+          type: integer
+          enum:
+          - 1
+        occurredAt:
+          type: string
+          format: date-time
+        instance:
+          type: object
+          required:
+          - name
+          - url
+          properties:
+            name:
+              type: string
+            url:
+              type: string
+              description: APP_URL
+        team:
+          allOf:
+          - $ref: '#/components/schemas/TeamRef'
+          nullable: true
+        url:
+          type: string
+          description: A link to the item in the web app (never contains a secret)
+        data:
+          oneOf:
+          - $ref: '#/components/schemas/ServerUnhealthyData'
+          - $ref: '#/components/schemas/ServerRecoveredData'
+          - $ref: '#/components/schemas/CapabilityChangedData'
+          - $ref: '#/components/schemas/PublishRequestedData'
+          - $ref: '#/components/schemas/PublishDecidedData'
+          - $ref: '#/components/schemas/ConnectionNeedsReconsentData'
+          - $ref: '#/components/schemas/UpstreamSigninLapsedData'
+          - $ref: '#/components/schemas/KeyExpiringData'
+          - $ref: '#/components/schemas/NotificationTestData'
+          description: The shape follows type
+    AutomationTokenKind:
+      type: string
+      enum:
+      - platform_admin
+      - team_publisher
+    AutomationTokenScope:
+      type: string
+      enum:
+      - platform:read
+      - platform:write
+      - servers:read
+      - servers:write
+      description: 'platform:read: the platform-admin API''s read operations. platform:write: its provisioning operations (never
+        token management, roles, reviews or settings that widen trust). servers:read and servers:write: a team''s MCP servers
+        (write never deletes, approves capabilities or changes gateways or members). A write scope includes its read scope.
+        docs/automation-tokens.md lists the operations.'
+    AutomationToken:
+      type: object
+      description: An automation token's metadata. The secret is never returned after creation.
+      required:
+      - id
+      - kind
+      - name
+      - prefix
+      - scopes
+      - status
+      - team
+      - createdAt
+      - expiresAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/AutomationTokenKind'
+        name:
+          type: string
+        prefix:
+          type: string
+          description: The first characters of the token, to recognise it (ompadm_xxxxxxxx, omppub_xxxxxxxx)
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutomationTokenScope'
+        status:
+          type: string
+          enum:
+          - active
+          - expired
+          - revoked
+        team:
+          allOf:
+          - $ref: '#/components/schemas/TeamRef'
+          nullable: true
+          description: The owning team of a publisher token; null for platform tokens
+        createdAt:
+          type: string
+          format: date-time
+        createdByName:
+          type: string
+          nullable: true
+          description: Who made it, as recorded then (null for the system)
+        expiresAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Updated at most once a minute
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        blockedReason:
+          type: string
+          enum:
+          - creator_not_platform_admin
+          nullable: true
+          description: A platform token is refused while its creator isn't an active platform admin
+    AutomationTokenCreate:
+      type: object
+      required:
+      - name
+      - scopes
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: CI publisher
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/AutomationTokenScope'
+          description: Only the scopes of the token's kind (platform:* for platform tokens, servers:* for team tokens); 400
+            invalid_scopes otherwise
+        expiresInDays:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 365
+          default: 90
+          description: Tokens always expire
+    AutomationTokenCreated:
+      type: object
+      required:
+      - token
+      - secret
+      properties:
+        token:
+          $ref: '#/components/schemas/AutomationToken'
+        secret:
+          type: string
+          description: 'The full token, shown only now. Send it as Authorization: Bearer to /v1/*. Never to /mcp.'
+    McpServerProtocol:
+      type: object
+      description: The MCP protocol version the portal last negotiated with the upstream server (docs/roadmap.md, v0.2 A)
+      required:
+      - era
+      - version
+      - negotiatedAt
+      properties:
+        era:
+          type: string
+          enum:
+          - legacy
+          - modern
+          description: 'legacy: 2025-11-25 and earlier (initialize). modern: 2026-07-28 and later (stateless).'
+        version:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          example: '2025-11-25'
+        negotiatedAt:
+          type: string
+          format: date-time

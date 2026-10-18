@@ -2,7 +2,7 @@
 
 Status: **approved 2026-10-17**; v0.2 in progress. It is an order of work, not a schedule.
 Sizes are relative effort: **S** a few days, **M** a week or two, **L** several weeks. Each item that needs a design
-gets one in `docs/` before code, as the earlier phases did. Decisions behind it are 47–51 in
+gets one in `docs/` before code, as the earlier phases did. Decisions behind it are 47–58 in
 [decisions.md](decisions.md).
 
 ## What the portal is, and isn't
@@ -83,11 +83,13 @@ Claude Code, pi, VS Code and Cursor as a written compatibility matrix, tried for
 
 ### B. Pilot readiness
 
+The first three items are **designed** together (decisions 56–58; they share `api/openapi.yaml`, the authz matrix and migrations `00014` and `00015`); the contract is in `api/openapi.yaml`, the implementation is next.
+
 | Item | Size | Notes |
 | --- | --- | --- |
-| Admin overview | S | `/admin` redirects to Users today. Show failing servers, pending reviews, changed capabilities, expiring keys, providers needing re-consent. |
-| Notifications | M | Email (SMTP) and signed webhooks (works for Slack). Server unhealthy, definition changed, review requested or decided, connection needs re-consent, key expiring. Per-team preferences. |
-| Automation tokens | M | The management API accepts browser sessions only. Add **team publisher tokens** (register, refresh, publish a team's servers from CI) and **platform-admin tokens**, each scoped, expiring, audited, and never valid for `/mcp`. |
+| Admin overview | S | **Designed:** [admin-overview.md](admin-overview.md). `/admin` redirects to Users today. Show failing servers, pending reviews, changed capabilities, expiring keys, providers needing re-consent; plus a team attention card. |
+| Notifications | M | **Designed:** [notifications.md](notifications.md). In-app inbox, email (SMTP) and signed webhooks (works for Slack). Server unhealthy, definition changed, review requested or decided, connection needs re-consent, key expiring. Per-person preferences; team and platform destinations. |
+| Automation tokens | M | **Designed:** [automation-tokens.md](automation-tokens.md). The management API accepts browser sessions only. Add **team publisher tokens** (register, refresh, publish a team's servers from CI) and **platform-admin tokens**, each scoped, expiring, audited, and never valid for `/mcp`. |
 | Real deployment | M | Your cluster, Authentik OIDC, a tested backup and restore, the example overlay with the real v0.1.0 digest, and a feedback channel for the pilot. |
 | Threat model | S | Written for security reviewers, as the sister projects have. Include how forwarded provider tokens relate to the spec's "no token passthrough" rule. |
 | Housekeeping | S | Dependabot PRs; browser re-checks of the Phase 4–7 screens. |
