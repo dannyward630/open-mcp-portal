@@ -4,8 +4,10 @@
 package apitypes
 
 import (
+	"encoding/json"
 	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -30,17 +32,104 @@ func (e ApiKeyStatus) Valid() bool {
 	}
 }
 
+// Defines values for AttentionKind.
+const (
+	AttentionKindAutomationTokensExpiring   AttentionKind = "automation_tokens_expiring"
+	AttentionKindCapabilitiesChanged        AttentionKind = "capabilities_changed"
+	AttentionKindConnectionsReconsent       AttentionKind = "connections_reconsent"
+	AttentionKindGatewaysDisabled           AttentionKind = "gateways_disabled"
+	AttentionKindNotificationFailures       AttentionKind = "notification_failures"
+	AttentionKindPersonalKeysExpiring       AttentionKind = "personal_keys_expiring"
+	AttentionKindRateLimited                AttentionKind = "rate_limited"
+	AttentionKindReviewPending              AttentionKind = "review_pending"
+	AttentionKindServerFailing              AttentionKind = "server_failing"
+	AttentionKindServiceAccountKeysExpiring AttentionKind = "service_account_keys_expiring"
+	AttentionKindUpstreamSigninLapsed       AttentionKind = "upstream_signin_lapsed"
+)
+
+// Valid indicates whether the value is a known member of the AttentionKind enum.
+func (e AttentionKind) Valid() bool {
+	switch e {
+	case AttentionKindAutomationTokensExpiring:
+		return true
+	case AttentionKindCapabilitiesChanged:
+		return true
+	case AttentionKindConnectionsReconsent:
+		return true
+	case AttentionKindGatewaysDisabled:
+		return true
+	case AttentionKindNotificationFailures:
+		return true
+	case AttentionKindPersonalKeysExpiring:
+		return true
+	case AttentionKindRateLimited:
+		return true
+	case AttentionKindReviewPending:
+		return true
+	case AttentionKindServerFailing:
+		return true
+	case AttentionKindServiceAccountKeysExpiring:
+		return true
+	case AttentionKindUpstreamSigninLapsed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttentionSeverity.
+const (
+	Critical AttentionSeverity = "critical"
+	Info     AttentionSeverity = "info"
+	Warning  AttentionSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the AttentionSeverity enum.
+func (e AttentionSeverity) Valid() bool {
+	switch e {
+	case Critical:
+		return true
+	case Info:
+		return true
+	case Warning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditActorAutomationTokenKind.
+const (
+	AuditActorAutomationTokenKindPlatformAdmin AuditActorAutomationTokenKind = "platform_admin"
+	AuditActorAutomationTokenKindTeamPublisher AuditActorAutomationTokenKind = "team_publisher"
+)
+
+// Valid indicates whether the value is a known member of the AuditActorAutomationTokenKind enum.
+func (e AuditActorAutomationTokenKind) Valid() bool {
+	switch e {
+	case AuditActorAutomationTokenKindPlatformAdmin:
+		return true
+	case AuditActorAutomationTokenKindTeamPublisher:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuditActorKind.
 const (
-	AuditActorKindApiKey AuditActorKind = "api_key"
-	AuditActorKindSystem AuditActorKind = "system"
-	AuditActorKindUser   AuditActorKind = "user"
+	AuditActorKindApiKey          AuditActorKind = "api_key"
+	AuditActorKindAutomationToken AuditActorKind = "automation_token"
+	AuditActorKindSystem          AuditActorKind = "system"
+	AuditActorKindUser            AuditActorKind = "user"
 )
 
 // Valid indicates whether the value is a known member of the AuditActorKind enum.
 func (e AuditActorKind) Valid() bool {
 	switch e {
 	case AuditActorKindApiKey:
+		return true
+	case AuditActorKindAutomationToken:
 		return true
 	case AuditActorKindSystem:
 		return true
@@ -53,15 +142,18 @@ func (e AuditActorKind) Valid() bool {
 
 // Defines values for AuditEntryActorKind.
 const (
-	AuditEntryActorKindApiKey AuditEntryActorKind = "api_key"
-	AuditEntryActorKindSystem AuditEntryActorKind = "system"
-	AuditEntryActorKindUser   AuditEntryActorKind = "user"
+	AuditEntryActorKindApiKey          AuditEntryActorKind = "api_key"
+	AuditEntryActorKindAutomationToken AuditEntryActorKind = "automation_token"
+	AuditEntryActorKindSystem          AuditEntryActorKind = "system"
+	AuditEntryActorKindUser            AuditEntryActorKind = "user"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryActorKind enum.
 func (e AuditEntryActorKind) Valid() bool {
 	switch e {
 	case AuditEntryActorKindApiKey:
+		return true
+	case AuditEntryActorKindAutomationToken:
 		return true
 	case AuditEntryActorKindSystem:
 		return true
@@ -167,28 +259,28 @@ func (e AuthProviderPresetScopeSeparator) Valid() bool {
 
 // Defines values for AuthProviderPresetName.
 const (
-	Atlassian AuthProviderPresetName = "atlassian"
-	Github    AuthProviderPresetName = "github"
-	Gitlab    AuthProviderPresetName = "gitlab"
-	Google    AuthProviderPresetName = "google"
-	Microsoft AuthProviderPresetName = "microsoft"
-	Slack     AuthProviderPresetName = "slack"
+	AuthProviderPresetNameAtlassian AuthProviderPresetName = "atlassian"
+	AuthProviderPresetNameGithub    AuthProviderPresetName = "github"
+	AuthProviderPresetNameGitlab    AuthProviderPresetName = "gitlab"
+	AuthProviderPresetNameGoogle    AuthProviderPresetName = "google"
+	AuthProviderPresetNameMicrosoft AuthProviderPresetName = "microsoft"
+	AuthProviderPresetNameSlack     AuthProviderPresetName = "slack"
 )
 
 // Valid indicates whether the value is a known member of the AuthProviderPresetName enum.
 func (e AuthProviderPresetName) Valid() bool {
 	switch e {
-	case Atlassian:
+	case AuthProviderPresetNameAtlassian:
 		return true
-	case Github:
+	case AuthProviderPresetNameGithub:
 		return true
-	case Gitlab:
+	case AuthProviderPresetNameGitlab:
 		return true
-	case Google:
+	case AuthProviderPresetNameGoogle:
 		return true
-	case Microsoft:
+	case AuthProviderPresetNameMicrosoft:
 		return true
-	case Slack:
+	case AuthProviderPresetNameSlack:
 		return true
 	default:
 		return false
@@ -252,6 +344,84 @@ func (e AuthProviderUpdateScopeSeparator) Valid() bool {
 	}
 }
 
+// Defines values for AutomationTokenBlockedReason.
+const (
+	CreatorNotPlatformAdmin AutomationTokenBlockedReason = "creator_not_platform_admin"
+)
+
+// Valid indicates whether the value is a known member of the AutomationTokenBlockedReason enum.
+func (e AutomationTokenBlockedReason) Valid() bool {
+	switch e {
+	case CreatorNotPlatformAdmin:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationTokenStatus.
+const (
+	AutomationTokenStatusActive  AutomationTokenStatus = "active"
+	AutomationTokenStatusExpired AutomationTokenStatus = "expired"
+	AutomationTokenStatusRevoked AutomationTokenStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the AutomationTokenStatus enum.
+func (e AutomationTokenStatus) Valid() bool {
+	switch e {
+	case AutomationTokenStatusActive:
+		return true
+	case AutomationTokenStatusExpired:
+		return true
+	case AutomationTokenStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationTokenKind.
+const (
+	AutomationTokenKindPlatformAdmin AutomationTokenKind = "platform_admin"
+	AutomationTokenKindTeamPublisher AutomationTokenKind = "team_publisher"
+)
+
+// Valid indicates whether the value is a known member of the AutomationTokenKind enum.
+func (e AutomationTokenKind) Valid() bool {
+	switch e {
+	case AutomationTokenKindPlatformAdmin:
+		return true
+	case AutomationTokenKindTeamPublisher:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationTokenScope.
+const (
+	PlatformRead  AutomationTokenScope = "platform:read"
+	PlatformWrite AutomationTokenScope = "platform:write"
+	ServersRead   AutomationTokenScope = "servers:read"
+	ServersWrite  AutomationTokenScope = "servers:write"
+)
+
+// Valid indicates whether the value is a known member of the AutomationTokenScope enum.
+func (e AutomationTokenScope) Valid() bool {
+	switch e {
+	case PlatformRead:
+		return true
+	case PlatformWrite:
+		return true
+	case ServersRead:
+		return true
+	case ServersWrite:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CallPayloadCapturedBy.
 const (
 	CallPayloadCapturedByGateway CallPayloadCapturedBy = "gateway"
@@ -285,6 +455,48 @@ func (e CallPrincipalKind) Valid() bool {
 	case CallPrincipalKindOauth:
 		return true
 	case CallPrincipalKindServiceAccount:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CapabilityChangedDataCapabilitiesChange.
+const (
+	CapabilityChangedDataCapabilitiesChangeChanged CapabilityChangedDataCapabilitiesChange = "changed"
+	CapabilityChangedDataCapabilitiesChangeNew     CapabilityChangedDataCapabilitiesChange = "new"
+)
+
+// Valid indicates whether the value is a known member of the CapabilityChangedDataCapabilitiesChange enum.
+func (e CapabilityChangedDataCapabilitiesChange) Valid() bool {
+	switch e {
+	case CapabilityChangedDataCapabilitiesChangeChanged:
+		return true
+	case CapabilityChangedDataCapabilitiesChangeNew:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CapabilityChangedDataCapabilitiesKind.
+const (
+	CapabilityChangedDataCapabilitiesKindPrompt           CapabilityChangedDataCapabilitiesKind = "prompt"
+	CapabilityChangedDataCapabilitiesKindResource         CapabilityChangedDataCapabilitiesKind = "resource"
+	CapabilityChangedDataCapabilitiesKindResourceTemplate CapabilityChangedDataCapabilitiesKind = "resource_template"
+	CapabilityChangedDataCapabilitiesKindTool             CapabilityChangedDataCapabilitiesKind = "tool"
+)
+
+// Valid indicates whether the value is a known member of the CapabilityChangedDataCapabilitiesKind enum.
+func (e CapabilityChangedDataCapabilitiesKind) Valid() bool {
+	switch e {
+	case CapabilityChangedDataCapabilitiesKindPrompt:
+		return true
+	case CapabilityChangedDataCapabilitiesKindResource:
+		return true
+	case CapabilityChangedDataCapabilitiesKindResourceTemplate:
+		return true
+	case CapabilityChangedDataCapabilitiesKindTool:
 		return true
 	default:
 		return false
@@ -351,6 +563,24 @@ func (e ConnectRequestReason) Valid() bool {
 	case ConnectRequestReasonNeedsReconsent:
 		return true
 	case ConnectRequestReasonNotConnected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectionNeedsReconsentDataReason.
+const (
+	RefreshFailed    ConnectionNeedsReconsentDataReason = "refresh_failed"
+	UpstreamRejected ConnectionNeedsReconsentDataReason = "upstream_rejected"
+)
+
+// Valid indicates whether the value is a known member of the ConnectionNeedsReconsentDataReason enum.
+func (e ConnectionNeedsReconsentDataReason) Valid() bool {
+	switch e {
+	case RefreshFailed:
+		return true
+	case UpstreamRejected:
 		return true
 	default:
 		return false
@@ -575,28 +805,28 @@ func (e GatewayOwnerKind) Valid() bool {
 
 // Defines values for GatewayUnavailableReason.
 const (
-	Changed        GatewayUnavailableReason = "changed"
-	Gone           GatewayUnavailableReason = "gone"
-	NotApproved    GatewayUnavailableReason = "not_approved"
-	NotPublished   GatewayUnavailableReason = "not_published"
-	ServerDisabled GatewayUnavailableReason = "server_disabled"
-	TeamArchived   GatewayUnavailableReason = "team_archived"
+	GatewayUnavailableReasonChanged        GatewayUnavailableReason = "changed"
+	GatewayUnavailableReasonGone           GatewayUnavailableReason = "gone"
+	GatewayUnavailableReasonNotApproved    GatewayUnavailableReason = "not_approved"
+	GatewayUnavailableReasonNotPublished   GatewayUnavailableReason = "not_published"
+	GatewayUnavailableReasonServerDisabled GatewayUnavailableReason = "server_disabled"
+	GatewayUnavailableReasonTeamArchived   GatewayUnavailableReason = "team_archived"
 )
 
 // Valid indicates whether the value is a known member of the GatewayUnavailableReason enum.
 func (e GatewayUnavailableReason) Valid() bool {
 	switch e {
-	case Changed:
+	case GatewayUnavailableReasonChanged:
 		return true
-	case Gone:
+	case GatewayUnavailableReasonGone:
 		return true
-	case NotApproved:
+	case GatewayUnavailableReasonNotApproved:
 		return true
-	case NotPublished:
+	case GatewayUnavailableReasonNotPublished:
 		return true
-	case ServerDisabled:
+	case GatewayUnavailableReasonServerDisabled:
 		return true
-	case TeamArchived:
+	case GatewayUnavailableReasonTeamArchived:
 		return true
 	default:
 		return false
@@ -633,6 +863,84 @@ const (
 func (e InstanceInfoTheme) Valid() bool {
 	switch e {
 	case Neutral:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KeyExpiringDataKeyKind.
+const (
+	KeyExpiringDataKeyKindPersonal       KeyExpiringDataKeyKind = "personal"
+	KeyExpiringDataKeyKindPlatformToken  KeyExpiringDataKeyKind = "platform_token"
+	KeyExpiringDataKeyKindPublisherToken KeyExpiringDataKeyKind = "publisher_token"
+	KeyExpiringDataKeyKindServiceAccount KeyExpiringDataKeyKind = "service_account"
+)
+
+// Valid indicates whether the value is a known member of the KeyExpiringDataKeyKind enum.
+func (e KeyExpiringDataKeyKind) Valid() bool {
+	switch e {
+	case KeyExpiringDataKeyKindPersonal:
+		return true
+	case KeyExpiringDataKeyKindPlatformToken:
+		return true
+	case KeyExpiringDataKeyKindPublisherToken:
+		return true
+	case KeyExpiringDataKeyKindServiceAccount:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LinkTargetType.
+const (
+	LinkTargetTypeAccountApiKeys           LinkTargetType = "account_api_keys"
+	LinkTargetTypeAccountConnections       LinkTargetType = "account_connections"
+	LinkTargetTypeAuthProviders            LinkTargetType = "auth_providers"
+	LinkTargetTypeAutomationTokens         LinkTargetType = "automation_tokens"
+	LinkTargetTypeGateways                 LinkTargetType = "gateways"
+	LinkTargetTypeNotificationSettings     LinkTargetType = "notification_settings"
+	LinkTargetTypeReviewQueue              LinkTargetType = "review_queue"
+	LinkTargetTypeServer                   LinkTargetType = "server"
+	LinkTargetTypeServers                  LinkTargetType = "servers"
+	LinkTargetTypeServiceAccount           LinkTargetType = "service_account"
+	LinkTargetTypeServiceAccounts          LinkTargetType = "service_accounts"
+	LinkTargetTypeTeamAutomationTokens     LinkTargetType = "team_automation_tokens"
+	LinkTargetTypeTeamNotificationSettings LinkTargetType = "team_notification_settings"
+	LinkTargetTypeUsage                    LinkTargetType = "usage"
+)
+
+// Valid indicates whether the value is a known member of the LinkTargetType enum.
+func (e LinkTargetType) Valid() bool {
+	switch e {
+	case LinkTargetTypeAccountApiKeys:
+		return true
+	case LinkTargetTypeAccountConnections:
+		return true
+	case LinkTargetTypeAuthProviders:
+		return true
+	case LinkTargetTypeAutomationTokens:
+		return true
+	case LinkTargetTypeGateways:
+		return true
+	case LinkTargetTypeNotificationSettings:
+		return true
+	case LinkTargetTypeReviewQueue:
+		return true
+	case LinkTargetTypeServer:
+		return true
+	case LinkTargetTypeServers:
+		return true
+	case LinkTargetTypeServiceAccount:
+		return true
+	case LinkTargetTypeServiceAccounts:
+		return true
+	case LinkTargetTypeTeamAutomationTokens:
+		return true
+	case LinkTargetTypeTeamNotificationSettings:
+		return true
+	case LinkTargetTypeUsage:
 		return true
 	default:
 		return false
@@ -864,6 +1172,24 @@ func (e McpServerOAuthSetupConnectionStatus) Valid() bool {
 	}
 }
 
+// Defines values for McpServerProtocolEra.
+const (
+	Legacy McpServerProtocolEra = "legacy"
+	Modern McpServerProtocolEra = "modern"
+)
+
+// Valid indicates whether the value is a known member of the McpServerProtocolEra enum.
+func (e McpServerProtocolEra) Valid() bool {
+	switch e {
+	case Legacy:
+		return true
+	case Modern:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MemberAddResultStatus.
 const (
 	Added   MemberAddResultStatus = "added"
@@ -1005,6 +1331,255 @@ func (e NetworkEntryKind) Valid() bool {
 	}
 }
 
+// Defines values for NotificationDeliveryState.
+const (
+	NotificationDeliveryStateFailed  NotificationDeliveryState = "failed"
+	NotificationDeliveryStatePending NotificationDeliveryState = "pending"
+	NotificationDeliveryStateSent    NotificationDeliveryState = "sent"
+	NotificationDeliveryStateSkipped NotificationDeliveryState = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the NotificationDeliveryState enum.
+func (e NotificationDeliveryState) Valid() bool {
+	switch e {
+	case NotificationDeliveryStateFailed:
+		return true
+	case NotificationDeliveryStatePending:
+		return true
+	case NotificationDeliveryStateSent:
+		return true
+	case NotificationDeliveryStateSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationDestinationDisabledReason.
+const (
+	Failures NotificationDestinationDisabledReason = "failures"
+)
+
+// Valid indicates whether the value is a known member of the NotificationDestinationDisabledReason enum.
+func (e NotificationDestinationDisabledReason) Valid() bool {
+	switch e {
+	case Failures:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationDestinationScope.
+const (
+	NotificationDestinationScopePlatform NotificationDestinationScope = "platform"
+	NotificationDestinationScopeTeam     NotificationDestinationScope = "team"
+)
+
+// Valid indicates whether the value is a known member of the NotificationDestinationScope enum.
+func (e NotificationDestinationScope) Valid() bool {
+	switch e {
+	case NotificationDestinationScopePlatform:
+		return true
+	case NotificationDestinationScopeTeam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationDestinationHealthState.
+const (
+	NotificationDestinationHealthStateFailing NotificationDestinationHealthState = "failing"
+	NotificationDestinationHealthStateOk      NotificationDestinationHealthState = "ok"
+	NotificationDestinationHealthStateUnknown NotificationDestinationHealthState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the NotificationDestinationHealthState enum.
+func (e NotificationDestinationHealthState) Valid() bool {
+	switch e {
+	case NotificationDestinationHealthStateFailing:
+		return true
+	case NotificationDestinationHealthStateOk:
+		return true
+	case NotificationDestinationHealthStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationEmailStatusTls.
+const (
+	NotificationEmailStatusTlsNone     NotificationEmailStatusTls = "none"
+	NotificationEmailStatusTlsStarttls NotificationEmailStatusTls = "starttls"
+	NotificationEmailStatusTlsTls      NotificationEmailStatusTls = "tls"
+)
+
+// Valid indicates whether the value is a known member of the NotificationEmailStatusTls enum.
+func (e NotificationEmailStatusTls) Valid() bool {
+	switch e {
+	case NotificationEmailStatusTlsNone:
+		return true
+	case NotificationEmailStatusTlsStarttls:
+		return true
+	case NotificationEmailStatusTlsTls:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationErrorClass.
+const (
+	NotificationErrorClassAddress     NotificationErrorClass = "address"
+	NotificationErrorClassAuth        NotificationErrorClass = "auth"
+	NotificationErrorClassConnect     NotificationErrorClass = "connect"
+	NotificationErrorClassExpired     NotificationErrorClass = "expired"
+	NotificationErrorClassInternal    NotificationErrorClass = "internal"
+	NotificationErrorClassNotAllowed  NotificationErrorClass = "not_allowed"
+	NotificationErrorClassRejected    NotificationErrorClass = "rejected"
+	NotificationErrorClassServerError NotificationErrorClass = "server_error"
+	NotificationErrorClassTimeout     NotificationErrorClass = "timeout"
+	NotificationErrorClassTls         NotificationErrorClass = "tls"
+)
+
+// Valid indicates whether the value is a known member of the NotificationErrorClass enum.
+func (e NotificationErrorClass) Valid() bool {
+	switch e {
+	case NotificationErrorClassAddress:
+		return true
+	case NotificationErrorClassAuth:
+		return true
+	case NotificationErrorClassConnect:
+		return true
+	case NotificationErrorClassExpired:
+		return true
+	case NotificationErrorClassInternal:
+		return true
+	case NotificationErrorClassNotAllowed:
+		return true
+	case NotificationErrorClassRejected:
+		return true
+	case NotificationErrorClassServerError:
+		return true
+	case NotificationErrorClassTimeout:
+		return true
+	case NotificationErrorClassTls:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationEventType.
+const (
+	NotificationEventTypeCapabilityChanged        NotificationEventType = "capability.changed"
+	NotificationEventTypeConnectionNeedsReconsent NotificationEventType = "connection.needs_reconsent"
+	NotificationEventTypeKeyExpiring              NotificationEventType = "key.expiring"
+	NotificationEventTypePublishDecided           NotificationEventType = "publish.decided"
+	NotificationEventTypePublishRequested         NotificationEventType = "publish.requested"
+	NotificationEventTypeServerRecovered          NotificationEventType = "server.recovered"
+	NotificationEventTypeServerUnhealthy          NotificationEventType = "server.unhealthy"
+	NotificationEventTypeUpstreamSigninLapsed     NotificationEventType = "upstream_signin.lapsed"
+)
+
+// Valid indicates whether the value is a known member of the NotificationEventType enum.
+func (e NotificationEventType) Valid() bool {
+	switch e {
+	case NotificationEventTypeCapabilityChanged:
+		return true
+	case NotificationEventTypeConnectionNeedsReconsent:
+		return true
+	case NotificationEventTypeKeyExpiring:
+		return true
+	case NotificationEventTypePublishDecided:
+		return true
+	case NotificationEventTypePublishRequested:
+		return true
+	case NotificationEventTypeServerRecovered:
+		return true
+	case NotificationEventTypeServerUnhealthy:
+		return true
+	case NotificationEventTypeUpstreamSigninLapsed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationFormat.
+const (
+	NotificationFormatJson  NotificationFormat = "json"
+	NotificationFormatSlack NotificationFormat = "slack"
+)
+
+// Valid indicates whether the value is a known member of the NotificationFormat enum.
+func (e NotificationFormat) Valid() bool {
+	switch e {
+	case NotificationFormatJson:
+		return true
+	case NotificationFormatSlack:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationPayloadType.
+const (
+	NotificationPayloadTypeCapabilityChanged        NotificationPayloadType = "capability.changed"
+	NotificationPayloadTypeConnectionNeedsReconsent NotificationPayloadType = "connection.needs_reconsent"
+	NotificationPayloadTypeKeyExpiring              NotificationPayloadType = "key.expiring"
+	NotificationPayloadTypePublishDecided           NotificationPayloadType = "publish.decided"
+	NotificationPayloadTypePublishRequested         NotificationPayloadType = "publish.requested"
+	NotificationPayloadTypeServerRecovered          NotificationPayloadType = "server.recovered"
+	NotificationPayloadTypeServerUnhealthy          NotificationPayloadType = "server.unhealthy"
+	NotificationPayloadTypeTest                     NotificationPayloadType = "test"
+	NotificationPayloadTypeUpstreamSigninLapsed     NotificationPayloadType = "upstream_signin.lapsed"
+)
+
+// Valid indicates whether the value is a known member of the NotificationPayloadType enum.
+func (e NotificationPayloadType) Valid() bool {
+	switch e {
+	case NotificationPayloadTypeCapabilityChanged:
+		return true
+	case NotificationPayloadTypeConnectionNeedsReconsent:
+		return true
+	case NotificationPayloadTypeKeyExpiring:
+		return true
+	case NotificationPayloadTypePublishDecided:
+		return true
+	case NotificationPayloadTypePublishRequested:
+		return true
+	case NotificationPayloadTypeServerRecovered:
+		return true
+	case NotificationPayloadTypeServerUnhealthy:
+		return true
+	case NotificationPayloadTypeTest:
+		return true
+	case NotificationPayloadTypeUpstreamSigninLapsed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationPayloadVersion.
+const (
+	NotificationPayloadVersionN1 NotificationPayloadVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the NotificationPayloadVersion enum.
+func (e NotificationPayloadVersion) Valid() bool {
+	switch e {
+	case NotificationPayloadVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OAuthClientInfoKind.
 const (
 	Metadata   OAuthClientInfoKind = "metadata"
@@ -1080,6 +1655,24 @@ func (e ProviderConnectionStatus) Valid() bool {
 	}
 }
 
+// Defines values for PublishDecidedDataDecision.
+const (
+	PublishDecidedDataDecisionApproved PublishDecidedDataDecision = "approved"
+	PublishDecidedDataDecisionRejected PublishDecidedDataDecision = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the PublishDecidedDataDecision enum.
+func (e PublishDecidedDataDecision) Valid() bool {
+	switch e {
+	case PublishDecidedDataDecisionApproved:
+		return true
+	case PublishDecidedDataDecisionRejected:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PublishPolicy.
 const (
 	ApprovalRequired PublishPolicy = "approval_required"
@@ -1098,24 +1691,66 @@ func (e PublishPolicy) Valid() bool {
 	}
 }
 
+// Defines values for PublishRequestedDataReason.
+const (
+	PublishRequestedDataReasonNew                 PublishRequestedDataReason = "new"
+	PublishRequestedDataReasonRequirementChanged  PublishRequestedDataReason = "requirement_changed"
+	PublishRequestedDataReasonUpstreamAuthChanged PublishRequestedDataReason = "upstream_auth_changed"
+	PublishRequestedDataReasonUrlChanged          PublishRequestedDataReason = "url_changed"
+)
+
+// Valid indicates whether the value is a known member of the PublishRequestedDataReason enum.
+func (e PublishRequestedDataReason) Valid() bool {
+	switch e {
+	case PublishRequestedDataReasonNew:
+		return true
+	case PublishRequestedDataReasonRequirementChanged:
+		return true
+	case PublishRequestedDataReasonUpstreamAuthChanged:
+		return true
+	case PublishRequestedDataReasonUrlChanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublishRequestedDataRequestedByKind.
+const (
+	PublishRequestedDataRequestedByKindAutomationToken PublishRequestedDataRequestedByKind = "automation_token"
+	PublishRequestedDataRequestedByKindUser            PublishRequestedDataRequestedByKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the PublishRequestedDataRequestedByKind enum.
+func (e PublishRequestedDataRequestedByKind) Valid() bool {
+	switch e {
+	case PublishRequestedDataRequestedByKindAutomationToken:
+		return true
+	case PublishRequestedDataRequestedByKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PublishState.
 const (
-	Pending   PublishState = "pending"
-	Private   PublishState = "private"
-	Published PublishState = "published"
-	Rejected  PublishState = "rejected"
+	PublishStatePending   PublishState = "pending"
+	PublishStatePrivate   PublishState = "private"
+	PublishStatePublished PublishState = "published"
+	PublishStateRejected  PublishState = "rejected"
 )
 
 // Valid indicates whether the value is a known member of the PublishState enum.
 func (e PublishState) Valid() bool {
 	switch e {
-	case Pending:
+	case PublishStatePending:
 		return true
-	case Private:
+	case PublishStatePrivate:
 		return true
-	case Published:
+	case PublishStatePublished:
 		return true
-	case Rejected:
+	case PublishStateRejected:
 		return true
 	default:
 		return false
@@ -1172,19 +1807,19 @@ func (e RetentionKind) Valid() bool {
 
 // Defines values for ServerHealthStatus.
 const (
-	Failing ServerHealthStatus = "failing"
-	Healthy ServerHealthStatus = "healthy"
-	Unknown ServerHealthStatus = "unknown"
+	ServerHealthStatusFailing ServerHealthStatus = "failing"
+	ServerHealthStatusHealthy ServerHealthStatus = "healthy"
+	ServerHealthStatusUnknown ServerHealthStatus = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the ServerHealthStatus enum.
 func (e ServerHealthStatus) Valid() bool {
 	switch e {
-	case Failing:
+	case ServerHealthStatusFailing:
 		return true
-	case Healthy:
+	case ServerHealthStatusHealthy:
 		return true
-	case Unknown:
+	case ServerHealthStatusUnknown:
 		return true
 	default:
 		return false
@@ -1346,12 +1981,15 @@ func (e UserStatus) Valid() bool {
 
 // Defines values for AuditActorKindParam.
 const (
-	AuditActorKindParamSystem AuditActorKindParam = "system"
+	AuditActorKindParamAutomationToken AuditActorKindParam = "automation_token"
+	AuditActorKindParamSystem          AuditActorKindParam = "system"
 )
 
 // Valid indicates whether the value is a known member of the AuditActorKindParam enum.
 func (e AuditActorKindParam) Valid() bool {
 	switch e {
+	case AuditActorKindParamAutomationToken:
+		return true
 	case AuditActorKindParamSystem:
 		return true
 	default:
@@ -1394,12 +2032,15 @@ func (e UsageMethodParam) Valid() bool {
 
 // Defines values for AdminListAuditParamsActorKind.
 const (
-	AdminListAuditParamsActorKindSystem AdminListAuditParamsActorKind = "system"
+	AdminListAuditParamsActorKindAutomationToken AdminListAuditParamsActorKind = "automation_token"
+	AdminListAuditParamsActorKindSystem          AdminListAuditParamsActorKind = "system"
 )
 
 // Valid indicates whether the value is a known member of the AdminListAuditParamsActorKind enum.
 func (e AdminListAuditParamsActorKind) Valid() bool {
 	switch e {
+	case AdminListAuditParamsActorKindAutomationToken:
+		return true
 	case AdminListAuditParamsActorKindSystem:
 		return true
 	default:
@@ -1442,12 +2083,15 @@ func (e AdminGetUsageParamsMethod) Valid() bool {
 
 // Defines values for ListTeamAuditParamsActorKind.
 const (
-	ListTeamAuditParamsActorKindSystem ListTeamAuditParamsActorKind = "system"
+	ListTeamAuditParamsActorKindAutomationToken ListTeamAuditParamsActorKind = "automation_token"
+	ListTeamAuditParamsActorKindSystem          ListTeamAuditParamsActorKind = "system"
 )
 
 // Valid indicates whether the value is a known member of the ListTeamAuditParamsActorKind enum.
 func (e ListTeamAuditParamsActorKind) Valid() bool {
 	switch e {
+	case ListTeamAuditParamsActorKindAutomationToken:
+		return true
 	case ListTeamAuditParamsActorKindSystem:
 		return true
 	default:
@@ -1486,6 +2130,21 @@ func (e GetTeamUsageParamsMethod) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AdminOverview The platform overview (Admin > Overview)
+type AdminOverview struct {
+	// Attention At most 20 items per kind, most severe first
+	Attention   []AttentionItem `json:"attention"`
+	Counts      OverviewCounts  `json:"counts"`
+	GeneratedAt time.Time       `json:"generatedAt"`
+
+	// Last24h The last 24 hourly rollup buckets (the current hour included), from the usage rollups
+	Last24h OverviewActivity `json:"last24h"`
+
+	// Totals Exact number per AttentionKind (servers for per-server kinds, otherwise the sum of count); kinds with nothing are left out. Larger than the items listed when truncated.
+	Totals    map[string]int64 `json:"totals"`
+	Truncated bool             `json:"truncated"`
 }
 
 // ApiKey defines model for ApiKey.
@@ -1538,15 +2197,59 @@ type ApiKeyGateway struct {
 	Slug string `json:"slug"`
 }
 
+// AttentionItem defines model for AttentionItem.
+type AttentionItem struct {
+	// At The time that matters for the kind (see AttentionKind): failing since, the oldest request, the earliest expiry. Null when none.
+	At *time.Time `json:"at,omitempty"`
+
+	// Count How many, for kinds that count
+	Count *int64 `json:"count,omitempty"`
+
+	// Kind server_failing: one item per enabled server whose latest health check failed (at = failing since). upstream_signin_lapsed: one per oauth-mode server whose setup sign-in needs re-consent (at = since). review_pending: one item, count = servers waiting for a platform review, at = the oldest request. capabilities_changed: one per published server with changed or unapproved capabilities (count = how many, held back from the catalog). personal_keys_expiring: count of personal API keys expiring within 14 days (platform overview only; no link: they belong to individuals). service_account_keys_expiring: one per team, count = keys expiring within 14 days (at = the earliest expiry). automation_tokens_expiring: one for platform tokens and one per team, count within 14 days. connections_reconsent: count of people's connections that need re-consent (setup sign-ins of servers are upstream_signin_lapsed instead). gateways_disabled: count of switched-off gateways of active teams. rate_limited: calls refused by a rate limit in the last 24 hours. notification_failures: failing webhook destinations (stopped automatically, or 3 or more failures in a row) plus one if email had a failed delivery in the last 24 hours.
+	Kind AttentionKind `json:"kind"`
+
+	// Link Where to go; null when there is nowhere useful (personal keys)
+	Link     *LinkTarget       `json:"link,omitempty"`
+	Severity AttentionSeverity `json:"severity"`
+	Subject  *AttentionSubject `json:"subject,omitempty"`
+
+	// Summary One line in English, for scripts and logs; the web app builds its own wording from the fields
+	Summary string   `json:"summary"`
+	Team    *TeamRef `json:"team,omitempty"`
+}
+
+// AttentionKind server_failing: one item per enabled server whose latest health check failed (at = failing since). upstream_signin_lapsed: one per oauth-mode server whose setup sign-in needs re-consent (at = since). review_pending: one item, count = servers waiting for a platform review, at = the oldest request. capabilities_changed: one per published server with changed or unapproved capabilities (count = how many, held back from the catalog). personal_keys_expiring: count of personal API keys expiring within 14 days (platform overview only; no link: they belong to individuals). service_account_keys_expiring: one per team, count = keys expiring within 14 days (at = the earliest expiry). automation_tokens_expiring: one for platform tokens and one per team, count within 14 days. connections_reconsent: count of people's connections that need re-consent (setup sign-ins of servers are upstream_signin_lapsed instead). gateways_disabled: count of switched-off gateways of active teams. rate_limited: calls refused by a rate limit in the last 24 hours. notification_failures: failing webhook destinations (stopped automatically, or 3 or more failures in a row) plus one if email had a failed delivery in the last 24 hours.
+type AttentionKind string
+
+// AttentionSeverity defines model for AttentionSeverity.
+type AttentionSeverity string
+
+// AttentionSubject The server (or gateway) an item is about
+type AttentionSubject struct {
+	Id   string  `json:"id"`
+	Name string  `json:"name"`
+	Slug *string `json:"slug,omitempty"`
+}
+
 // AuditActor Who made the change, resolved when the log is read
 type AuditActor struct {
 	// ApiKeyName The API key used (api_key actors)
-	ApiKeyName  *string             `json:"apiKeyName,omitempty"`
-	DisplayName *string             `json:"displayName,omitempty"`
-	Email       *string             `json:"email,omitempty"`
-	Kind        AuditActorKind      `json:"kind"`
-	UserId      *openapi_types.UUID `json:"userId,omitempty"`
+	ApiKeyName *string `json:"apiKeyName,omitempty"`
+
+	// AutomationTokenId The automation token (automation_token actors; no userId)
+	AutomationTokenId   *openapi_types.UUID            `json:"automationTokenId,omitempty"`
+	AutomationTokenKind *AuditActorAutomationTokenKind `json:"automationTokenKind,omitempty"`
+
+	// AutomationTokenName The token's name as recorded when it acted
+	AutomationTokenName *string             `json:"automationTokenName,omitempty"`
+	DisplayName         *string             `json:"displayName,omitempty"`
+	Email               *string             `json:"email,omitempty"`
+	Kind                AuditActorKind      `json:"kind"`
+	UserId              *openapi_types.UUID `json:"userId,omitempty"`
 }
+
+// AuditActorAutomationTokenKind defines model for AuditActor.AutomationTokenKind.
+type AuditActorAutomationTokenKind string
 
 // AuditActorKind defines model for AuditActor.Kind.
 type AuditActorKind string
@@ -1869,6 +2572,65 @@ type AuthProviderUrlParameter struct {
 	Name string `json:"name"`
 }
 
+// AutomationToken An automation token's metadata. The secret is never returned after creation.
+type AutomationToken struct {
+	// BlockedReason A platform token is refused while its creator isn't an active platform admin
+	BlockedReason *AutomationTokenBlockedReason `json:"blockedReason,omitempty"`
+	CreatedAt     time.Time                     `json:"createdAt"`
+
+	// CreatedByName Who made it, as recorded then (null for the system)
+	CreatedByName *string             `json:"createdByName,omitempty"`
+	ExpiresAt     time.Time           `json:"expiresAt"`
+	Id            openapi_types.UUID  `json:"id"`
+	Kind          AutomationTokenKind `json:"kind"`
+
+	// LastUsedAt Updated at most once a minute
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	Name       string     `json:"name"`
+
+	// Prefix The first characters of the token, to recognise it (ompadm_xxxxxxxx, omppub_xxxxxxxx)
+	Prefix    string                 `json:"prefix"`
+	RevokedAt *time.Time             `json:"revokedAt,omitempty"`
+	Scopes    []AutomationTokenScope `json:"scopes"`
+	Status    AutomationTokenStatus  `json:"status"`
+
+	// Team The owning team of a publisher token; null for platform tokens
+	Team *TeamRef `json:"team"`
+}
+
+// AutomationTokenBlockedReason A platform token is refused while its creator isn't an active platform admin
+type AutomationTokenBlockedReason string
+
+// AutomationTokenStatus defines model for AutomationToken.Status.
+type AutomationTokenStatus string
+
+// AutomationTokenCreate defines model for AutomationTokenCreate.
+type AutomationTokenCreate struct {
+	// ExpiresInDays Tokens always expire
+	ExpiresInDays *int32 `json:"expiresInDays,omitempty"`
+
+	// Name Example: CI publisher
+	Name string `json:"name"`
+
+	// Scopes Only the scopes of the token's kind (platform:* for platform tokens, servers:* for team tokens); 400 invalid_scopes otherwise
+	Scopes []AutomationTokenScope `json:"scopes"`
+}
+
+// AutomationTokenCreated defines model for AutomationTokenCreated.
+type AutomationTokenCreated struct {
+	// Secret The full token, shown only now. Send it as Authorization: Bearer to /v1/*. Never to /mcp.
+	Secret string `json:"secret"`
+
+	// Token An automation token's metadata. The secret is never returned after creation.
+	Token AutomationToken `json:"token"`
+}
+
+// AutomationTokenKind defines model for AutomationTokenKind.
+type AutomationTokenKind string
+
+// AutomationTokenScope platform:read: the platform-admin API's read operations. platform:write: its provisioning operations (never token management, roles, reviews or settings that widen trust). servers:read and servers:write: a team's MCP servers (write never deletes, approves capabilities or changes gateways or members). A write scope includes its read scope. docs/automation-tokens.md lists the operations.
+type AutomationTokenScope string
+
 // CallPayload What a call sent and received, as captured (redacted, then truncated). Never contains the identity JWT, provider tokens, client credentials or the server's static header.
 type CallPayload struct {
 	// Arguments The call's arguments (tools/call, prompts/get) or {"uri": <exposed URI>} (resources/read)
@@ -1955,6 +2717,30 @@ type Capabilities struct {
 	PlatformAdmin   bool `json:"platformAdmin"`
 	PlatformAuditor bool `json:"platformAuditor"`
 }
+
+// CapabilityChangedData defines model for CapabilityChangedData.
+type CapabilityChangedData struct {
+	Capabilities []struct {
+		Change CapabilityChangedDataCapabilitiesChange `json:"change"`
+		Kind   CapabilityChangedDataCapabilitiesKind   `json:"kind"`
+		Name   string                                  `json:"name"`
+	} `json:"capabilities"`
+	ChangedCount int32 `json:"changedCount"`
+
+	// Held Always true: held back from the catalog until approved
+	Held      bool  `json:"held"`
+	MoreCount int32 `json:"moreCount"`
+	NewCount  int32 `json:"newCount"`
+
+	// Server The server an event is about
+	Server NotificationServerRef `json:"server"`
+}
+
+// CapabilityChangedDataCapabilitiesChange defines model for CapabilityChangedData.Capabilities.Change.
+type CapabilityChangedDataCapabilitiesChange string
+
+// CapabilityChangedDataCapabilitiesKind defines model for CapabilityChangedData.Capabilities.Kind.
+type CapabilityChangedDataCapabilitiesKind string
 
 // CapabilityCounts defines model for CapabilityCounts.
 type CapabilityCounts struct {
@@ -2143,6 +2929,19 @@ type ConnectStarted struct {
 	// Scopes Everything asked for
 	Scopes ScopeList `json:"scopes"`
 }
+
+// ConnectionNeedsReconsentData defines model for ConnectionNeedsReconsentData.
+type ConnectionNeedsReconsentData struct {
+	Provider struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	} `json:"provider"`
+	Reason ConnectionNeedsReconsentDataReason `json:"reason"`
+	Server *NotificationServerRef             `json:"server,omitempty"`
+}
+
+// ConnectionNeedsReconsentDataReason defines model for ConnectionNeedsReconsentData.Reason.
+type ConnectionNeedsReconsentDataReason string
 
 // DetectAuthChallenge The parsed WWW-Authenticate header of the 401
 type DetectAuthChallenge struct {
@@ -2568,6 +3367,23 @@ type Invite struct {
 	Role      TeamRole            `json:"role"`
 }
 
+// KeyExpiringData defines model for KeyExpiringData.
+type KeyExpiringData struct {
+	DaysLeft  int32                  `json:"daysLeft"`
+	ExpiresAt time.Time              `json:"expiresAt"`
+	KeyKind   KeyExpiringDataKeyKind `json:"keyKind"`
+
+	// Name The key's or token's name (never its prefix or secret)
+	Name           string `json:"name"`
+	ServiceAccount *struct {
+		Id   openapi_types.UUID `json:"id"`
+		Name string             `json:"name"`
+	} `json:"serviceAccount,omitempty"`
+}
+
+// KeyExpiringDataKeyKind defines model for KeyExpiringData.KeyKind.
+type KeyExpiringDataKeyKind string
+
 // LimitSettings defines model for LimitSettings.
 type LimitSettings struct {
 	// Items Every key, in a fixed order
@@ -2582,6 +3398,19 @@ type LimitSettings struct {
 type LimitSettingsUpdate struct {
 	Items []PlatformRateLimitSetting `json:"items"`
 }
+
+// LinkTarget Where the web app goes for an item (docs/admin-overview.md, Link targets). server: the server page (team page for members, Admin > Servers for platform staff); servers: the team's server list; review_queue: Admin > Publishing; gateways: Admin > Gateways; service_account / service_accounts: the team's service accounts; automation_tokens: Admin > Automation tokens; team_automation_tokens: the team's Settings > Automation tokens; auth_providers: Admin > Auth providers; usage: Admin > Usage; notification_settings: Admin > Notifications; team_notification_settings: the team's Settings > Notifications; account_connections: Account > Connections; account_api_keys: Account > API keys.
+type LinkTarget struct {
+	// Id The object's ID for singular types (server, service_account)
+	Id *string `json:"id,omitempty"`
+
+	// TeamSlug The team's slug, for team pages and for the team's server or service account
+	TeamSlug *string        `json:"teamSlug,omitempty"`
+	Type     LinkTargetType `json:"type"`
+}
+
+// LinkTargetType defines model for LinkTarget.Type.
+type LinkTargetType string
 
 // McpCall defines model for McpCall.
 type McpCall struct {
@@ -2747,13 +3576,16 @@ type McpServer struct {
 	Oauth *McpServerOAuth `json:"oauth,omitempty"`
 
 	// PendingChanges Capabilities of a published server whose definition changed since approval (hidden from the catalog until approved)
-	PendingChanges        int64        `json:"pendingChanges"`
-	PublishRequestNote    *string      `json:"publishRequestNote,omitempty"`
-	PublishRequestedAt    *time.Time   `json:"publishRequestedAt,omitempty"`
-	PublishReviewNote     *string      `json:"publishReviewNote,omitempty"`
-	PublishReviewedAt     *time.Time   `json:"publishReviewedAt,omitempty"`
-	PublishReviewedByName *string      `json:"publishReviewedByName,omitempty"`
-	PublishState          PublishState `json:"publishState"`
+	PendingChanges int64 `json:"pendingChanges"`
+
+	// Protocol The MCP protocol version the portal last negotiated with the upstream server (set by refresh, health checks and test); read-only. Null until the first successful exchange.
+	Protocol              *McpServerProtocol `json:"protocol,omitempty"`
+	PublishRequestNote    *string            `json:"publishRequestNote,omitempty"`
+	PublishRequestedAt    *time.Time         `json:"publishRequestedAt,omitempty"`
+	PublishReviewNote     *string            `json:"publishReviewNote,omitempty"`
+	PublishReviewedAt     *time.Time         `json:"publishReviewedAt,omitempty"`
+	PublishReviewedByName *string            `json:"publishReviewedByName,omitempty"`
+	PublishState          PublishState       `json:"publishState"`
 
 	// RefreshedAt When capabilities were last read (null; never)
 	RefreshedAt *time.Time `json:"refreshedAt,omitempty"`
@@ -2960,6 +3792,19 @@ type McpServerPage struct {
 	Items      []McpServer `json:"items"`
 	NextCursor *string     `json:"nextCursor,omitempty"`
 }
+
+// McpServerProtocol The MCP protocol version the portal last negotiated with the upstream server (docs/roadmap.md, v0.2 A)
+type McpServerProtocol struct {
+	// Era legacy: 2025-11-25 and earlier (initialize). modern: 2026-07-28 and later (stateless).
+	Era          McpServerProtocolEra `json:"era"`
+	NegotiatedAt time.Time            `json:"negotiatedAt"`
+
+	// Version Example: 2025-11-25
+	Version string `json:"version"`
+}
+
+// McpServerProtocolEra legacy: 2025-11-25 and earlier (initialize). modern: 2026-07-28 and later (stateless).
+type McpServerProtocolEra string
 
 // McpServerRef defines model for McpServerRef.
 type McpServerRef struct {
@@ -3198,6 +4043,302 @@ type NetworkSettingsUpdate struct {
 	Entries []NetworkEntry `json:"entries"`
 }
 
+// NotificationDelivery defines model for NotificationDelivery.
+type NotificationDelivery struct {
+	Attempts   int32                   `json:"attempts"`
+	CreatedAt  time.Time               `json:"createdAt"`
+	ErrorClass *NotificationErrorClass `json:"errorClass,omitempty"`
+
+	// Event server.unhealthy: 3 failed checks in a row, once per incident, a reminder every 24 hours while it lasts. server.recovered. capability.changed: a published server's definition changed or grew and is held back. publish.requested: a server entered review (platform admins). publish.decided: approved or rejected (team owners and admins). connection.needs_reconsent: a person's connection to a provider or server lapsed (that person only). upstream_signin.lapsed: an oauth server's setup sign-in lapsed (editors and above). key.expiring: a key or token expires in 7 days. Webhooks can't subscribe to connection.needs_reconsent or to personal keys.
+	Event NotificationEventType `json:"event"`
+
+	// EventId The id of the event, as in the payload and X-OMP-Event-Id
+	EventId       openapi_types.UUID `json:"eventId"`
+	HttpStatus    *int32             `json:"httpStatus,omitempty"`
+	Id            int64              `json:"id"`
+	LastAttemptAt *time.Time         `json:"lastAttemptAt,omitempty"`
+	NextAttemptAt *time.Time         `json:"nextAttemptAt,omitempty"`
+	SentAt        *time.Time         `json:"sentAt,omitempty"`
+
+	// State skipped: the destination was off or deleted, or the event no longer matched
+	State NotificationDeliveryState `json:"state"`
+}
+
+// NotificationDeliveryState skipped: the destination was off or deleted, or the event no longer matched
+type NotificationDeliveryState string
+
+// NotificationDestination A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}).
+type NotificationDestination struct {
+	CreatedAt     time.Time `json:"createdAt"`
+	CreatedByName *string   `json:"createdByName,omitempty"`
+
+	// DisabledReason failures: stopped automatically after 20 failed attempts in a row
+	DisabledReason *NotificationDestinationDisabledReason `json:"disabledReason,omitempty"`
+	Enabled        bool                                   `json:"enabled"`
+	Events         []NotificationEventType                `json:"events"`
+
+	// Format json: a signed JSON envelope (docs/notifications.md). slack: {"text": ...}, unsigned, for Slack-compatible incoming webhooks.
+	Format    NotificationFormat            `json:"format"`
+	HasSecret bool                          `json:"hasSecret"`
+	Health    NotificationDestinationHealth `json:"health"`
+	Id        openapi_types.UUID            `json:"id"`
+	Name      string                        `json:"name"`
+
+	// PreviousSecretExpiresAt While set and in the future, deliveries carry a signature for the previous secret too
+	PreviousSecretExpiresAt *time.Time `json:"previousSecretExpiresAt,omitempty"`
+
+	// Revision Increases on every change. Send it back in If-Match.
+	Revision Revision                     `json:"revision"`
+	Scope    NotificationDestinationScope `json:"scope"`
+
+	// SecretHint Last 4 characters of the signing secret, or empty
+	SecretHint      string     `json:"secretHint"`
+	SecretRotatedAt *time.Time `json:"secretRotatedAt,omitempty"`
+	Team            *TeamRef   `json:"team,omitempty"`
+
+	// TeamEvents Platform destinations: also receive the non-personal events of every team. Always false for team destinations.
+	TeamEvents bool      `json:"teamEvents"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+
+	// UrlDisplay Scheme and host only; the rest of the URL is never shown
+	//
+	// Example: https://hooks.slack.com/...
+	UrlDisplay string `json:"urlDisplay"`
+}
+
+// NotificationDestinationDisabledReason failures: stopped automatically after 20 failed attempts in a row
+type NotificationDestinationDisabledReason string
+
+// NotificationDestinationScope defines model for NotificationDestination.Scope.
+type NotificationDestinationScope string
+
+// NotificationDestinationCreate defines model for NotificationDestinationCreate.
+type NotificationDestinationCreate struct {
+	Enabled *bool                   `json:"enabled,omitempty"`
+	Events  []NotificationEventType `json:"events"`
+
+	// Format json: a signed JSON envelope (docs/notifications.md). slack: {"text": ...}, unsigned, for Slack-compatible incoming webhooks.
+	Format     NotificationFormat `json:"format"`
+	Name       string             `json:"name"`
+	TeamEvents *bool              `json:"teamEvents,omitempty"`
+
+	// Url https, or http for a host in the internal-network allowlist. No user info or fragment; a query is allowed (it is sealed and never shown).
+	Url string `json:"url"`
+}
+
+// NotificationDestinationCreated defines model for NotificationDestinationCreated.
+type NotificationDestinationCreated struct {
+	// Destination A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}).
+	Destination NotificationDestination `json:"destination"`
+
+	// Secret The signing secret (ompwhs_ and 43 characters), shown only now; null for slack
+	Secret *string `json:"secret,omitempty"`
+}
+
+// NotificationDestinationHealth defines model for NotificationDestinationHealth.
+type NotificationDestinationHealth struct {
+	ConsecutiveFailures int32                              `json:"consecutiveFailures"`
+	LastErrorClass      *NotificationErrorClass            `json:"lastErrorClass,omitempty"`
+	LastFailureAt       *time.Time                         `json:"lastFailureAt,omitempty"`
+	LastSuccessAt       *time.Time                         `json:"lastSuccessAt,omitempty"`
+	State               NotificationDestinationHealthState `json:"state"`
+}
+
+// NotificationDestinationHealthState defines model for NotificationDestinationHealth.State.
+type NotificationDestinationHealthState string
+
+// NotificationDestinationSecret defines model for NotificationDestinationSecret.
+type NotificationDestinationSecret struct {
+	// Destination A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}).
+	Destination NotificationDestination `json:"destination"`
+
+	// Secret The new signing secret, shown only now
+	Secret string `json:"secret"`
+}
+
+// NotificationDestinationUpdate defines model for NotificationDestinationUpdate.
+type NotificationDestinationUpdate struct {
+	Enabled    *bool                    `json:"enabled,omitempty"`
+	Events     *[]NotificationEventType `json:"events,omitempty"`
+	Name       *string                  `json:"name,omitempty"`
+	TeamEvents *bool                    `json:"teamEvents,omitempty"`
+	Url        *string                  `json:"url,omitempty"`
+}
+
+// NotificationEmailStatus defines model for NotificationEmailStatus.
+type NotificationEmailStatus struct {
+	// Authenticated SMTP_USERNAME is set (the username and password are never shown)
+	Authenticated bool `json:"authenticated"`
+
+	// Configured SMTP_HOST is set
+	Configured    bool                        `json:"configured"`
+	FailedLast24h int64                       `json:"failedLast24h"`
+	From          *string                     `json:"from,omitempty"`
+	Host          *string                     `json:"host,omitempty"`
+	Port          *int32                      `json:"port,omitempty"`
+	SentLast24h   int64                       `json:"sentLast24h"`
+	Tls           *NotificationEmailStatusTls `json:"tls,omitempty"`
+}
+
+// NotificationEmailStatusTls defines model for NotificationEmailStatus.Tls.
+type NotificationEmailStatusTls string
+
+// NotificationErrorClass not_allowed: the address isn't allowed (blocked or not in the internal-network allowlist, or a redirect). connect: unreachable. tls: certificate or handshake problem (or STARTTLS missing). timeout. auth: SMTP login refused. rejected: the destination answered 4xx (SMTP 5xx). server_error: it answered 5xx. address: the recipient address was refused. expired: still undelivered after 24 hours. internal.
+type NotificationErrorClass string
+
+// NotificationEventType server.unhealthy: 3 failed checks in a row, once per incident, a reminder every 24 hours while it lasts. server.recovered. capability.changed: a published server's definition changed or grew and is held back. publish.requested: a server entered review (platform admins). publish.decided: approved or rejected (team owners and admins). connection.needs_reconsent: a person's connection to a provider or server lapsed (that person only). upstream_signin.lapsed: an oauth server's setup sign-in lapsed (editors and above). key.expiring: a key or token expires in 7 days. Webhooks can't subscribe to connection.needs_reconsent or to personal keys.
+type NotificationEventType string
+
+// NotificationFormat json: a signed JSON envelope (docs/notifications.md). slack: {"text": ...}, unsigned, for Slack-compatible incoming webhooks.
+type NotificationFormat string
+
+// NotificationItem defines model for NotificationItem.
+type NotificationItem struct {
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Event server.unhealthy: 3 failed checks in a row, once per incident, a reminder every 24 hours while it lasts. server.recovered. capability.changed: a published server's definition changed or grew and is held back. publish.requested: a server entered review (platform admins). publish.decided: approved or rejected (team owners and admins). connection.needs_reconsent: a person's connection to a provider or server lapsed (that person only). upstream_signin.lapsed: an oauth server's setup sign-in lapsed (editors and above). key.expiring: a key or token expires in 7 days. Webhooks can't subscribe to connection.needs_reconsent or to personal keys.
+	Event  NotificationEventType `json:"event"`
+	Id     int64                 `json:"id"`
+	Link   *LinkTarget           `json:"link"`
+	ReadAt *time.Time            `json:"readAt"`
+	Team   *TeamRef              `json:"team"`
+	Title  string                `json:"title"`
+}
+
+// NotificationMarked defines model for NotificationMarked.
+type NotificationMarked struct {
+	Marked int64 `json:"marked"`
+}
+
+// NotificationPage defines model for NotificationPage.
+type NotificationPage struct {
+	Items       []NotificationItem `json:"items"`
+	NextCursor  *string            `json:"nextCursor,omitempty"`
+	UnreadCount int64              `json:"unreadCount"`
+}
+
+// NotificationPayload The body of a json webhook, at most 8 KiB. Signed: X-OMP-Signature is v1=<hex HMAC-SHA256 of timestamp + "." + body>, with the timestamp in X-OMP-Timestamp (Unix seconds); during a secret rotation the header carries two v1= values. Never contains secrets, header values, call arguments or results, or e-mail addresses.
+type NotificationPayload struct {
+	// Data The shape follows type
+	Data NotificationPayload_Data `json:"data"`
+
+	// Id The event's id; also the X-OMP-Event-Id header. Receivers de-duplicate on it (delivery is at least once).
+	Id       openapi_types.UUID `json:"id"`
+	Instance struct {
+		Name string `json:"name"`
+
+		// Url APP_URL
+		Url string `json:"url"`
+	} `json:"instance"`
+	OccurredAt time.Time               `json:"occurredAt"`
+	Team       *TeamRef                `json:"team"`
+	Type       NotificationPayloadType `json:"type"`
+
+	// Url A link to the item in the web app (never contains a secret)
+	Url     string                     `json:"url"`
+	Version NotificationPayloadVersion `json:"version"`
+}
+
+// NotificationPayload_Data The shape follows type
+type NotificationPayload_Data struct {
+	union json.RawMessage
+}
+
+// NotificationPayloadType defines model for NotificationPayload.Type.
+type NotificationPayloadType string
+
+// NotificationPayloadVersion defines model for NotificationPayload.Version.
+type NotificationPayloadVersion int
+
+// NotificationPreference defines model for NotificationPreference.
+type NotificationPreference struct {
+	// Custom false while both values are the defaults
+	Custom bool `json:"custom"`
+	Email  bool `json:"email"`
+
+	// Event server.unhealthy: 3 failed checks in a row, once per incident, a reminder every 24 hours while it lasts. server.recovered. capability.changed: a published server's definition changed or grew and is held back. publish.requested: a server entered review (platform admins). publish.decided: approved or rejected (team owners and admins). connection.needs_reconsent: a person's connection to a provider or server lapsed (that person only). upstream_signin.lapsed: an oauth server's setup sign-in lapsed (editors and above). key.expiring: a key or token expires in 7 days. Webhooks can't subscribe to connection.needs_reconsent or to personal keys.
+	Event NotificationEventType `json:"event"`
+	InApp bool                  `json:"inApp"`
+}
+
+// NotificationPreferenceChange defines model for NotificationPreferenceChange.
+type NotificationPreferenceChange struct {
+	Email *bool `json:"email,omitempty"`
+
+	// Event server.unhealthy: 3 failed checks in a row, once per incident, a reminder every 24 hours while it lasts. server.recovered. capability.changed: a published server's definition changed or grew and is held back. publish.requested: a server entered review (platform admins). publish.decided: approved or rejected (team owners and admins). connection.needs_reconsent: a person's connection to a provider or server lapsed (that person only). upstream_signin.lapsed: an oauth server's setup sign-in lapsed (editors and above). key.expiring: a key or token expires in 7 days. Webhooks can't subscribe to connection.needs_reconsent or to personal keys.
+	Event NotificationEventType `json:"event"`
+	InApp *bool                 `json:"inApp,omitempty"`
+}
+
+// NotificationPreferences defines model for NotificationPreferences.
+type NotificationPreferences struct {
+	// EmailAddress Where email goes: the address on the person's profile
+	EmailAddress string `json:"emailAddress"`
+
+	// EmailAvailable The operator configured SMTP; without it email choices are kept but nothing is sent
+	EmailAvailable bool                     `json:"emailAvailable"`
+	Items          []NotificationPreference `json:"items"`
+}
+
+// NotificationPreferencesUpdate defines model for NotificationPreferencesUpdate.
+type NotificationPreferencesUpdate struct {
+	Items []NotificationPreferenceChange `json:"items"`
+}
+
+// NotificationSecretRotate defines model for NotificationSecretRotate.
+type NotificationSecretRotate struct {
+	// GraceHours How long the old secret keeps signing too (0: stop now)
+	GraceHours *int32 `json:"graceHours,omitempty"`
+}
+
+// NotificationServerRef The server an event is about
+type NotificationServerRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+	Slug string             `json:"slug"`
+}
+
+// NotificationSettings defines model for NotificationSettings.
+type NotificationSettings struct {
+	Email NotificationEmailStatus `json:"email"`
+	Queue struct {
+		FailedLast24h   int64      `json:"failedLast24h"`
+		IntervalSeconds int32      `json:"intervalSeconds"`
+		LastRunAt       *time.Time `json:"lastRunAt,omitempty"`
+		OldestPendingAt *time.Time `json:"oldestPendingAt,omitempty"`
+		Pending         int64      `json:"pending"`
+	} `json:"queue"`
+	Webhooks struct {
+		PlatformDestinations int64 `json:"platformDestinations"`
+
+		// Stopped Destinations stopped automatically after repeated failures
+		Stopped          int64 `json:"stopped"`
+		TeamDestinations int64 `json:"teamDestinations"`
+	} `json:"webhooks"`
+}
+
+// NotificationTestData defines model for NotificationTestData.
+type NotificationTestData struct {
+	Message string `json:"message"`
+}
+
+// NotificationTestResult defines model for NotificationTestResult.
+type NotificationTestResult struct {
+	DurationMs int32                   `json:"durationMs"`
+	ErrorClass *NotificationErrorClass `json:"errorClass,omitempty"`
+	HttpStatus *int32                  `json:"httpStatus,omitempty"`
+
+	// Message A short explanation safe to show; never the destination's response body
+	Message string `json:"message"`
+	Ok      bool   `json:"ok"`
+}
+
+// NotificationUnreadCount defines model for NotificationUnreadCount.
+type NotificationUnreadCount struct {
+	Count int64 `json:"count"`
+}
+
 // OAuthClientInfo defines model for OAuthClientInfo.
 type OAuthClientInfo struct {
 	// Host The host that vouches for the client, or a registered client's own home page host (may be empty)
@@ -3261,6 +4402,39 @@ type OAuthSetupStart struct {
 // Ok defines model for Ok.
 type Ok struct {
 	Ok bool `json:"ok"`
+}
+
+// OverviewActivity The last 24 hourly rollup buckets (the current hour included), from the usage rollups
+type OverviewActivity struct {
+	Calls int64 `json:"calls"`
+
+	// ErrorRate errors / calls from 0 to 1; null without calls
+	ErrorRate *float64 `json:"errorRate"`
+
+	// Errors Every outcome but ok, as Admin > Usage counts them (denied, rate_limited and needs_authorization included), so the figures agree
+	Errors      int64 `json:"errors"`
+	RateLimited int64 `json:"rateLimited"`
+
+	// RolledUpTo Calls up to this time are included (rollups run every 5 minutes)
+	RolledUpTo *time.Time `json:"rolledUpTo"`
+}
+
+// OverviewCounts defines model for OverviewCounts.
+type OverviewCounts struct {
+	// AutomationTokens Active automation tokens (both kinds)
+	AutomationTokens int64 `json:"automationTokens"`
+
+	// Gateways Gateways of active teams, and platform gateways
+	Gateways         int64 `json:"gateways"`
+	PublishedServers int64 `json:"publishedServers"`
+	Servers          int64 `json:"servers"`
+	ServiceAccounts  int64 `json:"serviceAccounts"`
+
+	// Teams Active teams
+	Teams int64 `json:"teams"`
+
+	// Users Active people
+	Users int64 `json:"users"`
 }
 
 // OwnerAssign defines model for OwnerAssign.
@@ -3357,8 +4531,42 @@ type ProviderRef struct {
 	Slug   string        `json:"slug"`
 }
 
+// PublishDecidedData defines model for PublishDecidedData.
+type PublishDecidedData struct {
+	DecidedBy struct {
+		Name string `json:"name"`
+	} `json:"decidedBy"`
+	Decision PublishDecidedDataDecision `json:"decision"`
+	Note     *string                    `json:"note,omitempty"`
+
+	// Server The server an event is about
+	Server NotificationServerRef `json:"server"`
+}
+
+// PublishDecidedDataDecision defines model for PublishDecidedData.Decision.
+type PublishDecidedDataDecision string
+
 // PublishPolicy approval_required: a platform admin approves each server, and each changed capability, before it reaches the catalog. self_publish: the team's owners and admins do.
 type PublishPolicy string
+
+// PublishRequestedData defines model for PublishRequestedData.
+type PublishRequestedData struct {
+	Note        *string                    `json:"note,omitempty"`
+	Reason      PublishRequestedDataReason `json:"reason"`
+	RequestedBy struct {
+		Kind PublishRequestedDataRequestedByKind `json:"kind"`
+		Name string                              `json:"name"`
+	} `json:"requestedBy"`
+
+	// Server The server an event is about
+	Server NotificationServerRef `json:"server"`
+}
+
+// PublishRequestedDataReason defines model for PublishRequestedData.Reason.
+type PublishRequestedDataReason string
+
+// PublishRequestedDataRequestedByKind defines model for PublishRequestedData.RequestedBy.Kind.
+type PublishRequestedDataRequestedByKind string
 
 // PublishState defines model for PublishState.
 type PublishState string
@@ -3504,6 +4712,37 @@ type ServerHealth struct {
 // ServerHealthStatus defines model for ServerHealth.Status.
 type ServerHealthStatus string
 
+// ServerRecoveredData defines model for ServerRecoveredData.
+type ServerRecoveredData struct {
+	DowntimeSeconds int64     `json:"downtimeSeconds"`
+	RecoveredAt     time.Time `json:"recoveredAt"`
+
+	// Server The server an event is about
+	Server NotificationServerRef `json:"server"`
+	Since  time.Time             `json:"since"`
+}
+
+// ServerUnhealthyData defines model for ServerUnhealthyData.
+type ServerUnhealthyData struct {
+	ConsecutiveFailures int32 `json:"consecutiveFailures"`
+
+	// ErrorClass McpErrorClass of the latest check
+	ErrorClass *string `json:"errorClass,omitempty"`
+
+	// FailingHours Whole hours since, on reminders
+	FailingHours *int32 `json:"failingHours,omitempty"`
+	HttpStatus   *int32 `json:"httpStatus,omitempty"`
+
+	// Reminder true for the daily reminders
+	Reminder bool `json:"reminder"`
+
+	// Server The server an event is about
+	Server NotificationServerRef `json:"server"`
+
+	// Since When the failing status began
+	Since time.Time `json:"since"`
+}
+
 // ServiceAccount defines model for ServiceAccount.
 type ServiceAccount struct {
 	ActiveKeyCount int64              `json:"activeKeyCount"`
@@ -3607,6 +4846,16 @@ type Team struct {
 	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
+// TeamAttention The team overview's attention card
+type TeamAttention struct {
+	Attention   []AttentionItem `json:"attention"`
+	GeneratedAt time.Time       `json:"generatedAt"`
+
+	// Totals Exact number per AttentionKind (servers for per-server kinds, otherwise the sum of count); kinds with nothing are left out. Larger than the items listed when truncated.
+	Totals    map[string]int64 `json:"totals"`
+	Truncated bool             `json:"truncated"`
+}
+
 // TeamCreate defines model for TeamCreate.
 type TeamCreate struct {
 	Description *string `json:"description,omitempty"`
@@ -3694,6 +4943,13 @@ type TeamRateLimit struct {
 	// Override The team's own value (null: inherits the default; always null when teamOverridable is false)
 	Override        *RateLimitValue `json:"override"`
 	TeamOverridable bool            `json:"teamOverridable"`
+}
+
+// TeamRef A team, as named in overviews, notifications and tokens
+type TeamRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+	Slug string             `json:"slug"`
 }
 
 // TeamRetention defines model for TeamRetention.
@@ -3789,6 +5045,16 @@ type TrustedClients struct {
 // TrustedClientsUpdate defines model for TrustedClientsUpdate.
 type TrustedClientsUpdate struct {
 	Clients []TrustedClient `json:"clients"`
+}
+
+// UpstreamSigninLapsedData defines model for UpstreamSigninLapsedData.
+type UpstreamSigninLapsedData struct {
+	// ReadAsName The person whose sign-in capabilities were read as
+	ReadAsName *string `json:"readAsName,omitempty"`
+
+	// Server The server an event is about
+	Server NotificationServerRef `json:"server"`
+	Since  time.Time             `json:"since"`
 }
 
 // UsageBucket defines model for UsageBucket.
@@ -3928,6 +5194,9 @@ type AuditTargetTypeParam = string
 // AuditToParam defines model for AuditToParam.
 type AuditToParam = time.Time
 
+// AutomationTokenIdParam defines model for AutomationTokenIdParam.
+type AutomationTokenIdParam = openapi_types.UUID
+
 // CallGatewayParam defines model for CallGatewayParam.
 type CallGatewayParam = openapi_types.UUID
 
@@ -3978,6 +5247,12 @@ type IfMatchHeader = string
 
 // LimitParam defines model for LimitParam.
 type LimitParam = int
+
+// NotificationDestinationIdParam defines model for NotificationDestinationIdParam.
+type NotificationDestinationIdParam = openapi_types.UUID
+
+// NotificationIdParam defines model for NotificationIdParam.
+type NotificationIdParam = int64
 
 // OAuthGrantIdParam defines model for OAuthGrantIdParam.
 type OAuthGrantIdParam = openapi_types.UUID
@@ -4111,7 +5386,7 @@ type AdminListAuditParams struct {
 	// ActorUserId Only entries by this person (including their API keys)
 	ActorUserId *AuditActorParam `form:"actorUserId,omitempty" json:"actorUserId,omitempty"`
 
-	// ActorKind Only entries by the system
+	// ActorKind Only entries by the system (system) or by automation tokens (automation_token)
 	ActorKind  *AdminListAuditParamsActorKind `form:"actorKind,omitempty" json:"actorKind,omitempty"`
 	TargetType *AuditTargetTypeParam          `form:"targetType,omitempty" json:"targetType,omitempty"`
 
@@ -4226,6 +5501,12 @@ type AdminListMcpServersParams struct {
 // AdminListMcpCapabilitiesParams defines parameters for AdminListMcpCapabilities.
 type AdminListMcpCapabilitiesParams struct {
 	Kind *CapabilityKindParam `form:"kind,omitempty" json:"kind,omitempty"`
+}
+
+// AdminUpdateNotificationDestinationParams defines parameters for AdminUpdateNotificationDestination.
+type AdminUpdateNotificationDestinationParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
 }
 
 // AdminListServiceAccountsParams defines parameters for AdminListServiceAccounts.
@@ -4379,6 +5660,16 @@ type GetMeParams struct {
 	Optional *bool `form:"optional,omitempty" json:"optional,omitempty"`
 }
 
+// ListMyNotificationsParams defines parameters for ListMyNotifications.
+type ListMyNotificationsParams struct {
+	// Unread Only unread notifications
+	Unread *bool `form:"unread,omitempty" json:"unread,omitempty"`
+
+	// Cursor nextCursor from the previous page
+	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetOAuthConsentParams defines parameters for GetOAuthConsent.
 type GetOAuthConsentParams struct {
 	ClientId            string  `form:"client_id" json:"client_id"`
@@ -4406,7 +5697,7 @@ type ListTeamAuditParams struct {
 	// ActorUserId Only entries by this person (including their API keys)
 	ActorUserId *AuditActorParam `form:"actorUserId,omitempty" json:"actorUserId,omitempty"`
 
-	// ActorKind Only entries by the system
+	// ActorKind Only entries by the system (system) or by automation tokens (automation_token)
 	ActorKind  *ListTeamAuditParamsActorKind `form:"actorKind,omitempty" json:"actorKind,omitempty"`
 	TargetType *AuditTargetTypeParam         `form:"targetType,omitempty" json:"targetType,omitempty"`
 
@@ -4515,6 +5806,12 @@ type UpdateMemberParams struct {
 	IfMatch IfMatchHeader `json:"If-Match"`
 }
 
+// UpdateTeamNotificationDestinationParams defines parameters for UpdateTeamNotificationDestination.
+type UpdateTeamNotificationDestinationParams struct {
+	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
+	IfMatch IfMatchHeader `json:"If-Match"`
+}
+
 // UpdateServiceAccountParams defines parameters for UpdateServiceAccount.
 type UpdateServiceAccountParams struct {
 	// IfMatch The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412.
@@ -4560,6 +5857,9 @@ type AdminCreateAuthProviderJSONRequestBody = AuthProviderCreate
 // AdminUpdateAuthProviderJSONRequestBody defines body for AdminUpdateAuthProvider for application/json ContentType.
 type AdminUpdateAuthProviderJSONRequestBody = AuthProviderUpdate
 
+// AdminCreateAutomationTokenJSONRequestBody defines body for AdminCreateAutomationToken for application/json ContentType.
+type AdminCreateAutomationTokenJSONRequestBody = AutomationTokenCreate
+
 // AdminCreateGatewayJSONRequestBody defines body for AdminCreateGateway for application/json ContentType.
 type AdminCreateGatewayJSONRequestBody = GatewayCreate
 
@@ -4574,6 +5874,15 @@ type AdminAddGatewayGrantJSONRequestBody = GatewayGrantCreate
 
 // AdminReviewMcpServerJSONRequestBody defines body for AdminReviewMcpServer for application/json ContentType.
 type AdminReviewMcpServerJSONRequestBody = McpPublishReview
+
+// AdminCreateNotificationDestinationJSONRequestBody defines body for AdminCreateNotificationDestination for application/json ContentType.
+type AdminCreateNotificationDestinationJSONRequestBody = NotificationDestinationCreate
+
+// AdminUpdateNotificationDestinationJSONRequestBody defines body for AdminUpdateNotificationDestination for application/json ContentType.
+type AdminUpdateNotificationDestinationJSONRequestBody = NotificationDestinationUpdate
+
+// AdminRotateNotificationDestinationSecretJSONRequestBody defines body for AdminRotateNotificationDestinationSecret for application/json ContentType.
+type AdminRotateNotificationDestinationSecretJSONRequestBody = NotificationSecretRotate
 
 // AdminUpdateCaptureSettingsJSONRequestBody defines body for AdminUpdateCaptureSettings for application/json ContentType.
 type AdminUpdateCaptureSettingsJSONRequestBody = CaptureSettingsUpdate
@@ -4626,8 +5935,14 @@ type CreateMyApiKeyJSONRequestBody = ApiKeyCreate
 // StartMyConnectionJSONRequestBody defines body for StartMyConnection for application/json ContentType.
 type StartMyConnectionJSONRequestBody = ConnectStart
 
+// UpdateMyNotificationPreferencesJSONRequestBody defines body for UpdateMyNotificationPreferences for application/json ContentType.
+type UpdateMyNotificationPreferencesJSONRequestBody = NotificationPreferencesUpdate
+
 // DecideOAuthConsentJSONRequestBody defines body for DecideOAuthConsent for application/json ContentType.
 type DecideOAuthConsentJSONRequestBody = OAuthConsentDecision
+
+// CreateTeamAutomationTokenJSONRequestBody defines body for CreateTeamAutomationToken for application/json ContentType.
+type CreateTeamAutomationTokenJSONRequestBody = AutomationTokenCreate
 
 // CreateTeamGatewayJSONRequestBody defines body for CreateTeamGateway for application/json ContentType.
 type CreateTeamGatewayJSONRequestBody = GatewayCreate
@@ -4662,6 +5977,15 @@ type AddMemberJSONRequestBody = MemberAdd
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = MemberUpdate
 
+// CreateTeamNotificationDestinationJSONRequestBody defines body for CreateTeamNotificationDestination for application/json ContentType.
+type CreateTeamNotificationDestinationJSONRequestBody = NotificationDestinationCreate
+
+// UpdateTeamNotificationDestinationJSONRequestBody defines body for UpdateTeamNotificationDestination for application/json ContentType.
+type UpdateTeamNotificationDestinationJSONRequestBody = NotificationDestinationUpdate
+
+// RotateTeamNotificationDestinationSecretJSONRequestBody defines body for RotateTeamNotificationDestinationSecret for application/json ContentType.
+type RotateTeamNotificationDestinationSecretJSONRequestBody = NotificationSecretRotate
+
 // CreateServiceAccountJSONRequestBody defines body for CreateServiceAccount for application/json ContentType.
 type CreateServiceAccountJSONRequestBody = ServiceAccountCreate
 
@@ -4670,3 +5994,247 @@ type UpdateServiceAccountJSONRequestBody = ServiceAccountUpdate
 
 // CreateServiceAccountKeyJSONRequestBody defines body for CreateServiceAccountKey for application/json ContentType.
 type CreateServiceAccountKeyJSONRequestBody = ServiceAccountKeyCreate
+
+// AsServerUnhealthyData returns the union data inside the NotificationPayload_Data as a ServerUnhealthyData
+func (t NotificationPayload_Data) AsServerUnhealthyData() (ServerUnhealthyData, error) {
+	var body ServerUnhealthyData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerUnhealthyData overwrites any union data inside the NotificationPayload_Data as the provided ServerUnhealthyData
+func (t *NotificationPayload_Data) FromServerUnhealthyData(v ServerUnhealthyData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerUnhealthyData performs a merge with any union data inside the NotificationPayload_Data, using the provided ServerUnhealthyData
+func (t *NotificationPayload_Data) MergeServerUnhealthyData(v ServerUnhealthyData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerRecoveredData returns the union data inside the NotificationPayload_Data as a ServerRecoveredData
+func (t NotificationPayload_Data) AsServerRecoveredData() (ServerRecoveredData, error) {
+	var body ServerRecoveredData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerRecoveredData overwrites any union data inside the NotificationPayload_Data as the provided ServerRecoveredData
+func (t *NotificationPayload_Data) FromServerRecoveredData(v ServerRecoveredData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerRecoveredData performs a merge with any union data inside the NotificationPayload_Data, using the provided ServerRecoveredData
+func (t *NotificationPayload_Data) MergeServerRecoveredData(v ServerRecoveredData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCapabilityChangedData returns the union data inside the NotificationPayload_Data as a CapabilityChangedData
+func (t NotificationPayload_Data) AsCapabilityChangedData() (CapabilityChangedData, error) {
+	var body CapabilityChangedData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCapabilityChangedData overwrites any union data inside the NotificationPayload_Data as the provided CapabilityChangedData
+func (t *NotificationPayload_Data) FromCapabilityChangedData(v CapabilityChangedData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCapabilityChangedData performs a merge with any union data inside the NotificationPayload_Data, using the provided CapabilityChangedData
+func (t *NotificationPayload_Data) MergeCapabilityChangedData(v CapabilityChangedData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPublishRequestedData returns the union data inside the NotificationPayload_Data as a PublishRequestedData
+func (t NotificationPayload_Data) AsPublishRequestedData() (PublishRequestedData, error) {
+	var body PublishRequestedData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPublishRequestedData overwrites any union data inside the NotificationPayload_Data as the provided PublishRequestedData
+func (t *NotificationPayload_Data) FromPublishRequestedData(v PublishRequestedData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePublishRequestedData performs a merge with any union data inside the NotificationPayload_Data, using the provided PublishRequestedData
+func (t *NotificationPayload_Data) MergePublishRequestedData(v PublishRequestedData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPublishDecidedData returns the union data inside the NotificationPayload_Data as a PublishDecidedData
+func (t NotificationPayload_Data) AsPublishDecidedData() (PublishDecidedData, error) {
+	var body PublishDecidedData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPublishDecidedData overwrites any union data inside the NotificationPayload_Data as the provided PublishDecidedData
+func (t *NotificationPayload_Data) FromPublishDecidedData(v PublishDecidedData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePublishDecidedData performs a merge with any union data inside the NotificationPayload_Data, using the provided PublishDecidedData
+func (t *NotificationPayload_Data) MergePublishDecidedData(v PublishDecidedData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsConnectionNeedsReconsentData returns the union data inside the NotificationPayload_Data as a ConnectionNeedsReconsentData
+func (t NotificationPayload_Data) AsConnectionNeedsReconsentData() (ConnectionNeedsReconsentData, error) {
+	var body ConnectionNeedsReconsentData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromConnectionNeedsReconsentData overwrites any union data inside the NotificationPayload_Data as the provided ConnectionNeedsReconsentData
+func (t *NotificationPayload_Data) FromConnectionNeedsReconsentData(v ConnectionNeedsReconsentData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeConnectionNeedsReconsentData performs a merge with any union data inside the NotificationPayload_Data, using the provided ConnectionNeedsReconsentData
+func (t *NotificationPayload_Data) MergeConnectionNeedsReconsentData(v ConnectionNeedsReconsentData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsUpstreamSigninLapsedData returns the union data inside the NotificationPayload_Data as a UpstreamSigninLapsedData
+func (t NotificationPayload_Data) AsUpstreamSigninLapsedData() (UpstreamSigninLapsedData, error) {
+	var body UpstreamSigninLapsedData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromUpstreamSigninLapsedData overwrites any union data inside the NotificationPayload_Data as the provided UpstreamSigninLapsedData
+func (t *NotificationPayload_Data) FromUpstreamSigninLapsedData(v UpstreamSigninLapsedData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeUpstreamSigninLapsedData performs a merge with any union data inside the NotificationPayload_Data, using the provided UpstreamSigninLapsedData
+func (t *NotificationPayload_Data) MergeUpstreamSigninLapsedData(v UpstreamSigninLapsedData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsKeyExpiringData returns the union data inside the NotificationPayload_Data as a KeyExpiringData
+func (t NotificationPayload_Data) AsKeyExpiringData() (KeyExpiringData, error) {
+	var body KeyExpiringData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromKeyExpiringData overwrites any union data inside the NotificationPayload_Data as the provided KeyExpiringData
+func (t *NotificationPayload_Data) FromKeyExpiringData(v KeyExpiringData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeKeyExpiringData performs a merge with any union data inside the NotificationPayload_Data, using the provided KeyExpiringData
+func (t *NotificationPayload_Data) MergeKeyExpiringData(v KeyExpiringData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsNotificationTestData returns the union data inside the NotificationPayload_Data as a NotificationTestData
+func (t NotificationPayload_Data) AsNotificationTestData() (NotificationTestData, error) {
+	var body NotificationTestData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromNotificationTestData overwrites any union data inside the NotificationPayload_Data as the provided NotificationTestData
+func (t *NotificationPayload_Data) FromNotificationTestData(v NotificationTestData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeNotificationTestData performs a merge with any union data inside the NotificationPayload_Data, using the provided NotificationTestData
+func (t *NotificationPayload_Data) MergeNotificationTestData(v NotificationTestData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t NotificationPayload_Data) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *NotificationPayload_Data) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
