@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -352,15 +353,19 @@ func TestOIDCSignInAcceptsInvites(t *testing.T) {
 }
 
 func TestOIDCOpenRedirectBlocked(t *testing.T) {
-	app, p := oidcApp(t, nil)
-	p.SetClaims(map[string]any{"sub": "u1", "email": "u1@example.com", "email_verified": true})
-	res, err := app.Client.Get(app.URL + "/auth/login?next=//evil.example/steal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.Request.URL.Host != strings.TrimPrefix(app.URL, "http://") || res.Request.URL.Path != "/" {
-		t.Fatalf("redirected to %s", res.Request.URL)
+	// Each next value would, after sign-in, send the browser off the site: directly, or once the browser drops
+	// the tab or newline from "Location: /\t/evil.example" (F-4).
+	for _, next := range []string{"//evil.example/steal", "/\t/evil.example", "/%09/evil.example", "/%5cevil.example", "/%2F/evil.example"} {
+		app, p := oidcApp(t, nil)
+		p.SetClaims(map[string]any{"sub": "u1", "email": "u1@example.com", "email_verified": true})
+		res, err := app.Client.Get(app.URL + "/auth/login?next=" + url.QueryEscape(next))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.Request.URL.Host != strings.TrimPrefix(app.URL, "http://") || res.Request.URL.Path != "/" {
+			t.Fatalf("next %q: redirected to %s", next, res.Request.URL)
+		}
 	}
 }
 

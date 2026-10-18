@@ -20,6 +20,7 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/auth"
 	"github.com/ncecere/open-mcp-portal/internal/authz"
 	"github.com/ncecere/open-mcp-portal/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/safepath"
 	"github.com/ncecere/open-mcp-portal/internal/store"
 	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-portal/internal/teams"
@@ -83,35 +84,11 @@ func (s *Service) ConnectURL(providerSlug, requestID string) string {
 }
 
 // SafeReturnPath reports whether p is a path on this site: one leading
-// slash, no "//", backslash, scheme or control character, at most 2000
-// characters. The same holds for every percent-decoding of p (browsers and
-// proxies may decode a path once or more), and an encoded slash or
-// backslash (%2F, %5C, also double-encoded) is refused outright.
-func SafeReturnPath(p string) bool {
-	if p == "" || len(p) > MaxReturnTo || !strings.HasPrefix(p, "/") {
-		return false
-	}
-	for layer, i := p, 0; ; i++ {
-		lower := strings.ToLower(layer)
-		if !strings.HasPrefix(layer, "/") || strings.Contains(layer, "//") || strings.Contains(layer, `\`) ||
-			strings.Contains(lower, "%2f") || strings.Contains(lower, "%5c") || !oneLine(layer) {
-			return false
-		}
-		if !strings.Contains(layer, "%") {
-			break
-		}
-		if i == 4 { // more layers of encoding than any legitimate path
-			return false
-		}
-		decoded, err := url.PathUnescape(layer)
-		if err != nil {
-			return false
-		}
-		layer = decoded
-	}
-	u, err := url.Parse(p)
-	return err == nil && u.Scheme == "" && u.Host == "" && u.User == nil
-}
+// slash, no "//", backslash, scheme or control character, at most
+// MaxReturnTo characters; the same for every percent-decoding of p, and an
+// encoded slash or backslash is refused outright (internal/safepath, shared
+// with the sign-in's next).
+func SafeReturnPath(p string) bool { return safepath.Local(p, MaxReturnTo) }
 
 // union appends to a the scopes of the others it lacks, in order.
 func union(lists ...[]string) []string {

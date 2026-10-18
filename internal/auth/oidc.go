@@ -15,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/safepath"
 	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
@@ -243,10 +244,12 @@ func boundedClaims(claims map[string]any) json.RawMessage {
 // request (internal/oauth bounds its query to 8000 characters).
 const maxNext = 8300
 
-// safeNext only allows same-origin relative paths as post-login redirects.
+// safeNext only allows same-origin relative paths as post-login redirects:
+// internal/safepath's rule (no control characters such as a tab, which
+// browsers drop, no "//" or backslash or encoded slash at any decoding
+// layer), with the query left free to carry an OAuth authorization request.
 func safeNext(next string) string {
-	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") ||
-		strings.HasPrefix(next, "/\\") || strings.ContainsAny(next, "\r\n") || len(next) > maxNext {
+	if !safepath.LocalWithQuery(next, maxNext) {
 		return "/"
 	}
 	return next
