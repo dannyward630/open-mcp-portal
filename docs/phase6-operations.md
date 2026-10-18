@@ -211,7 +211,7 @@ concurrency cancels superseded runs of a branch):
 - **web:** `npm ci`, typecheck, Vitest, `check:styling`, `check:size`, build.
 - **k8s:** `make k8s-validate`. **docker:** `docker build` of both targets (no push).
 
-There is no remote yet: the workflow is checked locally with `actionlint`; publishing images comes later.
+Images are published by a separate workflow, `.github/workflows/image.yml`, for `v*` tags (v0.1.0).
 
 ## UI
 

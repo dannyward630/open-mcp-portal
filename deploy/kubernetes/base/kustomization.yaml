@@ -1,7 +1,7 @@
 # Open MCP Portal: generic Kubernetes base (docs/deploy.md).
 #
 # Namespace-agnostic and free of secret values. An overlay sets the
-# namespace, pins the image by digest, merges its settings into
+# namespace, pins the image by digest (the base uses the release tag), merges its settings into
 # open-mcp-portal-config, creates the secret open-mcp-portal-runtime and
 # adds an Ingress or Gateway API route. See ../overlays/example.
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -30,12 +30,13 @@ configMapGenerator:
         app.kubernetes.io/name: open-mcp-portal
         app.kubernetes.io/part-of: open-mcp-portal
 
-# Deliberately not a real tag: overlays must pin the image, preferably by
-# digest (never a mutable tag such as latest):
+# The release this base shipped with. A tag can move, so overlays should pin
+# the digest from the GitHub Release (verify its cosign signature first; the
+# digest takes precedence over the tag), never `latest`:
 #   images:
 #     - name: ghcr.io/ncecere/open-mcp-portal
 #       newTag: v0.1.0
 #       digest: sha256:<digest>
 images:
   - name: ghcr.io/ncecere/open-mcp-portal
-    newTag: pin-a-digest-in-your-overlay
+    newTag: v0.1.0

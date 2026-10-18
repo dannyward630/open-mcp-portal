@@ -1,6 +1,6 @@
 # Continuous integration (docs/phase6-operations.md "CI", decision 37).
 # Every action is pinned by commit SHA; the comment gives the version.
-# There is no remote yet: this file is checked locally with `make actionlint`.
+# Releases (v* tags) are built, signed and published by image.yml.
 name: ci
 on:
   push:
@@ -113,7 +113,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Both targets build; nothing is pushed (image publishing comes later).
+      # Both targets build; nothing is pushed (image.yml publishes v* tags).
       - name: Portal image
         run: docker build --build-arg VERSION="${GITHUB_SHA::12}" --build-arg COMMIT="${GITHUB_SHA::12}" -t open-mcp-portal:ci .
       - name: Fake MCP server image (demo)

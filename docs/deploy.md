@@ -13,6 +13,21 @@ queue or object storage.
 
 ## Image
 
+Released images are `ghcr.io/ncecere/open-mcp-portal:vX.Y.Z` (and `latest` for final releases), multi-arch
+(linux/amd64 and linux/arm64) with SBOM and provenance attestations, signed with cosign (keyless, GitHub Actions OIDC):
+
+```sh
+docker pull ghcr.io/ncecere/open-mcp-portal:v0.1.0
+docker run --rm ghcr.io/ncecere/open-mcp-portal:v0.1.0 version     # open-mcp-portal 0.1.0 (<commit>)
+
+# Pin the digest from the GitHub Release, and verify it first (cosign v3 or newer):
+cosign verify ghcr.io/ncecere/open-mcp-portal@sha256:<digest> \
+  --certificate-identity https://github.com/ncecere/open-mcp-portal/.github/workflows/image.yml@refs/tags/v0.1.0 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+To build it yourself:
+
 ```sh
 make docker                     # open-mcp-portal:<git describe>
 docker run --rm open-mcp-portal:<tag> version
@@ -150,6 +165,18 @@ The base sets `LISTEN_ADDR=:8088`, `LOG_FORMAT=json`, `DEV_AUTH=false`, `MIGRATE
 pins it), `SHUTDOWN_DELAY=10s`, `SHUTDOWN_TIMEOUT=125s`, and placeholders for `APP_URL`, `OIDC_ISSUER` and
 `OIDC_CLIENT_ID`. Do not set `generatorOptions.disableNameSuffixHash`, because then pods keep running with stale settings.
 
+### Image
+
+The base references `ghcr.io/ncecere/open-mcp-portal` and sets its tag to `v0.1.0` through a Kustomize `images:` entry.
+A tag can move, so pin the digest of the release you verified in your overlay (the digest wins over the tag):
+
+```yaml
+images:
+  - name: ghcr.io/ncecere/open-mcp-portal
+    newTag: v0.1.0
+    digest: sha256:<digest from the GitHub Release>
+```
+
 ### What the base deploys
 
 - **Deployment `open-mcp-portal`**: 2 replicas, `maxUnavailable: 0` / `maxSurge: 1`, spread across nodes (and, best
@@ -229,7 +256,7 @@ balancers stop sending traffic. It then gives in-flight requests `SHUTDOWN_TIMEO
 
 ## Upgrades
 
-1. Pin the new image digest in the overlay.
+1. Pin the new release's image digest in the overlay (verify its signature first, [Image](#image)).
 2. **Migrate, then roll.** The new pods' `migrate` init container applies the schema before any new pod serves. Old pods
    keep serving during the rollout (`maxUnavailable: 0`), so a release's migrations must work with the previous release's
    code. Outside Kubernetes, run `migrate` with the new image first, then restart `serve`.
@@ -304,6 +331,6 @@ recomputed without the key, so rotation happens on use:
 - No dashboards, alert rules or tracing (metrics: [Metrics](#metrics)). Logs are JSON on stdout.
 - No in-cluster PostgreSQL component, backup CronJob or restore procedure. Bring your own Postgres and backups.
 - No `k8s-smoke` (kind) test. `make k8s-validate` only renders the manifests and checks their schemas.
-- No published image or release workflow. The example's digest is a placeholder.
+- Images are published only for releases (`v*` tags), not for every commit on `main`. The example overlay's digest is a placeholder: use the digest from the release you install.
 - No Helm chart and no HorizontalPodAutoscaler.
 - No SSE relay.

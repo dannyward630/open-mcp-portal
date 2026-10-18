@@ -84,6 +84,16 @@ The product is **Open MCP Portal** (short form OMP, only after the full name has
 - The pull request description says what changed and why, how you tested it, and which issue or decision it relates to.
 - CI must pass, generated code must be current, and docs (`SPEC.md`, `docs/`, `.env.example`) must match the change.
 
+## Releasing
+
+1. Write `docs/releases/vX.Y.Z.md`, turn the changelog's unreleased entry into `X.Y.Z - <date>`, and make `Version` in
+   `internal/buildinfo/buildinfo.go` the release version. The release workflow refuses a tag that doesn't match it, or one
+   without notes.
+2. Push `main` and wait for CI to pass.
+3. Tag `vX.Y.Z` (or `vX.Y.Z-rc.1`, which becomes a pre-release with the base version's notes) and push the tag.
+   `.github/workflows/image.yml` builds, scans, signs and publishes the image and creates the GitHub Release
+   (`scripts/github-release.sh`; `RELEASE_DRY_RUN=1` with `RELEASE_SBOM_FILE` tries it without publishing).
+
 ## License
 
 By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE), the project's licence.

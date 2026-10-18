@@ -8,10 +8,11 @@ own scripts to a gateway and see only what they may use, with every call checked
 Go + PostgreSQL 17, with a React/Vite web UI embedded in one binary. Documentation: <https://docs.omp.bitop.dev>.
 Website: <https://omp.bitop.dev>.
 
-**Development software (0.1.0, unreleased).** Phases 1 to 7 are done. Claude Code and pi have signed in over OAuth
-and called tools, and GitHub's hosted MCP server works with each person's own GitHub sign-in. Not tried yet: a real
-Google or Microsoft provider for delegated credentials (only a fake), CI on GitHub, and a Kubernetes cluster; it
-hasn't run in production. See [status](docs/status.md) for what has been checked and what hasn't.
+**Development software (v0.1.0).** Phases 1 to 7 are done. Claude Code and pi have signed in over OAuth and called
+tools, and GitHub's hosted MCP server works with each person's own GitHub sign-in. Not tried yet: a real Google or
+Microsoft provider for delegated credentials (only a fake), VS Code and Cursor, and a Kubernetes cluster; it hasn't run
+in production. See the [v0.1.0 release notes](docs/releases/v0.1.0.md) and [status](docs/status.md) for what has been
+checked and what hasn't.
 
 ## What it does
 
@@ -59,9 +60,33 @@ instead. `make help` lists every target; [CONTRIBUTING.md](CONTRIBUTING.md) has 
 
 ## Deploying
 
-One stateless binary in a distroless image (`make docker`), PostgreSQL 17, and a Kustomize base in
+One stateless binary in a distroless image, PostgreSQL 17, and a Kustomize base in
 [`deploy/kubernetes`](deploy/kubernetes). Configuration is environment variables (or a YAML file named by
 `OMP_CONFIG_FILE`), described in [`.env.example`](.env.example). See [deploying](docs/deploy.md).
+
+## Install
+
+Releases publish a multi-arch image (linux/amd64 and linux/arm64) with SBOM and provenance attestations and a
+[cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signature:
+
+```sh
+docker pull ghcr.io/ncecere/open-mcp-portal:v0.1.0
+```
+
+Tags are `vX.Y.Z` and, for final releases, `latest`. **Pin the image by digest** in a real deployment: the digest is in
+each GitHub Release (and its `open-mcp-portal-<tag>.digest.txt` asset). Verify the signature with cosign v3 or newer
+before you use it:
+
+```sh
+cosign verify ghcr.io/ncecere/open-mcp-portal@sha256:<digest> \
+  --certificate-identity https://github.com/ncecere/open-mcp-portal/.github/workflows/image.yml@refs/tags/v0.1.0 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The Kubernetes base uses `ghcr.io/ncecere/open-mcp-portal:v0.1.0`; the example overlay shows pinning the digest. You
+generate your own `ENCRYPTION_KEY` and `API_KEY_PEPPER` (`openssl rand -base64 32` each); see
+[deploying](docs/deploy.md#required-settings-and-secrets). To try it locally without installing anything, run
+`make demo` (Docker builds the image itself).
 
 ## Documentation
 
@@ -76,7 +101,7 @@ One stateless binary in a distroless image (`make docker`), PostgreSQL 17, and a
 
 ## Releases and security
 
-- **Releases:** [changelog](CHANGELOG.md).
+- **Releases:** [changelog](CHANGELOG.md) and per-release notes in [`docs/releases/`](docs/releases/) (what is in each release, how to install it, known limitations).
 - **Security:** report vulnerabilities privately as [SECURITY.md](SECURITY.md) describes.
 
 ## License

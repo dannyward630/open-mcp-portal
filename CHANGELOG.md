@@ -6,9 +6,9 @@ Notable changes to Open MCP Portal, one entry per release. Design notes for each
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, minor releases may include
 breaking changes; the entry says how to adapt.
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-10-17
 
-The first version: a self-hosted portal where teams register MCP servers, publish them to a company catalog, curate
+The first release ([release notes](docs/releases/v0.1.0.md)): a self-hosted portal where teams register MCP servers, publish them to a company catalog, curate
 gateways and give people and agents governed access. Migrations `00001` to `00013`.
 
 **Foundations** (Phase 1). Configuration from environment variables or a YAML file (`OMP_CONFIG_FILE`, `<NAME>_FILE`
@@ -63,4 +63,11 @@ again. Payload capture still redacts the old prefixes. Migration `00013_open_mcp
 MCP servers receive keep their names. A development database of the old Compose project moves with
 `scripts/migrate-dev-db.sh`.
 
-[0.1.0]: https://github.com/ncecere/open-mcp-portal/commits/main
+**Release** (v0.1.0). A `v*` tag runs `.github/workflows/image.yml`: it builds `ghcr.io/ncecere/open-mcp-portal` for
+linux/amd64 and linux/arm64 on native runners with SBOM and provenance attestations, checks that the image reports the
+tag's version and scans it, signs the multi-arch index with cosign (keyless) and tags it `vX.Y.Z` (and `latest` for a
+final release). `scripts/github-release.sh` then creates the GitHub Release from `docs/releases/vX.Y.Z.md` with each
+platform's SBOM, the digest and `checksums.txt`. `open-mcp-portal version` prints `open-mcp-portal 0.1.0 (<commit>)`. The
+Kustomize base points at `ghcr.io/ncecere/open-mcp-portal:v0.1.0`.
+
+[0.1.0]: https://github.com/ncecere/open-mcp-portal/releases/tag/v0.1.0

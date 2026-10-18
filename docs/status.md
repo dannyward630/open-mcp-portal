@@ -1,6 +1,7 @@
 # Status and handoff
 
-Last updated: 2026-10-17. Open MCP Portal (formerly Open MCP Gateway, decision 46), version 0.1.0, unreleased.
+Last updated: 2026-10-17. Open MCP Portal (formerly Open MCP Gateway, decision 46), version 0.1.0, **cut on 2026-10-17**
+(release notes: [releases/v0.1.0.md](releases/v0.1.0.md)).
 
 ## Summary
 
@@ -21,8 +22,15 @@ Last updated: 2026-10-17. Open MCP Portal (formerly Open MCP Gateway, decision 4
 - **Not verified yet:**
   - a real Google or Microsoft delegated-credentials provider (Phase 5 auth providers were only run against the fake,
     `make fake-oauth` with `make example-mail-fake`);
-  - the CI workflow (`.github/workflows/ci.yml`) on GitHub's runners;
-  - a smoke test on kind or a real Kubernetes cluster (only `make k8s-validate`).
+  - VS Code and Cursor (only their configuration snippets; Claude Code and pi were run);
+  - a smoke test on kind or a real Kubernetes cluster (only `make k8s-validate`);
+  - the release workflow (`.github/workflows/image.yml`: native amd64 and arm64 builds, scan, cosign signing, GitHub
+    Release) on GitHub's runners: it runs for the first time on the `v0.1.0` tag. `scripts/github-release.sh` was
+    dry-run with a stand-in SBOM; `actionlint` and `shellcheck` pass.
+- **Release v0.1.0 (2026-10-17).** `v*` tags run `image.yml`: multi-arch image `ghcr.io/ncecere/open-mcp-portal`
+  (tags `vX.Y.Z`, `latest` for final releases) with SBOM and provenance, cosign keyless signature, and a GitHub Release
+  from `docs/releases/vX.Y.Z.md`. The Kustomize base uses the `v0.1.0` tag; overlays pin the digest. `CONTRIBUTING.md`
+  has the release steps. `compose.demo.yaml` still builds locally.
 
 ## Where things stand
 
@@ -239,13 +247,17 @@ An old `open-mcp-gateway` dev database moves with `scripts/migrate-dev-db.sh`.
 
 1. A real Google or Microsoft auth provider for delegated credentials (`make example-mail` against real Gmail), and an
    end-to-end test that a provider token echoed by a server is redacted from a captured payload.
-2. Push to a remote and let `.github/workflows/ci.yml` run once; fix what only GitHub's runners show.
-3. Deployment follow-ups: kind smoke test (`k8s-smoke`), image release workflow; see [deploy.md](deploy.md) "Not
-   covered yet".
+2. Check the v0.1.0 release on GitHub: `ci.yml` on `main`, then `image.yml` on the tag (digest, signature with
+   `cosign verify`, SBOM assets); fix what only GitHub's runners show.
+3. Deployment follow-ups: kind smoke test (`k8s-smoke`) and an upgrade test from the previous release's image; see
+   [deploy.md](deploy.md) "Not covered yet".
 4. Browser re-checks: the Phase 4 QA follow-ups (390px service account header, Admin › Calls filter, dark error
    page), the Phase 6 QA fixes (call page as auditor and as an editor, custom usage dates, pattern dialog), and the
    Phase 5 and 7 screens.
 5. Other real clients: VS Code and Cursor over OAuth against a reachable deployment.
+6. Known product gaps for later releases (see the release notes): gateway-hosted stdio servers, a streaming (SSE) relay
+   and server-pushed notifications, sampling/elicitation passthrough, resource subscriptions, background token
+   refresh, a Helm chart.
 
 ## Phase 1 UI
 

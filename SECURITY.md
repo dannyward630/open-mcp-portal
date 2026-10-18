@@ -16,11 +16,11 @@ Open MCP Portal has one maintainer. We aim to reply within 5 business days and t
 
 ## Supported versions
 
-Open MCP Portal is pre-1.0 development software and has no release yet. Security fixes are made on `main`; once releases exist, fixes are released as a patch of the latest minor release only.
+Open MCP Portal is pre-1.0 development software. Security fixes are made on `main` and released as a patch of the latest minor release only.
 
 | Version | Supported |
 |---|---|
-| `main` (0.1.0, unreleased) | Yes |
+| `main` and the latest release (v0.1.0) | Yes |
 
 ## Scope
 
