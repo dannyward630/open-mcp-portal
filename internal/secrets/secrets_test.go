@@ -77,3 +77,29 @@ func TestParseKey(t *testing.T) {
 		t.Fatal("short key accepted")
 	}
 }
+
+func TestDerive(t *testing.T) {
+	cur, prev := randomKey(t), randomKey(t)
+	b, err := New(cur, prev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := b.Derive("purpose-a")
+	if err != nil || len(keys) != 2 || len(keys[0]) != 32 || len(keys[1]) != 32 {
+		t.Fatalf("keys = %d %v", len(keys), err)
+	}
+	if bytes.Equal(keys[0], keys[1]) || bytes.Equal(keys[0], cur) || bytes.Equal(keys[1], prev) {
+		t.Fatal("derived keys repeat their source or each other")
+	}
+	// Deterministic per purpose, separate between purposes.
+	again, _ := b.Derive("purpose-a")
+	other, _ := b.Derive("purpose-b")
+	if !bytes.Equal(keys[0], again[0]) || bytes.Equal(keys[0], other[0]) {
+		t.Fatal("derivation is not deterministic and purpose-bound")
+	}
+	// Without a previous key there is one.
+	single, _ := New(cur)
+	if got, _ := single.Derive("purpose-a"); len(got) != 1 || !bytes.Equal(got[0], keys[0]) {
+		t.Fatal("the current key derives differently with and without a previous one")
+	}
+}

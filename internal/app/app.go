@@ -290,7 +290,7 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 		OAuth:           as,
 		ServiceAccounts: sas,
 		Providers:       provs,
-		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, OAuth: as, ServiceAccounts: sas, Identity: ids, Registry: reg, Providers: provs,
+		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, OAuth: as, ServiceAccounts: sas, Identity: ids, Registry: reg, Providers: provs, Secrets: box,
 			Limits: lims, RateStore: rates, Capture: capt, Pool: pool, AppURL: cfg.AppURL, Log: log},
 	}, nil
 }

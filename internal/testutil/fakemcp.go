@@ -48,6 +48,8 @@ type FakeMCP struct {
 	gatewayTools bool
 	// echoSecrets adds echo_secrets and image (payload capture tests).
 	echoSecrets bool
+	// schemaTools adds lookup (EnableSchemaTools).
+	schemaTools bool
 	jwksURL     string
 	audience    string
 	toolCalls   []ToolCall
@@ -324,6 +326,17 @@ func (f *FakeMCP) EnableEchoSecrets() {
 	f.echoSecrets = true
 }
 
+// EnableSchemaTools adds lookup {region, limit, note}, a tool with features of
+// the 2026-07-28 revision: its region and limit arguments are marked
+// x-mcp-header (Region, Limit), its outputSchema is not an object schema
+// (["null","array"]) and its result's structuredContent is an array. It
+// records its calls (ToolCalls, with the headers it received).
+func (f *FakeMCP) EnableSchemaTools() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.schemaTools = true
+}
+
 // SetJWKS makes whoami verify the token against the key set at url, for
 // audience.
 func (f *FakeMCP) SetJWKS(url, audience string) {
@@ -471,6 +484,25 @@ func (f *FakeMCP) server() *mcp.Server {
 				}
 				_ = json.Unmarshal(req.Params.Arguments, &args)
 				return fakeText(args.Text), nil
+			})
+	}
+	if f.schemaTools {
+		s.AddTool(&mcp.Tool{Name: "lookup", Title: "Lookup", Description: "Looks something up (arrays, parameter headers).",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{
+				"region": map[string]any{"type": "string", "x-mcp-header": "Region"},
+				"limit":  map[string]any{"type": "integer", "x-mcp-header": "Limit"},
+				"note":   map[string]any{"type": "string"},
+			}},
+			OutputSchema: map[string]any{"type": []string{"null", "array"}}},
+			func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				f.sawCall("lookup", headerOf(req))
+				var args struct {
+					Region string `json:"region"`
+					Limit  int    `json:"limit"`
+				}
+				_ = json.Unmarshal(req.Params.Arguments, &args)
+				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "lookup: ok"}},
+					StructuredContent: []any{map[string]any{"region": args.Region, "limit": args.Limit}}}, nil
 			})
 	}
 	if f.protect != nil {

@@ -19,6 +19,15 @@ func resourceNotFound(uri string) string {
 	return fmt.Sprintf("Resource not found: %s", clip(uri, 200))
 }
 
+// resourceNotFoundCode is "resource not found": -32602 (invalid params) in
+// the modern era, MCP's own -32002 before it.
+func (rc *request) resourceNotFoundCode() int64 {
+	if rc.modern {
+		return codeInvalidParams
+	}
+	return codeResourceNotFound
+}
+
 // readTarget is the selected resource or template a read is allowed by.
 type readTarget struct {
 	offer    gateways.Offer
@@ -71,6 +80,10 @@ func (rc *request) read() {
 		rc.record(calls.Call{Outcome: calls.OutcomeBadRequest, ErrorClass: "invalid_params"}, n)
 		return
 	}
+	again, ok := rc.checkRetry(calls.Call{ExposedName: p.URI})
+	if !ok {
+		return
+	}
 	all, err := rc.h.Gateways.Offers(rc.r.Context(), rc.gateway, rc.caller)
 	if err != nil {
 		rc.internal(err)
@@ -78,7 +91,7 @@ func (rc *request) read() {
 	}
 	target, allowed := matchRead(all, p.URI)
 	if !allowed {
-		n := rc.fail(codeResourceNotFound, resourceNotFound(p.URI))
+		n := rc.fail(rc.resourceNotFoundCode(), resourceNotFound(p.URI))
 		c := calls.Call{Outcome: calls.OutcomeDenied, ErrorClass: "unknown", ExposedName: p.URI}
 		if target != nil {
 			o := target.offer
@@ -88,6 +101,10 @@ func (rc *request) read() {
 			}
 		}
 		rc.record(c, n)
+		return
+	}
+	if again.declined {
+		rc.declined(target.offer)
 		return
 	}
 	rc.forwardRead(p.URI, *target)

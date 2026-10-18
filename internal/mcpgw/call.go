@@ -45,6 +45,10 @@ func (rc *request) call(kind string) {
 		rc.record(calls.Call{Outcome: calls.OutcomeBadRequest, ErrorClass: "invalid_params", ExposedName: p.Name}, n)
 		return
 	}
+	again, ok := rc.checkRetry(calls.Call{ExposedName: p.Name})
+	if !ok {
+		return
+	}
 	offers, err := rc.offers(kind)
 	if err != nil {
 		rc.internal(err)
@@ -66,6 +70,18 @@ func (rc *request) call(kind string) {
 			}
 		}
 		rc.record(c, n)
+		return
+	}
+	if rc.modern && kind == upstream.KindTool {
+		if eerr := validateParamHeaders(rc.r.Header, offer.Capability.Definition, args); eerr != nil {
+			n := writeRPC(rc.w, eerr.status, rc.msg.ID, nil, &rpcError{Code: eerr.code, Message: eerr.message})
+			rc.record(calls.Call{Outcome: calls.OutcomeBadRequest, ErrorClass: "header_mismatch", ExposedName: p.Name, Server: &offer.Server,
+				CapabilityID: offer.Capability.ID}, n)
+			return
+		}
+	}
+	if again.declined {
+		rc.declined(*offer)
 		return
 	}
 	rc.forward(kind, *offer, args)
@@ -142,7 +158,7 @@ func (rc *request) forward(kind string, o gateways.Offer, args json.RawMessage) 
 func (rc *request) relay(rec calls.Call, result any, isError bool) {
 	encoded, err := json.Marshal(result)
 	if err == nil {
-		encoded, err = scrubMeta(encoded)
+		encoded, err = scrubMetaFor(encoded, rc.modern)
 	}
 	for _, tok := range rc.scrub {
 		if err == nil && tok != "" {
@@ -169,8 +185,13 @@ func (rc *request) relay(rec calls.Call, result any, isError bool) {
 var upstreamMetaKeys = []string{"io.modelcontextprotocol/serverInfo"}
 
 // scrubMeta removes upstreamMetaKeys from a result's _meta (and an empty
-// _meta), leaving everything else as the upstream sent it.
-func scrubMeta(encoded []byte) ([]byte, error) {
+// _meta), leaving everything else as the upstream sent it, for a legacy
+// client.
+func scrubMeta(encoded []byte) ([]byte, error) { return scrubMetaFor(encoded, false) }
+
+// scrubMetaFor is scrubMeta for an era: a modern client can read any JSON
+// value as structuredContent, a legacy one only an object.
+func scrubMetaFor(encoded []byte, modern bool) ([]byte, error) {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(encoded, &obj); err != nil {
 		return encoded, nil // not an object: nothing to scrub
@@ -179,7 +200,7 @@ func scrubMeta(encoded []byte) ([]byte, error) {
 	// structuredContent must be a JSON object (MCP schema); strict clients
 	// reject a result whose isn't (GitHub's server returns arrays). The
 	// same data is in the text content, so drop it.
-	if sc, ok := obj["structuredContent"]; ok && !isJSONObject(sc) {
+	if sc, ok := obj["structuredContent"]; ok && !modern && !isJSONObject(sc) {
 		delete(obj, "structuredContent")
 		changed = true
 	}
@@ -242,7 +263,7 @@ func (rc *request) upstreamFailed(rec calls.Call, err error) {
 	case ue.RPCCode == codeInvalidParams:
 		code, rec.Outcome = codeInvalidParams, calls.OutcomeBadRequest
 	case ue.RPCCode == codeResourceNotFound:
-		code, rec.Outcome, rec.ErrorClass = codeResourceNotFound, calls.OutcomeBadRequest, upstream.ClassNotFound
+		code, rec.Outcome, rec.ErrorClass = rc.resourceNotFoundCode(), calls.OutcomeBadRequest, upstream.ClassNotFound
 	}
 	if ue.RPCCode != 0 {
 		rc.captureError(code, ue.Message)

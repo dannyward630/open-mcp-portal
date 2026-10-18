@@ -21,6 +21,7 @@ package secrets
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -65,6 +66,7 @@ func (s Slot) String() string {
 type key struct {
 	id   [IDLen]byte
 	aead cipher.AEAD
+	raw  []byte
 }
 
 // Box encrypts with the current key and decrypts with any configured key.
@@ -104,6 +106,7 @@ func newKey(raw []byte) (key, error) {
 	var k key
 	copy(k.id[:], KeyID(raw))
 	k.aead = aead
+	k.raw = append([]byte(nil), raw...)
 	return k, nil
 }
 
@@ -191,4 +194,22 @@ func (b *Box) Open(ciphertext, associated []byte) ([]byte, error) {
 // NeedsRotation reports whether ciphertext was sealed with a non-current key.
 func (b *Box) NeedsRotation(ciphertext []byte) bool {
 	return b.Which(ciphertext) != SlotCurrent
+}
+
+// Derive returns 32-byte keys for another purpose, derived with HKDF-SHA-256
+// from each configured key (the current one first, then the previous one,
+// if any) under a purpose-specific info string, so a value sealed or
+// signed with them never shares key material with the sealed secrets above.
+// The caller tries them in order, which keeps a rotation from invalidating
+// what the previous key produced.
+func (b *Box) Derive(info string) ([][]byte, error) {
+	out := make([][]byte, 0, len(b.keys))
+	for _, k := range b.keys {
+		d, err := hkdf.Key(sha256.New, k.raw, nil, info, 32)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }

@@ -60,13 +60,27 @@ func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 	return b.next.RoundTrip(r)
 }
 
-// connect opens an SDK client session to a gateway with an API key.
+// connect opens an SDK client session to a gateway with an API key, in the
+// legacy era (initialize, 2025-11-25): what these tests have always
+// exercised. The SDK now tries the 2026-07-28 era first; connectModern
+// (mcp_modern_integration_test.go) does that.
 func connect(t *testing.T, app *testApp, slug, key string) *mcp.ClientSession {
 	t.Helper()
-	client := mcp.NewClient(&mcp.Implementation{Name: "gateway-test", Version: "1.0.0"}, &mcp.ClientOptions{Logger: slog.New(slog.DiscardHandler)})
+	return connectEra(t, app, slug, key, "2025-11-25", nil)
+}
+
+// connectEra opens a session asking for protocolVersion ("": the SDK's
+// newest), with optional client options.
+func connectEra(t *testing.T, app *testApp, slug, key, protocolVersion string, opts *mcp.ClientOptions) *mcp.ClientSession {
+	t.Helper()
+	if opts == nil {
+		opts = &mcp.ClientOptions{}
+	}
+	opts.Logger = slog.New(slog.DiscardHandler)
+	client := mcp.NewClient(&mcp.Implementation{Name: "gateway-test", Version: "1.0.0"}, opts)
 	tr := &mcp.StreamableClientTransport{Endpoint: app.URL + "/mcp/" + slug, MaxRetries: -1, DisableStandaloneSSE: true,
 		HTTPClient: &http.Client{Transport: bearer{token: key, next: http.DefaultTransport}, Timeout: 30 * time.Second}}
-	cs, err := client.Connect(context.Background(), tr, nil)
+	cs, err := client.Connect(context.Background(), tr, &mcp.ClientSessionOptions{ProtocolVersion: protocolVersion})
 	if err != nil {
 		t.Fatalf("connect %s: %v", slug, err)
 	}
@@ -467,8 +481,15 @@ func newRuntimeEnvHook(t *testing.T, log *slog.Logger, hook func(*httpapi.Deps))
 }
 
 // Between tools/list and tools/call, any of these changes refuses the
-// call without contacting the server.
-func TestMCPRechecksBeforeEveryCall(t *testing.T) {
+// call without contacting the server, in both protocol eras.
+func TestMCPRechecksBeforeEveryCall(t *testing.T) { testRechecksBeforeEveryCall(t, legacyVersion) }
+
+func TestMCPRechecksBeforeEveryCallModern(t *testing.T) { testRechecksBeforeEveryCall(t, "") }
+
+// testRechecksBeforeEveryCall runs the cases with an SDK client asking for
+// protocolVersion ("": the SDK's newest, which is the modern era).
+func testRechecksBeforeEveryCall(t *testing.T, protocolVersion string) {
+	modern := protocolVersion == ""
 	cases := []struct {
 		name, gateway string
 		unauthorized  bool
@@ -514,7 +535,7 @@ func TestMCPRechecksBeforeEveryCall(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newRuntimeEnv(t)
-			cs := connect(t, e.app, tc.gateway, e.key.Secret)
+			cs := connectEra(t, e.app, tc.gateway, e.key.Secret, protocolVersion, nil)
 			if got := toolNames(t, cs); !slices.Equal(got, []string{"status__whoami"}) {
 				t.Fatalf("tools = %v", got)
 			}
@@ -528,6 +549,9 @@ func TestMCPRechecksBeforeEveryCall(t *testing.T) {
 				t.Fatal("the refused call reached the server")
 			}
 			code, _, _ := rawMCP(t, e.app, "POST", tc.gateway, e.key.Secret, rpc(1, "tools/call", map[string]any{"name": "status__whoami"}), nil)
+			if modern {
+				code, _, _ = rawModern(t, e.app, tc.gateway, e.key.Secret, "tools/call", map[string]any{"name": "status__whoami"}, nil, nil)
+			}
 			switch {
 			case tc.unauthorized && code != 401:
 				t.Fatalf("raw call = %d, want 401", code)
@@ -545,7 +569,7 @@ func TestMCPRechecksBeforeEveryCall(t *testing.T) {
 				}
 				// Unarchiving restores it: nothing was changed.
 				e.setTeamStatus("tools", "active")
-				res, err := connect(t, e.app, tc.gateway, e.key.Secret).CallTool(context.Background(), &mcp.CallToolParams{Name: "status__whoami"})
+				res, err := connectEra(t, e.app, tc.gateway, e.key.Secret, protocolVersion, nil).CallTool(context.Background(), &mcp.CallToolParams{Name: "status__whoami"})
 				if err != nil || res.IsError {
 					t.Fatalf("after unarchiving: %+v %v", res, err)
 				}
