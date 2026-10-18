@@ -6,7 +6,9 @@
  * first; the tokens are erased at once and revoked at the provider where it
  * can). Account › My connections shows the person's own, with Connect again;
  * Admin › Users › person shows anyone's, where platform admins disconnect
- * and auditors read. Tokens are never shown anywhere. A sign-in to an MCP
+ * and auditors read. Tokens are never shown anywhere. "Allowed servers" lists
+ * the MCP servers the person allowed to use a platform provider's account
+ * (name and team; read-only: disconnecting removes them all). A sign-in to an MCP
  * server in oauth mode (provider.kind mcp_server) is named after the server,
  * with an "MCP server" badge and its team.
  */
@@ -22,7 +24,7 @@ import { Badge, StatusBadge } from "@/components/ui/badge/badge";
 import { CellText, type DataTableColumn } from "@/components/ui/data-table/data-table";
 import { toast } from "@/components/ui/toast/toast";
 import s from "../../pages/shared.module.css";
-import { connectionName, connectionStatusLabels, connectionStatusTone, isServerSignIn, type ProviderConnection, scopesText } from "./labels";
+import { connectionName, connectionStatusLabels, connectionStatusTone, isServerSignIn, type ProviderConnection, scopesText, serverWithTeam } from "./labels";
 import { useStartConnection } from "./requires";
 
 /** Whose accounts: the signed-in person's, or a person's on their admin page. */
@@ -104,6 +106,21 @@ function columns(): DataTableColumn<ProviderConnection>[] {
     // On a phone the provider (with its account) and status stay in view; the Columns menu still offers the rest.
     { id: "scopes", header: "Scopes", accessor: (c) => scopesText(c.scopes), defaultHiddenNarrow: true, cell: (c) => <span className={s.mono}>{scopesText(c.scopes, "—")}</span> },
     {
+      // A platform provider's token goes only to the servers listed (the person allowed each one); an MCP server's own sign-in is for that server alone.
+      id: "servers",
+      header: "Allowed servers",
+      accessor: (c) => c.allowedServers.map((g) => serverWithTeam(g.server)).join(", "),
+      defaultHiddenNarrow: true,
+      cell: (c) =>
+        isServerSignIn(c.provider) ? (
+          <span className={s.muted}>That server only</span>
+        ) : c.allowedServers.length === 0 ? (
+          <span className={s.muted}>None yet</span>
+        ) : (
+          <CellText wrap="anywhere" primary={c.allowedServers.map((g) => serverWithTeam(g.server)).join(", ")} secondary={c.allowedServers.map((g) => `${g.server.name}: ${g.origin}`).join(" · ")} />
+        ),
+    },
+    {
       id: "status",
       header: "Status",
       accessor: (c) => connectionStatusLabels[c.status],
@@ -118,6 +135,13 @@ function columns(): DataTableColumn<ProviderConnection>[] {
     },
     { id: "expiresAt", header: "Token expires", accessor: (c) => (c.expiresAt ? new Date(c.expiresAt) : null), defaultHidden: true, cell: (c) => <TokenExpiry c={c} /> },
   ];
+}
+
+/** What disconnecting does to the servers allowed to use the account (they are allowed again, one by one, after reconnecting). */
+function allowedAgain(c: ProviderConnection | null, owner: ConnectionsOwner) {
+  const n = c && !isServerSignIn(c.provider) ? c.allowedServers.length : 0;
+  if (n === 0) return "";
+  return ` ${owner.self ? "You" : owner.name} will also be asked again to allow ${n === 1 ? "the server" : `each of the ${n} servers`} that may use it now.`;
 }
 
 type Props = {
@@ -187,7 +211,7 @@ export function ProviderConnections({ owner, canDisconnect, title, description, 
         title={`Disconnect ${target ? connectionName(target.provider) : "this account"}${owner.self ? "" : ` for ${owner.name}`}?`}
         description={`Its tokens are erased now${target ? " and revoked at the provider where it allows it" : ""}. Tools that need ${owner.self ? "your" : `${owner.name}'s`} ${
           target ? connectionName(target.provider) : ""
-        } ${target && isServerSignIn(target.provider) ? "sign-in" : "account"} ask ${owner.self ? "you" : "them"} to connect it again the next time.`}
+        } ${target && isServerSignIn(target.provider) ? "sign-in" : "account"} ask ${owner.self ? "you" : "them"} to connect it again the next time.${allowedAgain(target, owner)}`}
         confirmLabel="Disconnect"
       />
     </>

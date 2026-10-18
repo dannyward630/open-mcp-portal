@@ -21,6 +21,14 @@ describe("audit labels", () => {
     expect(targetTypeLabel("mcp_capability")).toBe("Capability");
   });
 
+  it("names the server grants' actions (F-3) and why they ended", () => {
+    expect(actionLabel("provider_connection.server_allow")).toBe("Allowed a server to use an account");
+    expect(areaOf("provider_connection.server_allow")).toBe("Connected accounts");
+    expect(actionLabel("mcp_server.provider_grants_reset", { metadata: { reason: "origin_changed" } })).toBe("Ended permission to use people's accounts after its URL moved to another host");
+    expect(actionLabel("mcp_server.provider_grants_reset", { metadata: { reason: "server_deleted" } })).toBe("Ended permission to use people's accounts when it was deleted");
+    expect(areaOf("mcp_server.provider_grants_reset")).toBe("MCP servers");
+  });
+
   it("names the registry's actions and areas", () => {
     expect(actionLabel("mcp_server.publish_request")).toBe("Requested catalog review");
     expect(actionLabel("mcp_capability.approve")).toBe("Approved capability");

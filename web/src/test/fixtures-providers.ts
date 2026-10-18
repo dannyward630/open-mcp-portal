@@ -124,6 +124,15 @@ export const requires = (extra: Partial<Schemas["CapabilityRequirement"]> = {}):
 
 export const providerRef = (extra: Partial<Schemas["ProviderRef"]> = {}): Schemas["ProviderRef"] => ({ id: providerId, slug: "github", name: "GitHub", preset: "github", logoUrl: null, ...extra });
 
+export const connectServer = (extra: Partial<Schemas["ConnectServer"]> = {}): Schemas["ConnectServer"] => ({
+  id: "30303030-3030-4303-8303-303030303030",
+  slug: "github-tools",
+  name: "GitHub tools",
+  teamSlug: "platform",
+  teamName: "Platform tools",
+  ...extra,
+});
+
 export const connection = (extra: Partial<Schemas["ProviderConnection"]> = {}): Schemas["ProviderConnection"] => ({
   id: connectionId,
   provider: providerRef(),
@@ -135,6 +144,7 @@ export const connection = (extra: Partial<Schemas["ProviderConnection"]> = {}): 
   lastUsedAt: "2026-10-16T07:00:00Z",
   expiresAt: null,
   refreshable: false,
+  allowedServers: [],
   ...extra,
 });
 
@@ -148,6 +158,7 @@ export const connectRequest = (extra: Partial<Schemas["ConnectRequest"]> = {}): 
   accountLabel: "octocat",
   gateway: { id: gatewayId, slug: "support-tools", name: "Support tools", exists: true },
   capability: { kind: "tool", exposedName: "github-tools__create_issue", title: "Create issue" },
+  server: connectServer(),
   createdAt: "2026-10-16T07:55:00Z",
   expiresAt: "2026-10-16T08:05:00Z",
   ...extra,
