@@ -61,6 +61,7 @@ func main() {
 	header := flag.String("header", "", "require this request header (for example Authorization)")
 	value := flag.String("value", "", "the header's value")
 	gatewayTools := flag.Bool("gateway-tools", true, "add the whoami, provider_token and echo tools")
+	schemaTools := flag.Bool("schema-tools", false, "add lookup, a tool with x-mcp-header arguments and an array result (MCP 2026-07-28)")
 	jwks := flag.String("jwks", "", "verify identity tokens against this JWKS URL")
 	audience := flag.String("audience", "", "the audience identity tokens must have (default: this server's URL)")
 	protect := flag.String("protect", "", "act as an OAuth resource server of this authorization server (issuer URL)")
@@ -96,6 +97,9 @@ func main() {
 		}
 		f.SetDescription(tool, text)
 		log.Printf("tool %s: description changed", tool)
+	}
+	if *schemaTools {
+		f.EnableSchemaTools()
 	}
 	if *gatewayTools {
 		f.EnableGatewayTools()
