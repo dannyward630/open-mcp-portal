@@ -10,6 +10,8 @@ Every gateway has one MCP endpoint, `<gateway URL>/mcp/<gateway>`, for example `
 
 All three see only what the caller may use on that gateway, checked again on every request. The portal never passes your credential on to MCP servers; it sends them a signed identity instead ([upstream-identity.md](upstream-identity.md)).
 
+> Which of these clients have actually been run against a gateway, and how to test and report one: [client compatibility](https://docs.omp.bitop.dev/docs/use/client-compatibility).
+
 ## Tools that need your account on another service
 
 Some tools act as you on a third-party service (GitHub, Google, …). The first time you call one, the call fails with a

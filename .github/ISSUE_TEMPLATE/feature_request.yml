@@ -1,0 +1,25 @@
+name: Feature request
+description: Something the portal should do that it doesn't.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [what the portal will not do](https://docs.omp.bitop.dev/docs/releases/roadmap) first: it does not host or run
+        MCP servers (no stdio), and it is not an LLM gateway or an agent runtime. For half-formed ideas, start a
+        [discussion](https://github.com/ncecere/open-mcp-portal/discussions) instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what stops you?
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead

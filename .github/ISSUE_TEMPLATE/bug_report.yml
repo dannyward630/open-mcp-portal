@@ -1,0 +1,40 @@
+name: Bug report
+description: Something doesn't work the way the documentation says it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste a key, token, client secret, password or `ENCRYPTION_KEY`/`API_KEY_PEPPER` here**, and
+        redact addresses of internal servers you don't want public. Security problems go to a private advisory (see the
+        "Report a security vulnerability" link), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Output of `open-mcp-portal version`, or the image tag and digest."
+      placeholder: "open-mcp-portal 0.2.0 (d4d66de3cc64)"
+    validations: { required: true }
+  - type: dropdown
+    id: where
+    attributes:
+      label: How it runs
+      options: [Kubernetes, Docker or Compose, A binary on a host, Local development]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead. A screenshot helps for the web UI.
+    validations: { required: true }
+  - type: textarea
+    id: client
+    attributes:
+      label: Client or server involved
+      description: "The MCP client (name and version) or the MCP server you registered, and whether you used an API key or OAuth sign-in. Skip if it doesn't apply."
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or call record (redacted)
+      description: "The portal's log lines around the problem, or the call's row from Admin or Team › Calls. `open-mcp-portal doctor` output is useful too."
+      render: text

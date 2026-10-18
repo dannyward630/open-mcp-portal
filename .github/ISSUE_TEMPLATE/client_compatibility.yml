@@ -1,0 +1,48 @@
+name: Client compatibility report
+description: Tell us how an MCP client worked (or didn't) with a gateway. These reports build the compatibility matrix.
+labels: [compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports for clients we haven't tried yet are the most useful: VS Code, Cursor, Claude Desktop, other IDEs, agent
+        frameworks and SDKs. **Don't paste keys or tokens.** The [client compatibility page](https://docs.omp.bitop.dev/docs/use/client-compatibility)
+        has a short checklist.
+  - type: input
+    id: client
+    attributes:
+      label: Client and version
+      placeholder: "VS Code 1.105 (GitHub Copilot agent mode)"
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Portal version
+      placeholder: "0.2.0"
+    validations: { required: true }
+  - type: dropdown
+    id: auth
+    attributes:
+      label: How you signed in
+      options: [OAuth sign-in (the client's own flow), A personal API key, A service account key, Something else]
+    validations: { required: true }
+  - type: checkboxes
+    id: worked
+    attributes:
+      label: What worked
+      options:
+        - label: It connected to the gateway
+        - label: It listed the gateway's tools
+        - label: It called a tool and showed the result
+        - label: It showed me a "connect your account" link when a tool needed one
+        - label: It reconnected by itself after the access token expired (about an hour)
+  - type: dropdown
+    id: revision
+    attributes:
+      label: MCP revision the client used (if you can tell)
+      options: [2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05, I don't know]
+  - type: textarea
+    id: notes
+    attributes:
+      label: What didn't work, or anything odd
+      description: The exact message the client showed, and what you did. Redact addresses you don't want public.
