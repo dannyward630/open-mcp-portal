@@ -75,7 +75,7 @@ Headers: `Content-Type: application/json`, `User-Agent: open-mcp-portal/<version
 | `upstream_signin.lapsed` | `server`, `since`, `readAsName?` |
 | `key.expiring` | `keyKind` (`personal`, `service_account`, `publisher_token`, `platform_token`), `name`, `expiresAt`, `daysLeft`, `serviceAccount?` (never a prefix) |
 
-**Email.** Plain text only (no HTML, images or tracking), one message per recipient, `From: SMTP_FROM`, `Subject: [<INSTANCE_NAME>] <title>`, `Auto-Submitted: auto-generated`, `X-OMP-Event`, a link `APP_URL/…`, and a footer saying why they got it and where to change it.
+**Email.** A plain text part and a simple HTML part (`multipart/alternative`; no images, remote content or tracking), one message per recipient, `From: SMTP_FROM`, `Subject: [<INSTANCE_NAME>] <title>`, `Auto-Submitted: auto-generated`, `X-OMP-Event`, a link `APP_URL/…`, and a footer saying why they got it and where to change it.
 Header values lose CR/LF and are RFC 2047-encoded. Dial 10 s, whole message 30 s. At most 30 emails per person per hour: beyond that the rows are `skipped` (the inbox still has them) and counted.
 **Inbox rows** copy a server-composed `title` (≤ 200) and `body` (≤ 500) and a `LinkTarget`, so they outlive the event row.
 

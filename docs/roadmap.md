@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: **approved 2026-10-17**; v0.2 in progress. It is an order of work, not a schedule.
+Status: **approved 2026-10-17**; v0.2 released as v0.2.0 on 2026-10-18 (a real deployment with a tested backup and restore, and real-client testing on the new revision, are still open). It is an order of work, not a schedule.
 Sizes are relative effort: **S** a few days, **M** a week or two, **L** several weeks. Each item that needs a design
 gets one in `docs/` before code, as the earlier phases did. Decisions behind it are 47–58 in
 [decisions.md](decisions.md).

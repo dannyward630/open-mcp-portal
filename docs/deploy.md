@@ -385,6 +385,5 @@ recomputed without the key, so rotation happens on use:
 - No dashboards, alert rules or tracing (metrics: [Metrics](#metrics)). Logs are JSON on stdout.
 - No in-cluster PostgreSQL component, backup CronJob or restore procedure. Bring your own Postgres and backups.
 - No `k8s-smoke` (kind) test. `make k8s-validate` only renders the manifests and checks their schemas.
-- Images are published only for releases (`v*` tags), not for every commit on `main`. The example overlay's digest is a placeholder: use the digest from the release you install.
+- Images are published only for releases (`v*` tags), not for every commit on `main`. The example overlay pins v0.2.0's digest: use the digest from the release you install.
 - No Helm chart and no HorizontalPodAutoscaler.
-- No SSE relay.
