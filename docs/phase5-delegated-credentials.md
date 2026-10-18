@@ -20,7 +20,8 @@ sends their token with each call that needs it and refreshes it. The client and 
 | `mcp_servers` (+) | auth_provider_id (nullable, FK `RESTRICT`), auth_scopes `text[]` |
 | `mcp_capabilities` (+) | requirement_mode `inherit`/`none`/`scopes` (default `inherit`), requirement_scopes `text[]` |
 | `provider_connections` | id, user_id, provider_id (unique together), status `active`/`needs_reconsent`, scopes `text[]` (granted), account_label, access_token and refresh_token (sealed, AAD = connection ID + field), expires_at, connected_at, refreshed_at, last_used_at, last_error_class |
-| `provider_connect_requests` | id_digest (SHA-256 of a random 32-byte ID, base64url), user_id, provider_id, required_scopes, gateway_id, capability_id, exposed_name, reason, created_at, expires_at (+10 min), used_at |
+| `provider_connect_requests` | id_digest (SHA-256 of a random 32-byte ID, base64url), user_id, provider_id, required_scopes, gateway_id, capability_id, **server_id** and **server_origin** (the server the link was made for, and its origin then; F-3), exposed_name, reason (`not_connected`, `missing_scopes`, `needs_reconsent`, `server_not_allowed`), created_at, expires_at (+10 min), used_at |
+| `provider_server_grants` (migration `00017`, F-3, decision 60) | id, connection_id (FK `CASCADE`), server_id (FK `CASCADE`), origin (scheme, host and port of the server's URL when the person consented), scopes `text[]` (what they consented to), consented_at; unique on (connection, server). Platform providers only: an `oauth` server's connection is already for one server |
 | `provider_auth_states` | state_digest, user_id, session_digest, provider_id, scopes asked, code_verifier (sealed), request_digest, return_to, created_at, expires_at (+10 min). Single use |
 | `mcp_calls` (+) | provider_slug; outcome `needs_authorization` |
 
@@ -96,10 +97,13 @@ with an effective requirement:
 1. **Service account:** JSON-RPC `-32010` "This tool needs a person's GitHub account; service accounts can't use it".
    `data.reason` is `service_account`. Recorded as `denied`, class `service_account`. Lists still show the tool.
 2. **Provider turned off:** `-32010`, `data.reason` `provider_disabled`. Recorded as `denied`, class `provider_disabled`.
-3. **No active connection, or granted scopes don't cover the required ones:** the gateway creates (or reuses for the
-   same person, capability and scopes) a connect request and answers `-32042`. Nothing is forwarded. Recorded as
-   `needs_authorization` with class `not_connected`, `missing_scopes` or `needs_reconsent`. At most 20 open requests
-   per person; the oldest is dropped.
+3. **No active connection, granted scopes that don't cover the required ones, or (platform providers) no grant for
+   this server:** the gateway creates (or reuses for the same person, capability, scopes, server and server origin) a
+   connect request and answers `-32042`. Nothing is forwarded. Recorded as `needs_authorization` with class
+   `not_connected`, `missing_scopes`, `needs_reconsent` or **`server_not_allowed`** (connected with covering scopes,
+   but the person hasn't allowed this server to use the account, or only for other scopes, or at another origin).
+   The messages name the server and its team ("Allow Status (Platform tools) to use your GitHub account (repo) …").
+   At most 20 open requests per person; the oldest is dropped.
 4. **Access token expires within 60 s:** refresh it while holding a row lock (`SELECT … FOR UPDATE`), so replicas
    never use a rotating refresh token twice. `invalid_grant` or a 400/401: erase the tokens, mark the connection
    `needs_reconsent`, audit `provider_connection.refresh_failed`, then go to step 3. A network error, 5xx or timeout:
@@ -108,6 +112,33 @@ with an effective requirement:
 5. **Forward** with `MCP-Gateway-Provider: <slug>` and `MCP-Gateway-Provider-Token: <access token>` (bare, no
    `Bearer`). The identity JWT (decision 19, unchanged) gains `provider: "<slug>"`. Calls without a token never get
    these headers or the claim. `last_used_at` is updated at most once a minute.
+
+### Which servers and scopes are sent (F-3, decision 60)
+
+A platform provider's token is sent only to a server the person **allowed**, at the **origin** they allowed it, for
+the scopes they were shown:
+
+- A person's consent is a row in `provider_server_grants`: (connection, server, origin, scopes). `Credential` sends the
+  token only when the connection is active and its scopes cover the capability's, **and** there is a grant for the
+  calling server whose origin equals the origin of the URL the call goes to now (scheme, host and port, from
+  `registry.OriginOf`; case, a trailing slash, a default port and the path don't count) and whose scopes cover the
+  requirement. A grant for another origin is never honoured, whatever else happened.
+- A server's URL moving to **another origin**, its requirement naming another provider (or none), or its deletion deletes
+  its grants (audit `mcp_server.provider_grants_reset`: the reason, a count, and for a move the old and new origin; no
+  names or secrets). People then consent again. A path-only edit changes nothing. Disconnecting, deleting a provider
+  and deleting a person delete their grants by cascade.
+- A server that widens its requirement needs consent again for the new scopes (the grant covers what the person was
+  shown); a grant is widened, never narrowed, by a later consent for the same server and origin.
+- **Not changed:** the connection is still one token per person and provider, and **still holds the union** of every
+  scope the person ever granted (the provider round trip asks for `union(granted, asked, required)`; downscoping is not
+  part of this fix). A server the person allowed therefore receives all of those scopes, not only the ones it asked
+  for, and keeps receiving the token until they disconnect or its origin changes. Per-call scope minimisation and a
+  per-provider list of teams or servers allowed to require a provider are hardening H-5 in
+  [threat-model.md](threat-model.md), not done.
+- `oauth`-mode (server-bound) providers have no grants: their connection is for one server and URL already
+  ([phase 7](phase7-upstream-oauth.md)).
+- **After the upgrade nobody has a grant** (no backfill, deliberately: a backfill would grandfather any malicious
+  server). Each person sees one consent prompt per server the first time they call it, and confirms once.
 
 ```json
 {"jsonrpc": "2.0", "id": 7, "error": {"code": -32042,
@@ -145,9 +176,15 @@ Client          Gateway /mcp/{slug}            Browser (person)          Provide
   signed-out person goes to sign-in and comes back. The page loads `GET /v1/connect/requests/R`. For another person's
   or an unknown request it shows "This link was made for someone else" (404). For an expired or used one it shows
   "This link expired. Run the tool again." (410). Otherwise it shows a confirm page: who is signed in, the tool and
-  gateway, the provider, the account connected now, and **each scope** (already granted, or new). Continue calls
+  gateway, the **server and its team** the link was made for ("Allow Status (Platform tools) to use your GitHub
+  account"), the provider, the account connected now, and **each scope** (already granted, or new). Continue calls
   `POST /v1/me/connections/start {providerId, requestId}` (CSRF token, same origin, browser session only), then sends
-  the browser to `authorizeUrl`.
+  the browser to `authorizeUrl`. When the person is **already connected with covering scopes** and only the server's
+  grant is missing (reason `server_not_allowed`), the button is "Allow <server>" and calls
+  `POST /v1/connect/requests/R/confirm` instead: the grant is recorded, the link is used up and nothing is sent to the
+  provider (`409 connect_required` when the account no longer covers the scopes; the page then offers the provider).
+  A link is for one server at one origin: it can allow only that server, and once the server moved to another origin
+  (or requires another provider) the link answers `410 connect_request_server_changed` everywhere.
 - **Start** asks for the union of the granted scopes (if active), the request's or caller's scopes, and, with neither,
   the provider defaults. A new token therefore replaces the old one without losing scopes. It stores a single-use
   state (256-bit, digest stored) bound to the **session digest, person, provider, request and return path**. With
@@ -160,7 +197,10 @@ Client          Gateway /mcp/{slug}            Browser (person)          Provide
   3. Exchange the code (with the verifier) at the token URL through the guard; JSON and form-encoded responses are
      accepted. Granted scopes are the response's `scope` when present, else those asked for. `userinfo` gives
      `accountLabel` (5 s; a failure is ignored).
-  4. Upsert the connection as `active`, mark the request used, audit `provider_connection.create`, then `303` to
+  4. Upsert the connection as `active`, mark the request used, **record the grant for the request's server** (at its
+     origin, for the request's scopes, merged with an earlier grant at the same origin; only when this callback used the
+     request up and the provider granted every required scope; audit `provider_connection.server_allow`), audit
+     `provider_connection.create`, then `303` to
      `returnTo` or `/connect/done?provider=…&result=connected|missing_scopes`. The done page lists any required scope
      the provider didn't grant, so a renamed scope can't loop silently.
 - **Open redirects:** `returnTo` must be a same-origin path: it starts with one `/`, has no `//`, `\` or scheme, and is
@@ -175,7 +215,7 @@ Client          Gateway /mcp/{slug}            Browser (person)          Provide
   refresh token replaces the stored one in the same transaction.
 - `needs_reconsent` erases the tokens but keeps the row, scopes and label, so the person sees what to reconnect.
 - Disconnect (Account › My connections, or a platform admin on the person's page) erases the tokens and deletes the
-  row. Where `revocationUrl` exists, it then calls RFC 7009 with the refresh token (else the access token) on a
+  row, and with it the person's grants for that account (the servers are asked again after reconnecting). Where `revocationUrl` exists, it then calls RFC 7009 with the refresh token (else the access token) on a
   best-effort basis. The audit records `providerRevoked` (`true`, `false` or `not_supported`).
 - A suspended person keeps their connections; their requests are refused at authentication as today. Leaving a team
   changes nothing, because connections are personal.
@@ -186,7 +226,8 @@ Client          Gateway /mcp/{slug}            Browser (person)          Provide
   errors. Token-endpoint error bodies are reduced to an error code. A sentinel test covers responses, audit,
   `mcp_calls` and logs.
 - A token is sent only to the registered URL of a server whose effective requirement for **that capability** names
-  **that provider**. It is never sent on lists, discovery, test, refresh or health checks, and never to another server.
+  **that provider** and that **the person allowed** at the origin that URL has now (F-3, see "Which servers and scopes
+  are sent"). It is never sent on lists, discovery, test, refresh or health checks, and never to another server.
 - Consent links are single-person, expire after 10 minutes, are used once, and need that person's browser session (the
   MCP spec's phishing guidance). The confirm page always shows the scopes before the provider is contacted.
 - CSRF: start is a CSRF-protected POST from a browser session, and the callback state is bound to that session.
@@ -201,7 +242,10 @@ Client          Gateway /mcp/{slug}            Browser (person)          Provide
   `connectionsReset`, `connectionCount`).
 - `provider_connection.create` (`scopes`, `reconnect`, `viaRequest`), `provider_connection.refresh_failed` (system
   actor; `reason`), and `provider_connection.revoke` (`reason` `user`/`admin`/`provider_deleted`, `providerRevoked`).
-  These use target `provider_connection` with label "person · provider".
+  These use target `provider_connection` with label "person · provider". `provider_connection.server_allow` (F-3:
+  `server`, `serverId`, `origin`, `scopes`, `viaRequest`) records a person allowing a server;
+  `mcp_server.provider_grants_reset` (target `mcp_server`, in the team's log; `reason` `origin_changed`,
+  `provider_changed` or `server_deleted`, `grantsDeleted`, and `oldOrigin`/`newOrigin`) records grants ending.
 - `mcp_capability.requirement_set`; `mcp_server.update` carries the requirement before and after.
 
 ## UI
@@ -216,7 +260,8 @@ Client          Gateway /mcp/{slug}            Browser (person)          Provide
 - **Gateway pickers, Capabilities tab and catalog:** a "Needs GitHub · repo" badge, plus "Service accounts can't use
   this" in team and service-account views. **My gateways › gateway:** "Connected" or a Connect button per
   capability.
-- **Account › My connections:** provider, account, scopes, status, last used, expiry; Connect, Reconnect, Disconnect.
+- **Account › My connections:** provider, account, scopes, **allowed servers** (name, team and origin; read-only,
+  disconnecting removes them all), status, last used, expiry; Connect, Reconnect, Disconnect.
 - **`/connect/{provider}`** confirm page and **`/connect/done`** result page (connected, denied, missing scopes,
   expired, wrong person).
 
@@ -234,6 +279,11 @@ Client          Gateway /mcp/{slug}            Browser (person)          Provide
 - Connect flow: state single use and expiry; another session or person refused; another person's request is 404, an
   expired one 410; `returnTo` open-redirect cases; provider `error`; mix-up (state of provider A on B's callback);
   form-encoded and Slack responses; userinfo failure tolerated; revocation called and failures recorded.
+- F-3 (`security_f3_integration_test.go`): the URL-change reproduction (the second host receives no token; a path-only
+  edit keeps working; a stored origin that isn't the server's is not honoured), a second server with fewer scopes, a
+  link for one server can't allow another (or a server that moved; another person's, used and expired links), confirm
+  without a request to the provider, the three consent answer shapes for `server_not_allowed`, resets on provider
+  change, removal and delete, cascades, the connections list, and the secret sentinel.
 - Reserved header names refused on servers. Vitest for every new screen, including the confirm page's scope list
   and wrong-person state.
 

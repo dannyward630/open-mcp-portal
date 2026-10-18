@@ -58,7 +58,7 @@ decisions 51 and 54). How the portal talks to your servers. Migration `00016` (t
 ### Security
 
 Fixes from the [threat model](docs/threat-model.md) review (section 8). Two additive API changes need a client update:
-approving now names what was reviewed.
+approving now names what was reviewed. People re-consent once per server for provider tokens (F-3).
 
 - **Another origin never keeps a server's stored header value (F-1).** A URL edit that changes scheme, host or port is
   refused with `422 auth_value_required` unless the same request sends a new `authValue` or removes the header; in `oauth`
@@ -70,6 +70,22 @@ approving now names what was reviewed.
   `expected_fingerprint_required` without it, `409 changed_since_review` when the server or capability changed in
   between. Publishing accepts an optional `expectedDigest`. The web UI sends them; scripts that approve (such as
   `scripts/dev-seed.py`) read the digest first.
+- **Provider tokens are bound to a server and its origin (F-3, decision 60).** A platform provider's token (GitHub,
+  Google, ...) used to go to whichever server required the provider, at whatever URL it had, so an editor could make a
+  server "require" GitHub, or re-point one, and receive teammates' tokens with no prompt. Now the token is sent only to
+  a server the person **allowed**, at the origin (scheme, host, port) it had when they allowed it, for the scopes they
+  were shown. A call without that gets consent with the new reason `server_not_allowed` (the same three answer shapes
+  as before: `-32042`, the modern URL-elicitation request, or a tool error with the link), and nothing is forwarded.
+  **After upgrading, every person consents once per server** the first time they call it (no backfill, on purpose: it
+  would grandfather any malicious server). When the person's account already has the scopes, the consent page just
+  asks "Allow <server> (<team>)" and records the grant without going to the provider. A server's grants end when its
+  URL moves to another origin, it requires another provider, or it is deleted (a path-only edit keeps them);
+  disconnecting deletes the account's. Migration `00017` (table `provider_server_grants`; two nullable columns on
+  `provider_connect_requests`; a consent link made before the upgrade is refused as expired, run the tool again).
+  API (additive): `POST /v1/connect/requests/{id}/confirm`, `ConnectRequest.server` and reason `server_not_allowed`,
+  `ProviderConnection.allowedServers`; Account › My connections lists the allowed servers. **Not changed:** the token
+  still holds the union of every scope the person granted, a server they allowed receives all of them, and there is no
+  per-provider allow-list of teams or servers (H-5).
 - **Sign-in `next` refuses control characters (F-4).** `/auth/login?next=/%09/evil.example` ended in a redirect to
   `//evil.example`; sign-in and the connect flow now share one path rule (`internal/safepath`).
 - `serve` refuses an `ENCRYPTION_KEY` equal to the `API_KEY_PEPPER`; the main listener's `ReadHeaderTimeout` (10 s) and

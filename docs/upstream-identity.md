@@ -87,6 +87,12 @@ and the identity token gains `"provider": "github"`. Calls without a requirement
 these headers or the claim, and neither do discovery, tests or health checks. Service accounts can't call such
 capabilities. The client and the model never see the token.
 
+The person has to **allow your server** first: the consent page says "Allow <your server> (<your team>) to use your
+GitHub account", and the token is sent only while the server's URL keeps the **origin** (scheme, host and port) it had
+when they allowed it. Moving the server to another host, or requiring another provider, ends everyone's permission and
+asks again; changing only the path doesn't. The token is the person's whole connection to that provider, so it holds
+every scope they ever granted for it, not only the ones you require (F-3, decision 60).
+
 1. **Verify the identity token first** (above).
 2. **Check that its `provider` claim equals `MCP-Gateway-Provider`.** A request with the headers but without the claim (or
    with another value) did not come from the portal for this provider: reject it.
@@ -233,4 +239,5 @@ To try provider tokens, run `make fake-oauth` (a fake OAuth provider on `http://
 Auth providers (authorization `http://127.0.0.1:8092/authorize`, token `/token`, revocation `/revoke`, userinfo
 `/userinfo`, client `fake-client`, secret `fake-secret-0123456789`, and register nothing: the fake accepts any redirect
 URI), set it as the fake server's requirement, select `provider_token` in a gateway and call it: the first call answers
-`-32042` with a link; open it, connect, and call again.
+`-32042` with a link; open it, connect, and call again. (The link allows that one server; a second server that requires
+the same provider gets its own link, which skips the provider when the account already has the scopes.)
