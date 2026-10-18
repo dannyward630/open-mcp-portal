@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/ui/page-header/page-header";
 import s from "../../shared.module.css";
 import { canReadAudit, useTeam } from "../common";
 import { ArchivedNotice } from "../layout";
+import { AttentionCard } from "./attention";
 import { MembersCard, PeopleCounts, YourRoleCard } from "./people";
 import { RecentChanges } from "./recent";
 import o from "./overview.module.css";
@@ -63,6 +64,7 @@ export function TeamOverviewPage() {
           <TextLink render={<Link to="/admin/teams/$team" params={{ team: slug }} />}>Manage the team in Admin</TextLink>.
         </Alert>
       )}
+      <AttentionCard />
       <PeopleCounts />
       <div className={o.columns}>
         <MembersCard />

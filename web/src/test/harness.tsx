@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { Schemas } from "../api/client";
 import { routeTree } from "../router";
 import { authConfig, invite, meFor, members, page, team } from "./fixtures";
+import { overview, teamAttention } from "./fixtures-v02";
 
 export type Call = { method: string; url: string; search: URLSearchParams; body?: unknown; headers: Headers };
 
@@ -60,6 +61,10 @@ export const shellRoutes = (platformRole: Schemas["PlatformRole"] = "none", team
   [`GET ${teamPath}/members`]: () => members,
   [`GET ${teamPath}/invites`]: () => [invite()],
   [`GET ${teamPath}/audit`]: () => page([]),
+  // v0.2: the team's attention card, the admin overview and the bell's count (nothing to report by default).
+  [`GET ${teamPath}/attention`]: () => teamAttention(),
+  "GET /v1/admin/overview": () => overview(),
+  "GET /v1/me/notifications/unread-count": () => ({ count: 0 }),
 });
 
 export function renderApp(path: string) {
