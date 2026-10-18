@@ -92,7 +92,7 @@ generate your own `ENCRYPTION_KEY` and `API_KEY_PEPPER` (`openssl rand -base64 3
 
 - [Specification](SPEC.md) and [product decisions](docs/decisions.md)
 - [Status and handoff](docs/status.md)
-- [Roadmap](docs/roadmap.md): what comes after v0.2.1
+- [Roadmap](docs/roadmap.md): what comes after v0.2.1, in order, with an [issue and implementation plan](https://github.com/ncecere/open-mcp-portal/milestones) for each item
 - Phase designs: [registry](docs/registry.md), [gateways](docs/phase3-gateways.md),
   [client sign-in](docs/phase4-client-auth.md), [delegated credentials](docs/phase5-delegated-credentials.md),
   [operations](docs/phase6-operations.md), [upstream OAuth](docs/phase7-upstream-oauth.md)

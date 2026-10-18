@@ -5,6 +5,8 @@ Last updated: 2026-10-18. Open MCP Portal (formerly Open MCP Gateway, decision 4
 
 ## v0.2.1 (2026-10-18)
 
+What is planned next, and what is still unverified, is the [roadmap](roadmap.md): 49 issues in five [milestones](https://github.com/ncecere/open-mcp-portal/milestones), each with its implementation plan.
+
 The cluster deployment (mcp.bitop.dev) runs v0.2.1, rolled out one replica at a time with no failed readiness probe.
 
 Built, see [CHANGELOG.md](../CHANGELOG.md): a manual **Test connection** sends the editor's identity token and says when the server refuses it (decision 61; the limit is stated there: a server that refuses only at tool execution still passes), and `OAUTH_MAX_REGISTERED_CLIENTS` caps Dynamic Client Registration (threat model H-4, cap done). Verified by Go tests against PostgreSQL (the Test with a fake upstream that refuses `Authorization` at the HTTP level, with the token verified against the JWKS, and the cap with concurrent registrations) and the web tests. Not tried against DeepWiki itself or in a browser.

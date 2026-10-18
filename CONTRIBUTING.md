@@ -7,6 +7,19 @@ Thanks for helping. This file covers how to set up, test and submit changes. Rep
 - For anything larger than a small fix, open an issue first and describe the problem and the change you have in mind.
 - Read [`SPEC.md`](SPEC.md), [`docs/decisions.md`](docs/decisions.md) and the phase design in [`docs/`](docs/) for the part you're changing. A change to a product decision gets a new numbered row in `docs/decisions.md`.
 
+## Where to help
+
+The [roadmap](docs/roadmap.md) lists everything planned, and each item is an [issue](https://github.com/ncecere/open-mcp-portal/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap)
+with a proposed implementation and acceptance criteria. Good places to start:
+
+- [`good first issue`](https://github.com/ncecere/open-mcp-portal/labels/good%20first%20issue): small, self-contained changes.
+- [`help wanted`](https://github.com/ncecere/open-mcp-portal/labels/help%20wanted) and [`needs real-world testing`](https://github.com/ncecere/open-mcp-portal/labels/needs%20real-world%20testing): things only a person with a
+  particular client, account or environment can do, such as trying VS Code or Cursor against a gateway. Open a
+  [client compatibility report](https://github.com/ncecere/open-mcp-portal/issues/new?template=client_compatibility.yml) with what you saw.
+- [`decision needed`](https://github.com/ncecere/open-mcp-portal/labels/decision%20needed): open product questions with options and a recommendation. A comment with your use case helps.
+
+Please comment on an issue before starting a large one, so the design is agreed first.
+
 ## Development setup
 
 Requires Go 1.26+, Node 22+, Docker and Python 3. `make generate` also needs [sqlc](https://sqlc.dev) (CI uses 1.31.1) on your `PATH` or in `~/go/bin`.
