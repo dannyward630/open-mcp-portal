@@ -37,12 +37,13 @@ make demo         # optional, instead of all of the above: everything in Docker 
 | `make web-test` | UI type-check and Vitest tests, with axe accessibility checks |
 | `make k8s-validate` | Renders the Kustomize base and overlays and validates them with kubeconform |
 | `make actionlint` | Checks the GitHub Actions workflows |
+| `make k8s-smoke` | Applies the Kubernetes base to a throwaway kind cluster and checks it (about 2 minutes; needs docker, kind, kubectl and jq; `SMOKE_CNI=calico` also tests the NetworkPolicies). See [deploy.md](docs/deploy.md#smoke-test) |
 
 - Integration tests create one database per test on the server in `OMP_TEST_DATABASE_URL` (default: the compose Postgres, `postgres://omp:omp-dev-only@127.0.0.1:55442/postgres`); `OMP_TEST_REQUIRE_DB=1` makes them fail instead of skip, and `OMP_TEST_LOG=1` shows the server's logs.
 - In `web/`: `npm run typecheck`, `npm test`, `npm run build`, and the policies `npm run check:styling` (Base UI components, CSS Modules and design tokens only) and `npm run check:size` (source files ≤ 400 lines, tests ≤ 700).
 - Add or update tests with every behaviour change. Bug fixes come with a test that fails without the fix.
 
-CI (`.github/workflows/ci.yml`) runs `make lint` and `make actionlint`, `make check-generated`, `make test-ci` against a Postgres service, the web checks above, `make k8s-validate` and both Docker targets. Run the same before opening a pull request.
+CI (`.github/workflows/ci.yml`) runs `make lint` and `make actionlint`, `make check-generated`, `make test-ci` against a Postgres service, the web checks above, `make k8s-validate` and both Docker targets. Run the same before opening a pull request. `make k8s-smoke` is not part of it: `.github/workflows/k8s-smoke.yml` runs it on demand, weekly and when `deploy/**`, the `Dockerfile` or the script change on `main`; run it yourself when you change `deploy/`.
 
 ## Generated code
 

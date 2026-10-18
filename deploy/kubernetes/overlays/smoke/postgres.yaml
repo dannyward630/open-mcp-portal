@@ -1,0 +1,106 @@
+# A throwaway PostgreSQL 17 for the smoke test. NOT a database to run the
+# portal on: one replica, no backups, no TLS, a password the smoke script
+# generates (secret omp-smoke-postgres, created at run time, never in git).
+# The data lives on a PVC from the cluster's default storage class (kind's
+# local-path), so the StatefulSet and its claim are real, and it goes away with
+# the cluster.
+#
+# The image is pinned by tag and digest (the index digest; every node pulls
+# its own architecture). It comes from mirror.gcr.io, Google's Docker Hub
+# mirror, like the release workflow's tooling.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: omp-smoke-postgres
+    app.kubernetes.io/part-of: omp-smoke
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: omp-smoke-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: omp-smoke-postgres
+    app.kubernetes.io/part-of: omp-smoke
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: omp-smoke-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: omp-smoke-postgres
+        app.kubernetes.io/part-of: omp-smoke
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        # postgres:17-alpine's own user and group.
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: mirror.gcr.io/library/postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: omp
+            - name: POSTGRES_DB
+              value: omp
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: omp-smoke-postgres
+                  key: password
+            # A subdirectory: the volume's root is not an empty directory
+            # on every storage class.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, omp, -d, omp, -h, 127.0.0.1]
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi

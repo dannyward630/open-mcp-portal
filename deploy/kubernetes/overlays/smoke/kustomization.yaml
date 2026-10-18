@@ -1,0 +1,64 @@
+# Smoke-test overlay: the base on a throwaway kind cluster, with a throwaway
+# PostgreSQL and the fake MCP server next to it. scripts/k8s-smoke.sh
+# (make k8s-smoke) applies it; docs/deploy.md, "Smoke test".
+#
+# DEVELOPMENT ONLY. The portal runs with DEV_AUTH on a loopback APP_URL (the
+# only place it accepts it), reached by `kubectl port-forward`. Not a template
+# for a real install: copy overlays/example for that.
+#
+# Not in this file, because it is made at run time: the secrets
+# open-mcp-portal-runtime and omp-smoke-postgres (random keys, never in git),
+# the image tags (the script builds both images and loads them into kind) and
+# the port in APP_URL (the script picks a free one). Applied by hand, it
+# needs the same secrets and `kubectl -n omp-smoke port-forward
+# svc/open-mcp-portal 18088:80`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: omp-smoke
+
+resources:
+  - namespace.yaml
+  - ../../base
+  - postgres.yaml
+  - fakemcp.yaml
+  - networkpolicy-fakemcp.yaml
+
+images:
+  # The locally built portal image (make docker / the script's docker build).
+  - name: ghcr.io/ncecere/open-mcp-portal
+    newName: omp-smoke/portal
+    newTag: local
+  - name: omp-smoke/fakemcp
+    newTag: local
+
+configMapGenerator:
+  - name: open-mcp-portal-config
+    behavior: merge
+    literals:
+      # The portal refuses DEV_AUTH unless APP_URL is loopback.
+      - APP_URL=http://localhost:18088
+      - DEV_AUTH=true
+      # Internal MCP servers (docs/deploy.md): the fake, over plain http.
+      - UPSTREAM_ALLOWED_NETWORKS=http:*.svc.cluster.local
+
+patches:
+  # The "ingress controller" is a client namespace the script creates.
+  - target:
+      kind: NetworkPolicy
+      name: open-mcp-portal-ingress
+    patch: |-
+      - op: replace
+        path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
+        value: omp-smoke-ingress
+  # PostgreSQL's pods only, instead of anywhere.
+  - target:
+      kind: NetworkPolicy
+      name: open-mcp-portal-egress-postgres
+    patch: |-
+      - op: replace
+        path: /spec/egress/0/to
+        value:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: omp-smoke-postgres

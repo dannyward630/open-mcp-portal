@@ -1,0 +1,27 @@
+# What an overlay adds for an in-cluster MCP server (docs/deploy.md, "Internal
+# MCP servers"): the base allows TCP 443 only, and many CNIs don't match pod
+# addresses with ipBlock, so the portal pods get a pod-selector rule for the
+# server's port. Enforced only where the CNI enforces NetworkPolicy (kind's
+# kindnet does not: SMOKE_CNI=calico).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-mcp-portal-egress-fakemcp
+  labels:
+    app.kubernetes.io/name: open-mcp-portal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: open-mcp-portal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-mcp-portal
+      app.kubernetes.io/component: server
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omp-smoke-fakemcp
+      ports:
+        - protocol: TCP
+          port: 8091

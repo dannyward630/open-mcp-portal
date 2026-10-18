@@ -22,6 +22,16 @@ entry, an email and a webhook, a review with the digest, the decision notificati
 
 Verified after the release (2026-10-18): Claude Code 2.1.280 was run against a gateway (API-key authentication): it spoke 2026-07-28 natively (`server/discover`, the lists, and `tools/call` with the required `Mcp-Method` and `Mcp-Name` headers), and it showed the person the consent link from the tool error (it declares form-mode elicitation only, so it takes the tool-error answer of decision 59). v0.2.0 was also deployed to a real Talos cluster (CloudNativePG, Traefik, Pangolin, Authentik sign-in; health, `doctor` and the OAuth endpoints checked from outside), with continuous WAL archiving and a daily base backup of its database to object storage. A restore was tested the same day: a scratch cluster recovered in about 70 seconds with identical data and a row written after the base backup (WAL replay).
 
+Verified on kind (2026-10-18, `make k8s-smoke`, [deploy.md](deploy.md#smoke-test)): the Kustomize base applied through `overlays/smoke` to a
+three-node kind cluster (Kubernetes 1.37.0) with a throwaway PostgreSQL 17 and the in-cluster fake MCP server: the migrate init container and
+`doctor`, two replicas on different nodes, the PodDisruptionBudget (one eviction allowed, a second refused), `/healthz`, `/readyz`, development
+sign-in, and team, server, gateway and API key through the API, then `tools/list` and `tools/call` at `/mcp/{slug}` in the legacy and the
+2026-07-28 era; a rolling update and a pod deletion with no failed request through the Service, and the SIGTERM drain (`/readyz` 503, 10 s, `shutdown complete`).
+With `SMOKE_CNI=calico` the NetworkPolicies are enforced and tested (an outside pod cannot reach the portal; the portal reaches PostgreSQL and the
+MCP server). Not covered: NetworkPolicy under the default CNI (kindnet does not enforce it), the `egress-https` rule, ingress and TLS, OIDC,
+the internal-network allowlist (development sign-in allows private upstream addresses anyway), zones, upgrades between releases and
+restores. `.github/workflows/k8s-smoke.yml` has not run on GitHub.
+
 Not verified: Claude Code's OAuth sign-in on the new revision, a client that declares URL elicitation, VS Code and Cursor; a real SMTP provider over TLS and a real Slack webhook; the Kubernetes egress rows on a real cluster; a real Google or
 Microsoft provider. Still open from the threat model: the hardening ideas in section 9 (notably H-5, scopes per call and a per-provider
 server allow-list).
@@ -46,7 +56,7 @@ server allow-list).
   - a real Google or Microsoft delegated-credentials provider (Phase 5 auth providers were only run against the fake,
     `make fake-oauth` with `make example-mail-fake`);
   - VS Code and Cursor (only their configuration snippets; Claude Code and pi were run);
-  - a smoke test on kind or a real Kubernetes cluster (only `make k8s-validate`);
+  - a smoke test on kind: now `make k8s-smoke` (see "Verified on kind" above; `.github/workflows/k8s-smoke.yml` not run on GitHub yet);
   - the release workflow (`.github/workflows/image.yml`: native amd64 and arm64 builds, scan, cosign signing, GitHub
     Release) on GitHub's runners: it runs for the first time on the `v0.1.0` tag. `scripts/github-release.sh` was
     dry-run with a stand-in SBOM; `actionlint` and `shellcheck` pass.
@@ -215,7 +225,7 @@ server allow-list).
     dates; "Nothing deleted" in Retention's last run. Not re-checked in a browser after the fixes.
   - Verified: `make generate`, gofmt, vet, build, `go test ./...`, `make test-integration` (race), `make k8s-validate`,
     actionlint; web typecheck, 421 Vitest tests, build, `check:styling`, `check:size`.
-  - Gaps: CI never run on GitHub; no kind smoke test (`k8s-smoke`); provider-token redaction has unit tests only, no
+  - Gaps: CI never run on GitHub; the kind smoke test (`k8s-smoke`) came later (2026-10-18); provider-token redaction has unit tests only, no
     end-to-end test through a provider-backed server.
 - **Deployment (Phase 6 slice): done, not on a cluster.** Distroless image (`make docker`; `--target fakemcp` for the
   demo), `compose.demo.yaml` (`make demo`: gateway + Postgres + fake MCP server, dev sign-in), Kustomize base and
@@ -274,8 +284,8 @@ The plan after v0.1.0 is [roadmap.md](roadmap.md): v0.2 is MCP 2026-07-28 suppor
    end-to-end test that a provider token echoed by a server is redacted from a captured payload.
 2. Check the v0.1.0 release on GitHub: `ci.yml` on `main`, then `image.yml` on the tag (digest, signature with
    `cosign verify`, SBOM assets); fix what only GitHub's runners show.
-3. Deployment follow-ups: kind smoke test (`k8s-smoke`) and an upgrade test from the previous release's image; see
-   [deploy.md](deploy.md) "Not covered yet".
+3. Deployment follow-ups: an upgrade test from the previous release's image on kind (the kind smoke test, `make k8s-smoke`, exists since
+   2026-10-18; run `k8s-smoke.yml` on GitHub once); see [deploy.md](deploy.md) "Not covered yet".
 4. Browser re-checks: the Phase 4 QA follow-ups (390px service account header, Admin › Calls filter, dark error
    page), the Phase 6 QA fixes (call page as auditor and as an editor, custom usage dates, pattern dialog), and the
    Phase 5 and 7 screens.
