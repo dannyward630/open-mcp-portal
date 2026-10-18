@@ -12,7 +12,9 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -33,6 +35,16 @@ import (
 // detection); SetPageSize makes every list paginate. EnableGatewayTools adds
 // whoami (the identity the portal sent) and echo, and records every tool
 // call (ToolCalls) for gateway tests.
+//
+// SetProtocol makes it speak one era only: ProtocolLegacy behaves like a
+// server from before MCP 2026-07-28 (initialize; a request with the new
+// headers gets a plain-text 400), ProtocolModern like a stateless server of
+// the new revision (server/discover; initialize and requests without the
+// protocol headers get a 400 with a JSON-RPC HeaderMismatch error), and
+// ProtocolBoth (the default) both. EnableMRTRTools adds tools that answer
+// input_required (ask_form, ask_url, ask_sampling), EnableStreamTools adds
+// progress (emits progress notifications) and block (waits until its
+// request is cancelled, recording it); both switch the fake to SSE responses.
 type FakeMCP struct {
 	*httptest.Server
 
@@ -59,6 +71,97 @@ type FakeMCP struct {
 	OnToolCall func(ToolCall)
 	// protect makes the fake an OAuth resource server (Protect).
 	protect *Protection
+
+	protocol    Protocol
+	mrtrTools   bool
+	streamTools bool
+	seen        []SeenRequest
+	blocked     chan struct{}
+	cancelled   atomic.Int64
+	jsonH, sseH http.Handler
+}
+
+// Protocol is which era of MCP the fake speaks.
+type Protocol string
+
+// The eras (SetProtocol).
+const (
+	ProtocolBoth   Protocol = "both"
+	ProtocolLegacy Protocol = "legacy"
+	ProtocolModern Protocol = "modern"
+)
+
+// ParseProtocol reads cmd/fakemcp's -protocol flag.
+func ParseProtocol(s string) (Protocol, error) {
+	switch p := Protocol(s); p {
+	case ProtocolBoth, ProtocolLegacy, ProtocolModern:
+		return p, nil
+	case "":
+		return ProtocolBoth, nil
+	}
+	return "", fmt.Errorf("protocol %q: want legacy, modern or both", s)
+}
+
+// SeenRequest is one HTTP request as the fake received it (the MCP ones).
+type SeenRequest struct {
+	Method string
+	// Version is the MCP-Protocol-Version header ("": none); McpMethod the
+	// Mcp-Method header; Refused says the era rules of SetProtocol answered
+	// it with an error.
+	Version, McpMethod string
+	Refused            bool
+}
+
+// SetProtocol sets which era the fake speaks (before the first request).
+func (f *FakeMCP) SetProtocol(p Protocol) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.protocol = p
+}
+
+// SeenRequests are the MCP requests received so far, in order.
+func (f *FakeMCP) SeenRequests() []SeenRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]SeenRequest(nil), f.seen...)
+}
+
+// EnableMRTRTools adds ask_form, ask_url {url} and ask_sampling {mixed}:
+// tools that answer a modern call with an input_required result (a form
+// elicitation, a URL elicitation, a sampling request) and complete when the
+// retry carries the responses. They record the _meta, requestState and
+// inputResponses they received (ToolCalls).
+func (f *FakeMCP) EnableMRTRTools() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mrtrTools = true
+}
+
+// EnableStreamTools adds progress {count, delay_ms} and block, and makes the
+// fake answer with SSE streams. progress sends count notifications/progress
+// for the call's progress token, delay_ms apart, then a result; block waits
+// until its request is cancelled (Cancellations) and signals WaitBlocked.
+func (f *FakeMCP) EnableStreamTools() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.streamTools = true
+	if f.blocked == nil {
+		f.blocked = make(chan struct{}, 16)
+	}
+}
+
+// Cancellations is how many block calls ended because their request was
+// cancelled.
+func (f *FakeMCP) Cancellations() int { return int(f.cancelled.Load()) }
+
+// WaitBlocked waits until a block call has started.
+func (f *FakeMCP) WaitBlocked(t testing.TB) {
+	t.Helper()
+	select {
+	case <-f.blocked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no block call started")
+	}
 }
 
 // Protection makes the fake an OAuth-protected MCP server (Phase 7): it
@@ -209,6 +312,11 @@ type ToolCall struct {
 	Authorization, Identity string
 	// Header is every request header.
 	Header http.Header
+	// Meta is params._meta as received, RequestState and InputResponses the
+	// retry fields of a multi round-trip call.
+	Meta           map[string]any
+	RequestState   string
+	InputResponses map[string]any
 }
 
 // FakeMCPTools is how many tools the fake lists by default; with the
@@ -229,9 +337,10 @@ func NewFakeMCP(t testing.TB) *FakeMCP {
 // NewFakeMCPHandler builds the fake without starting a server (cmd/fakemcp
 // serves it; URL() then isn't set).
 func NewFakeMCPHandler() (*FakeMCP, http.Handler) {
-	f := &FakeMCP{hidden: map[string]bool{}, descriptions: map[string]string{}}
-	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return f.server() },
-		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	f := &FakeMCP{hidden: map[string]bool{}, descriptions: map[string]string{}, protocol: ProtocolBoth}
+	getServer := func(*http.Request) *mcp.Server { return f.server() }
+	f.jsonH = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	f.sseH = mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true})
 	return f, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.requests++
@@ -254,8 +363,69 @@ func NewFakeMCPHandler() (*FakeMCP, http.Handler) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		if !f.era(w, r) {
+			return
+		}
+		f.mu.Lock()
+		h := f.jsonH
+		if f.streamTools {
+			h = f.sseH
+		}
+		f.mu.Unlock()
 		h.ServeHTTP(w, r)
 	})
+}
+
+const modernVersion = "2026-07-28"
+
+// era applies SetProtocol to an MCP request and records it; false when it
+// answered (the request is of the era the fake doesn't speak).
+func (f *FakeMCP) era(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost || r.Body == nil {
+		return true
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
+	_ = r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var msg struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+		Params struct {
+			Meta map[string]json.RawMessage `json:"_meta"`
+		} `json:"params"`
+	}
+	if err != nil || json.Unmarshal(body, &msg) != nil {
+		return true
+	}
+	version := r.Header.Get("MCP-Protocol-Version")
+	_, metaVersion := msg.Params.Meta["io.modelcontextprotocol/protocolVersion"]
+	modernRequest := metaVersion || msg.Method == "server/discover" || (version != "" && version >= modernVersion)
+	f.mu.Lock()
+	protocol := f.protocol
+	f.mu.Unlock()
+	refused := false
+	switch {
+	case protocol == ProtocolLegacy && modernRequest:
+		// A server from before the revision: the SDK's own answer to a
+		// protocol version it doesn't know, plain text.
+		http.Error(w, "Bad Request: Unsupported protocol version (supported versions: 2025-11-25,2025-06-18,2025-03-26,2024-11-05)", http.StatusBadRequest)
+		refused = true
+	case protocol == ProtocolModern && !modernRequest && msg.Method != "":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		id := msg.ID
+		if len(id) == 0 {
+			id = json.RawMessage("null")
+		}
+		out, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32020,
+			"message": "MCP-Protocol-Version header is required (this server speaks 2026-07-28)"}})
+		_, _ = w.Write(out)
+		refused = true
+	}
+	f.mu.Lock()
+	f.seen = append(f.seen, SeenRequest{Method: msg.Method, Version: version, McpMethod: r.Header.Get("Mcp-Method"), Refused: refused})
+	f.mu.Unlock()
+	return !refused
 }
 
 // URL is the Streamable HTTP endpoint.
@@ -413,7 +583,18 @@ func stringArg(name, description string) map[string]any {
 func (f *FakeMCP) server() *mcp.Server {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	s := mcp.NewServer(&mcp.Implementation{Name: "fake-status", Version: "1.0.0"}, &mcp.ServerOptions{PageSize: f.pageSize})
+	opts := &mcp.ServerOptions{PageSize: f.pageSize}
+	switch f.protocol {
+	case ProtocolLegacy:
+		for _, v := range mcp.SupportedProtocolVersions() {
+			if v < modernVersion {
+				opts.SupportedProtocolVersions = append(opts.SupportedProtocolVersions, v)
+			}
+		}
+	case ProtocolModern:
+		opts.SupportedProtocolVersions = []string{modernVersion}
+	}
+	s := mcp.NewServer(&mcp.Implementation{Name: "fake-status", Version: "1.0.0"}, opts)
 	yes := true
 	tools := []*mcp.Tool{
 		{Name: "check_outage", Title: "Check outage", Description: "Reports whether a company service has an outage right now.",
@@ -504,6 +685,12 @@ func (f *FakeMCP) server() *mcp.Server {
 				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "lookup: ok"}},
 					StructuredContent: []any{map[string]any{"region": args.Region, "limit": args.Limit}}}, nil
 			})
+	}
+	if f.mrtrTools {
+		f.addMRTRTools(s)
+	}
+	if f.streamTools {
+		f.addStreamTools(s)
 	}
 	if f.protect != nil {
 		s.AddTool(&mcp.Tool{Name: "write", Title: "Write", Description: "Needs the write scope.", InputSchema: map[string]any{"type": "object"}},

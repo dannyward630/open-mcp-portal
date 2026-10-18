@@ -25,6 +25,15 @@
 //
 //	go run ./cmd/fakemcp -jwks http://localhost:8088/.well-known/jwks.json
 //
+// -protocol legacy|modern|both chooses the era it speaks: legacy behaves like a
+// server from before MCP 2026-07-28 (initialize; a request with the new headers
+// gets a plain-text 400), modern like a stateless server of 2026-07-28
+// (server/discover; initialize and requests without the protocol headers get a
+// 400 HeaderMismatch error), both (the default) either. -mrtr-tools adds
+// ask_form, ask_url and ask_sampling, which answer input_required (multi
+// round-trip requests); -stream-tools adds progress (notifications/progress
+// while it runs) and block (waits until cancelled) and answers with SSE.
+//
 // With -protect <issuer> it is an OAuth-protected MCP server (Phase 7,
 // docs/phase7-upstream-oauth.md): requests without a valid bearer token get
 // 401 with resource_metadata, it serves its protected-resource metadata at
@@ -62,6 +71,9 @@ func main() {
 	value := flag.String("value", "", "the header's value")
 	gatewayTools := flag.Bool("gateway-tools", true, "add the whoami, provider_token and echo tools")
 	schemaTools := flag.Bool("schema-tools", false, "add lookup, a tool with x-mcp-header arguments and an array result (MCP 2026-07-28)")
+	protocol := flag.String("protocol", "both", "the MCP era to speak: legacy, modern or both")
+	mrtr := flag.Bool("mrtr-tools", false, "add ask_form, ask_url and ask_sampling (input_required results, MCP 2026-07-28)")
+	stream := flag.Bool("stream-tools", false, "add progress and block, and answer with SSE streams")
 	jwks := flag.String("jwks", "", "verify identity tokens against this JWKS URL")
 	audience := flag.String("audience", "", "the audience identity tokens must have (default: this server's URL)")
 	protect := flag.String("protect", "", "act as an OAuth resource server of this authorization server (issuer URL)")
@@ -100,6 +112,17 @@ func main() {
 	}
 	if *schemaTools {
 		f.EnableSchemaTools()
+	}
+	p, err := testutil.ParseProtocol(*protocol)
+	if err != nil {
+		log.Fatalf("-protocol: %v", err)
+	}
+	f.SetProtocol(p)
+	if *mrtr {
+		f.EnableMRTRTools()
+	}
+	if *stream {
+		f.EnableStreamTools()
 	}
 	if *gatewayTools {
 		f.EnableGatewayTools()
