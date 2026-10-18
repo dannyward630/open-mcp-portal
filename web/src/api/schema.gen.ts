@@ -629,7 +629,7 @@ export interface paths {
         get?: never;
         /**
          * Approve a published server's changed capability (team owners and admins, only under self_publish)
-         * @description 403 approval_required when the team's effective policy is approval_required (a platform admin approves instead). 409 not_changed when the capability has no unapproved change; 409 capability_gone.
+         * @description 403 approval_required when the team's effective policy is approval_required (a platform admin approves instead). 409 not_changed when the capability has no unapproved change; 409 capability_gone. The approval is bound to what the approver saw (expectedFingerprint is the capability's fingerprint as listed); 400 expected_fingerprint_required without it; 409 changed_since_review (details.currentFingerprint) when the capability's definition is another now (a refresh since), approving nothing.
          */
         put: operations["approveTeamMcpCapability"];
         post?: never;
@@ -700,7 +700,7 @@ export interface paths {
         put?: never;
         /**
          * Publish to the company catalog (team owners and admins)
-         * @description Under approval_required the server becomes pending until a platform admin reviews it; under self_publish it is published at once and its current capabilities are approved. 409 not_refreshed when the server has never been read; 409 already_published; 409 disabled.
+         * @description Under approval_required the server becomes pending until a platform admin reviews it; under self_publish it is published at once and its current capabilities are approved. 409 not_refreshed when the server has never been read; 409 already_published; 409 disabled. expectedDigest (optional) is the server's reviewDigest as the publisher saw it. When it is given and another now, 409 changed_since_review (details.currentDigest) and nothing is published or approved.
          */
         post: operations["publishTeamMcpServer"];
         delete?: never;
@@ -873,7 +873,7 @@ export interface paths {
         put?: never;
         /**
          * Approve or reject a pending server, or remove a published one from the catalog (platform admins)
-         * @description approve (pending only) publishes it and approves its current capabilities. reject on a pending server sets rejected; on a published server it removes it from the catalog (rejected). 409 invalid_state.
+         * @description approve (pending only) publishes it and approves its current capabilities. reject on a pending server sets rejected; on a published server it removes it from the catalog (rejected). 409 invalid_state. An approval is bound to what the admin reviewed. expectedDigest is the server's reviewDigest as the admin read it. 400 expected_digest_required for approve without it; 409 changed_since_review (details.currentDigest) when the server's digest is another now (a refresh, a new URL, another auth mode or requirement), approving nothing. reject needs no digest.
          */
         post: operations["adminReviewMcpServer"];
         delete?: never;
@@ -895,7 +895,7 @@ export interface paths {
         get?: never;
         /**
          * Approve a published server's changed capability (platform admins)
-         * @description 409 not_changed when the capability has no unapproved change; 409 capability_gone.
+         * @description 409 not_changed when the capability has no unapproved change; 409 capability_gone. Bound to what the approver saw, as approveTeamMcpCapability (400 expected_fingerprint_required; 409 changed_since_review with details.currentFingerprint).
          */
         put: operations["adminApproveMcpCapability"];
         post?: never;
@@ -3087,6 +3087,8 @@ export interface components {
             sendIdentity?: boolean;
             /** @description The MCP protocol version the portal last negotiated with the upstream server (set by refresh, health checks and test); read-only. Null until the first successful exchange. */
             protocol?: components["schemas"]["McpServerProtocol"] | null;
+            /** @description SHA-256 (hex) over the server's URL, auth mode and requirement and over every listed capability's kind, name and fingerprint, sorted. It changes when any of them does (a refresh, a new URL ...). Send it back as expectedDigest when reviewing (adminReviewMcpServer) or publishing, so what is approved is what was read */
+            readonly reviewDigest?: string;
             revision: components["schemas"]["Revision"];
             /** Format: date-time */
             createdAt: string;
@@ -3245,12 +3247,20 @@ export interface components {
         McpPublishRequest: {
             /** @description For the reviewer */
             note?: string;
+            /** @description The server's reviewDigest as the publisher saw it. Optional; when given and no longer current, 409 changed_since_review */
+            expectedDigest?: string;
         };
         McpPublishReview: {
             /** @enum {string} */
             decision: "approve" | "reject";
             /** @description Shown to the team */
             note?: string;
+            /** @description The server's reviewDigest as the admin read it. Required for approve (400 expected_digest_required), not needed for reject; 409 changed_since_review when it is no longer current */
+            expectedDigest?: string;
+        };
+        McpCapabilityApproval: {
+            /** @description The capability's fingerprint as the approver saw it; 409 changed_since_review when the capability has another definition now */
+            expectedFingerprint: string;
         };
         PublishingSettings: {
             defaultPolicy: components["schemas"]["PublishPolicy"];
@@ -6624,7 +6634,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCapabilityApproval"];
+            };
+        };
         responses: {
             /** @description Approved capability */
             200: {
@@ -6637,6 +6651,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
             409: components["responses"]["ErrorReply"];
@@ -7015,7 +7030,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCapabilityApproval"];
+            };
+        };
         responses: {
             /** @description Approved capability */
             200: {
@@ -7028,6 +7047,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
             409: components["responses"]["ErrorReply"];

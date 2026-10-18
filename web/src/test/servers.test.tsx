@@ -192,7 +192,7 @@ describe("MCP server record", () => {
     expect(within(dialog).getByRole("region", { name: "What the server receives" })).toBeInTheDocument();
     await u.type(within(dialog).getByRole("textbox", { name: /Note for the reviewer/ }), "For on-call");
     await u.click(within(dialog).getByRole("button", { name: "Request review" }));
-    await waitFor(() => expect(calls.find((c) => c.url.endsWith("/publish"))?.body).toEqual({ note: "For on-call" }));
+    await waitFor(() => expect(calls.find((c) => c.url.endsWith("/publish"))?.body).toEqual({ note: "For on-call", expectedDigest: "d".repeat(64) }));
     expect(await screen.findByRole("button", { name: "Withdraw request" })).toBeInTheDocument();
     expect(screen.getAllByText("Waiting for review").length).toBeGreaterThan(0);
   });
@@ -264,6 +264,7 @@ describe("MCP server › Capabilities", () => {
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
     await u.click(within(ask).getByRole("button", { name: "Approve change" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith(`/capabilities/${changed[0]!.id}/approval`))).toBe(true));
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ expectedFingerprint: changed[0]!.fingerprint });
   });
 
   it("leaves changes to a platform admin under approval_required, and gives editors no approval", async () => {

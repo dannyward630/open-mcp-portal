@@ -13,10 +13,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/ncecere/open-mcp-portal/internal/auth"
 	"github.com/ncecere/open-mcp-portal/internal/capture"
 	"github.com/ncecere/open-mcp-portal/internal/httpx"
+	"github.com/ncecere/open-mcp-portal/internal/registry"
 	"github.com/ncecere/open-mcp-portal/internal/secrets"
+	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
 
@@ -200,6 +204,30 @@ func (e *matrixEnv) newServer(tf teamFix, state string) string {
 
 // newChangedCapability inserts a tool whose definition changed since it was
 // approved.
+// fingerprint is a capability's current fingerprint, as an approver's page would have it.
+func (e *matrixEnv) fingerprint(capID string) string {
+	return e.exec(`SELECT fingerprint FROM mcp_capabilities WHERE id = $1`, capID)
+}
+
+// digest is a server's reviewDigest as an admin's page would have it.
+func (e *matrixEnv) digest(serverID string) string {
+	e.t.Helper()
+	ctx, q, id := context.Background(), dbgen.New(e.app.Pool), uuid.MustParse(serverID)
+	sv, err := q.GetMCPServer(ctx, id)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	rows, err := q.ListMCPCapabilityFingerprints(ctx, []uuid.UUID{id})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	refs := make([]registry.CapabilityRef, len(rows))
+	for i, r := range rows {
+		refs[i] = registry.CapabilityRef{Kind: r.Kind, Name: r.Name, Fingerprint: r.Fingerprint}
+	}
+	return registry.ReviewDigest(sv, refs)
+}
+
 func (e *matrixEnv) newChangedCapability(serverID string) string {
 	return e.exec(`INSERT INTO mcp_capabilities (server_id, kind, name, definition, fingerprint, approved_fingerprint)
 		VALUES ($1, 'tool', 'fixture_tool', '{"name":"fixture_tool"}', repeat('a', 64), repeat('b', 64)) RETURNING id::text`, serverID)

@@ -900,7 +900,7 @@ func TestRequirementReview(t *testing.T) {
 		return e.scalar(`SELECT count(*)::text FROM audit_log WHERE action = 'mcp_server.publish_request' AND metadata->>'reason' = 'requirement_changed'`)
 	}
 	approve := func() {
-		code, ec := e.admin.call("POST", "/v1/admin/mcp-servers/"+e.server.Id.String()+"/review", map[string]any{"decision": "approve"}, nil, nil)
+		code, ec := e.admin.call("POST", "/v1/admin/mcp-servers/"+e.server.Id.String()+"/review", approveBody(t, e.admin, e.server.Id.String()), nil, nil)
 		mustCode(t, "approve", code, ec, 200, "")
 	}
 	if state() != "published" {

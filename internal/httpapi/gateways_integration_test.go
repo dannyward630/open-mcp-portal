@@ -92,7 +92,7 @@ func (e *gwEnv) publish(s *session, sv apitypes.McpServer) {
 	base := "/v1/teams/" + sv.TeamSlug + "/mcp-servers/" + sv.Id.String()
 	code, ec := s.call("POST", base+"/publish", nil, nil, nil)
 	mustCode(e.t, "publish", code, ec, 200, "")
-	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+sv.Id.String()+"/review", map[string]any{"decision": "approve"}, nil, nil)
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+sv.Id.String()+"/review", approveBody(e.t, e.admin, sv.Id.String()), nil, nil)
 	mustCode(e.t, "approve", code, ec, 200, "")
 }
 

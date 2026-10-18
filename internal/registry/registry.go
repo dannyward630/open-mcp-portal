@@ -203,6 +203,8 @@ type ServerView struct {
 	Requirement *ServerRequirement
 	// OAuth is the sign-in of a server in oauth mode (nil otherwise).
 	OAuth *OAuthView
+	// ReviewDigest binds a review to what its reader saw (ReviewDigest).
+	ReviewDigest string
 }
 
 // HasAuth reports whether the server has a stored header.
@@ -231,6 +233,17 @@ func views(ctx context.Context, q *dbgen.Queries, rows []dbgen.ListMCPServersRow
 			EffectivePolicy: authz.EffectivePolicy(r.TeamPolicyOverride, settings.PublishDefaultPolicy),
 			Requirement:     RequirementOf(r.McpServer, ps),
 		}
+	}
+	servers := make([]dbgen.McpServer, len(rows))
+	for i, r := range rows {
+		servers[i] = r.McpServer
+	}
+	digest, err := digests(ctx, q, servers)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].ReviewDigest = digest[out[i].Server.ID]
 	}
 	stats, err := q.MCPCapabilityStats(ctx, ids)
 	if err != nil {

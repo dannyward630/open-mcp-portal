@@ -287,7 +287,11 @@ func (a *api) approveTeamMcpCapability(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c, err := a.Registry.ApproveTeamCapability(r.Context(), a.actor(r), r.PathValue("team"), id, capID)
+	in, ok := decodeOptional[apitypes.McpCapabilityApproval](w, r)
+	if !ok {
+		return
+	}
+	c, err := a.Registry.ApproveTeamCapability(r.Context(), a.actor(r), r.PathValue("team"), id, capID, in.ExpectedFingerprint)
 	if failed(w, r, err) {
 		return
 	}
@@ -312,7 +316,7 @@ func (a *api) publishTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := a.Registry.Publish(r.Context(), a.actor(r), r.PathValue("team"), id, in.Note)
+	v, err := a.Registry.Publish(r.Context(), a.actor(r), r.PathValue("team"), id, in.Note, in.ExpectedDigest)
 	if failed(w, r, err) {
 		return
 	}
@@ -462,7 +466,7 @@ func (a *api) adminReviewMcpServer(w http.ResponseWriter, r *http.Request) {
 	if !httpx.Decode(w, r, &in) {
 		return
 	}
-	v, err := a.Registry.Review(r.Context(), a.actor(r), id, string(in.Decision), in.Note)
+	v, err := a.Registry.Review(r.Context(), a.actor(r), id, string(in.Decision), in.Note, deref(in.ExpectedDigest))
 	if failed(w, r, err) {
 		return
 	}
@@ -478,7 +482,11 @@ func (a *api) adminApproveMcpCapability(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	c, err := a.Registry.ApproveCapability(r.Context(), a.actor(r), id, capID)
+	in, ok := decodeOptional[apitypes.McpCapabilityApproval](w, r)
+	if !ok {
+		return
+	}
+	c, err := a.Registry.ApproveCapability(r.Context(), a.actor(r), id, capID, in.ExpectedFingerprint)
 	if failed(w, r, err) {
 		return
 	}

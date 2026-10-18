@@ -342,16 +342,16 @@ func TestMcpPublishingApprovalRequired(t *testing.T) {
 	mustCode(t, "bad publish state", code, ec, 400, "invalid_publish_state")
 
 	// Review: auditors can't; an admin approves (and its capabilities).
-	code, ec = e.auditor.call("POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "approve"}, nil, nil)
+	code, ec = e.auditor.call("POST", "/v1/admin/mcp-servers/"+id+"/review", approveBody(t, e.admin, id), nil, nil)
 	mustCode(t, "auditor review", code, ec, 403, "forbidden")
 	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "maybe"}, nil, nil)
 	mustCode(t, "bad decision", code, ec, 400, "invalid_decision")
-	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "approve", "note": "Looks good"}, &sv, nil)
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", approveBody(t, e.admin, id, "Looks good"), &sv, nil)
 	mustCode(t, "approve", code, ec, 200, "")
 	if sv.PublishState != "published" || sv.PublishReviewedByName == nil || sv.PublishReviewNote == nil || sv.PendingChanges != 0 {
 		t.Fatalf("published = %+v", sv)
 	}
-	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "approve"}, nil, nil)
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", approveBody(t, e.admin, id), nil, nil)
 	mustCode(t, "approve again", code, ec, 409, "invalid_state")
 	for name, c := range e.capabilities(e.member, id) {
 		if !c.Approved || c.ApprovedAt == nil || c.ApprovedByName == nil {
@@ -396,7 +396,7 @@ func TestMcpPublishingApprovalRequired(t *testing.T) {
 	}
 	approval := func(s *session, path, wantErr string, wantCode int) {
 		t.Helper()
-		code, ec := s.call("PUT", path, nil, nil, nil)
+		code, ec := s.call("PUT", path, approvalBody(t, e.admin, path), nil, nil)
 		mustCode(t, path, code, ec, wantCode, wantErr)
 	}
 	teamApproval := base + "/" + id + "/capabilities/" + caps["check_outage"].Id.String() + "/approval"
@@ -460,7 +460,7 @@ func TestMcpPublishingApprovalRequired(t *testing.T) {
 	if code, _ := e.catalog(e.outsider, id); code != 404 {
 		t.Fatalf("moved server still in catalog = %d", code)
 	}
-	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "approve"}, nil, nil)
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", approveBody(t, e.admin, id), nil, nil)
 	mustCode(t, "approve unread", code, ec, 409, "not_refreshed")
 	cur = e.server(e.editor, id)
 	moved := strings.Replace(e.fake.URL(), "127.0.0.1", "localhost", 1)
@@ -470,7 +470,7 @@ func TestMcpPublishingApprovalRequired(t *testing.T) {
 	if sv.PublishState != "pending" || sv.RefreshedAt == nil {
 		t.Fatalf("moved back = %+v", sv)
 	}
-	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "approve"}, &sv, nil)
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", approveBody(t, e.admin, id), &sv, nil)
 	mustCode(t, "approve moved", code, ec, 200, "")
 
 	// Reject removes a published server; unpublish makes it private.
@@ -568,19 +568,19 @@ func TestMcpPublishingSelfPublish(t *testing.T) {
 		t.Fatalf("changed = %+v", changed)
 	}
 	approval := base + "/" + id + "/capabilities/" + changed.Id.String() + "/approval"
-	code, ec = e.editor.call("PUT", approval, nil, nil, nil)
+	code, ec = e.editor.call("PUT", approval, approvalBody(t, e.admin, approval), nil, nil)
 	mustCode(t, "editor approve", code, ec, 403, "forbidden")
-	code, ec = e.admin.call("PUT", approval, nil, nil, nil)
+	code, ec = e.admin.call("PUT", approval, approvalBody(t, e.admin, approval), nil, nil)
 	mustCode(t, "platform admin on the team route", code, ec, 403, "forbidden")
 	var c apitypes.McpCapability
-	code, ec = e.owner.call("PUT", approval, nil, &c, nil)
+	code, ec = e.owner.call("PUT", approval, approvalBody(t, e.admin, approval), &c, nil)
 	mustCode(t, "owner approve", code, ec, 200, "")
 	if !c.Approved || c.Changed || c.ApprovedByName == nil {
 		t.Fatalf("approved = %+v", c)
 	}
-	code, ec = e.owner.call("PUT", approval, nil, nil, nil)
+	code, ec = e.owner.call("PUT", approval, approvalBody(t, e.admin, approval), nil, nil)
 	mustCode(t, "approve unchanged", code, ec, 409, "not_changed")
-	code, ec = e.owner.call("PUT", base+"/"+id+"/capabilities/"+changed.ServerId.String()+"/approval", nil, nil, nil)
+	code, ec = e.owner.call("PUT", base+"/"+id+"/capabilities/"+changed.ServerId.String()+"/approval", map[string]any{"expectedFingerprint": "x"}, nil, nil)
 	mustCode(t, "unknown capability", code, ec, 404, "mcp_capability_not_found")
 
 	// The platform default.
@@ -673,7 +673,7 @@ func TestMcpPolicyChangeKeepsPending(t *testing.T) {
 	}
 	code, ec = e.owner.call("POST", base+"/"+b+"/publish", nil, nil, nil)
 	mustCode(t, "request again", code, ec, 409, "already_pending")
-	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+b+"/review", map[string]any{"decision": "approve"}, &sv, nil)
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+b+"/review", approveBody(t, e.admin, b), &sv, nil)
 	mustCode(t, "review", code, ec, 200, "")
 	if sv.PublishState != "published" {
 		t.Fatalf("reviewed = %+v", sv)
@@ -706,7 +706,7 @@ func TestMcpHeaderValueNeverDisclosed(t *testing.T) {
 	}
 	id := created.Data.Server.Id.String()
 	call(e.owner, "POST", base+"/"+id+"/publish", nil, nil)
-	call(e.admin, "POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "approve"}, nil)
+	call(e.admin, "POST", "/v1/admin/mcp-servers/"+id+"/review", approveBody(t, e.admin, id), nil)
 	// A new value; the server refuses it (an error path), then the old one again.
 	call(e.editor, "PATCH", base+"/"+id, map[string]any{"authValue": second}, ifMatch(created.Data.Server.Revision+2))
 	call(e.editor, "POST", base+"/"+id+"/test", nil, nil)

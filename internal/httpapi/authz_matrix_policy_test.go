@@ -175,7 +175,8 @@ var matrixPolicies = map[string]policy{
 	}},
 	"approveTeamMcpCapability": {scope: scopeTeam, own: admins, build: func(c *mctx) request {
 		srv, capID := c.changedCapability()
-		return request{method: "PUT", path: c.team("/mcp-servers/" + srv + "/capabilities/" + capID + "/approval")}
+		return request{method: "PUT", path: c.team("/mcp-servers/" + srv + "/capabilities/" + capID + "/approval"),
+			body: map[string]any{"expectedFingerprint": c.e.fingerprint(capID)}}
 	}},
 	"listTeamMcpHealthChecks": {scope: scopeTeam, own: members, foreign: platform, build: func(c *mctx) request {
 		return get(c.team("/mcp-servers/" + c.tf.server + "/health-checks"))
@@ -205,11 +206,13 @@ var matrixPolicies = map[string]policy{
 	"adminListMcpCapabilities": {own: platform, build: func(c *mctx) request { return get("/v1/admin/mcp-servers/" + c.e.b.server + "/capabilities") }},
 	"adminListMcpHealthChecks": {own: platform, build: func(c *mctx) request { return get("/v1/admin/mcp-servers/" + c.e.b.server + "/health-checks") }},
 	"adminReviewMcpServer": {own: padmin, build: func(c *mctx) request {
-		return post("/v1/admin/mcp-servers/"+c.server("pending")+"/review", map[string]any{"decision": "approve", "note": "ok"})
+		srv := c.server("pending")
+		return post("/v1/admin/mcp-servers/"+srv+"/review", map[string]any{"decision": "approve", "note": "ok", "expectedDigest": c.e.digest(srv)})
 	}},
 	"adminApproveMcpCapability": {own: padmin, build: func(c *mctx) request {
 		srv, capID := c.changedCapability()
-		return request{method: "PUT", path: "/v1/admin/mcp-servers/" + srv + "/capabilities/" + capID + "/approval"}
+		return request{method: "PUT", path: "/v1/admin/mcp-servers/" + srv + "/capabilities/" + capID + "/approval",
+			body: map[string]any{"expectedFingerprint": c.e.fingerprint(capID)}}
 	}},
 	"adminGetPublishingSettings": {own: platform, build: func(*mctx) request { return get("/v1/admin/settings/publishing") }},
 	"adminUpdatePublishingSettings": {own: padmin, build: func(c *mctx) request {

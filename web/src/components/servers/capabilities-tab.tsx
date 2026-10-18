@@ -13,7 +13,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, KeyRound, ListTree } from "lucide-react";
 import { useState } from "react";
-import { api, unwrap } from "../../api/client";
+import { ApiError, api, unwrap } from "../../api/client";
 import { ConfirmMutationDialog } from "../confirm-dialog";
 import { needsText, serviceAccountsCant } from "../providers/labels";
 import { RequiresBadge } from "../providers/requires";
@@ -30,6 +30,7 @@ import { toast } from "@/components/ui/toast/toast";
 import s from "../../pages/shared.module.css";
 import { CapabilityStateBadge } from "./badges";
 import { CapabilityItem } from "./capability-item";
+import { changedSinceReviewText } from "./publish-dialogs";
 import { kindOrder, kindTitle, type McpCapability, type McpServer, untrustedApproverText, untrustedText } from "./labels";
 import { capabilitiesQuery, invalidateServer, type ServerAbilities, type ServerScope } from "./scope";
 import { OverrideDialog } from "./override-dialog";
@@ -122,20 +123,44 @@ function CapabilityRow({ cap, server, scope, abilities, inCatalog }: { cap: McpC
   const qc = useQueryClient();
   const [confirming, setConfirming] = useState<McpCapability | null>(null);
   const [overriding, setOverriding] = useState(false);
+  // The approval names the fingerprint of the definition the approver confirmed (the one in `confirming`), so a
+  // refresh in between fails with 409 changed_since_review instead of approving text nobody read.
+  const send = async (expectedFingerprint: string) =>
+    scope.kind === "team"
+      ? unwrap(
+          await api.PUT("/v1/teams/{team}/mcp-servers/{serverId}/capabilities/{capabilityId}/approval", {
+            params: { path: { team: scope.team, serverId: server.id, capabilityId: cap.id } },
+            body: { expectedFingerprint },
+          }),
+        )
+      : unwrap(
+          await api.PUT("/v1/admin/mcp-servers/{serverId}/capabilities/{capabilityId}/approval", {
+            params: { path: { serverId: server.id, capabilityId: cap.id } },
+            body: { expectedFingerprint },
+          }),
+        );
   const approve = useMutation({
-    mutationFn: async () =>
-      scope.kind === "team"
-        ? unwrap(
-            await api.PUT("/v1/teams/{team}/mcp-servers/{serverId}/capabilities/{capabilityId}/approval", {
-              params: { path: { team: scope.team, serverId: server.id, capabilityId: cap.id } },
-            }),
-          )
-        : unwrap(await api.PUT("/v1/admin/mcp-servers/{serverId}/capabilities/{capabilityId}/approval", { params: { path: { serverId: server.id, capabilityId: cap.id } } })),
+    mutationFn: async (expectedFingerprint: string) => {
+      try {
+        return await send(expectedFingerprint);
+      } catch (err) {
+        // The dialog shows the error's message: say plainly what to do.
+        if (err instanceof ApiError && err.code === "changed_since_review") throw new ApiError(err.status, err.code, changedSinceReviewText, err.details);
+        throw err;
+      }
+    },
     onSuccess: (updated) => {
       qc.setQueryData<McpCapability[]>(capabilitiesQuery(scope, server.id).queryKey, (list) => list?.map((c) => (c.id === updated.id ? updated : c)));
       invalidateServer(qc, server);
       setConfirming(null);
       toast.success(`The change to ${cap.name} was approved`, "The catalog shows its new definition.");
+    },
+    // Changed under the approver: show the new definition (the list reloads); the dialog says to review it again.
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        void qc.invalidateQueries({ queryKey: capabilitiesQuery(scope, server.id).queryKey });
+        invalidateServer(qc, server);
+      }
     },
   });
   const canApprove = abilities.canApproveChanges && cap.changed && !cap.goneAt;
@@ -194,7 +219,7 @@ function CapabilityRow({ cap, server, scope, abilities, inCatalog }: { cap: McpC
                   target={confirming}
                   onClose={() => setConfirming(null)}
                   mutation={approve}
-                  onConfirm={() => approve.mutate()}
+                  onConfirm={(c) => approve.mutate(c.fingerprint)}
                   tone="primary"
                   title={`Approve the change to ${cap.name}?`}
                   description="The catalog shows its new definition from now on, and a model will read it. Read the definition before you approve."

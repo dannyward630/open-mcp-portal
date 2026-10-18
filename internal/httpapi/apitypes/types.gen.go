@@ -3490,6 +3490,12 @@ type McpCapability struct {
 	Title    string                 `json:"title"`
 }
 
+// McpCapabilityApproval defines model for McpCapabilityApproval.
+type McpCapabilityApproval struct {
+	// ExpectedFingerprint The capability's fingerprint as the approver saw it; 409 changed_since_review when the capability has another definition now
+	ExpectedFingerprint string `json:"expectedFingerprint"`
+}
+
 // McpErrorClass not_allowed: the URL or an address it resolves to is refused (blocked, or internal and not allowlisted), or the server redirected
 type McpErrorClass string
 
@@ -3514,6 +3520,9 @@ type McpHealthCheckTrigger string
 
 // McpPublishRequest defines model for McpPublishRequest.
 type McpPublishRequest struct {
+	// ExpectedDigest The server's reviewDigest as the publisher saw it. Optional; when given and no longer current, 409 changed_since_review
+	ExpectedDigest *string `json:"expectedDigest,omitempty"`
+
 	// Note For the reviewer
 	Note *string `json:"note,omitempty"`
 }
@@ -3521,6 +3530,9 @@ type McpPublishRequest struct {
 // McpPublishReview defines model for McpPublishReview.
 type McpPublishReview struct {
 	Decision McpPublishReviewDecision `json:"decision"`
+
+	// ExpectedDigest The server's reviewDigest as the admin read it. Required for approve (400 expected_digest_required), not needed for reject; 409 changed_since_review when it is no longer current
+	ExpectedDigest *string `json:"expectedDigest,omitempty"`
 
 	// Note Shown to the team
 	Note *string `json:"note,omitempty"`
@@ -3592,6 +3604,9 @@ type McpServer struct {
 
 	// Requirement The auth provider and scopes whose user token the portal sends with calls to this server's capabilities (null; none). Capabilities can override it (McpCapability.requirementOverride).
 	Requirement *McpServerRequirement `json:"requirement,omitempty"`
+
+	// ReviewDigest SHA-256 (hex) over the server's URL, auth mode and requirement and over every listed capability's kind, name and fingerprint, sorted. It changes when any of them does (a refresh, a new URL ...). Send it back as expectedDigest when reviewing (adminReviewMcpServer) or publishing, so what is approved is what was read
+	ReviewDigest *string `json:"reviewDigest,omitempty"`
 
 	// Revision Increases on every change. Send it back in If-Match.
 	Revision Revision `json:"revision"`
@@ -5872,6 +5887,9 @@ type AdminSetGatewayCapabilitiesJSONRequestBody = GatewayCapabilitiesUpdate
 // AdminAddGatewayGrantJSONRequestBody defines body for AdminAddGatewayGrant for application/json ContentType.
 type AdminAddGatewayGrantJSONRequestBody = GatewayGrantCreate
 
+// AdminApproveMcpCapabilityJSONRequestBody defines body for AdminApproveMcpCapability for application/json ContentType.
+type AdminApproveMcpCapabilityJSONRequestBody = McpCapabilityApproval
+
 // AdminReviewMcpServerJSONRequestBody defines body for AdminReviewMcpServer for application/json ContentType.
 type AdminReviewMcpServerJSONRequestBody = McpPublishReview
 
@@ -5961,6 +5979,9 @@ type DetectTeamMcpServerAuthJSONRequestBody = DetectAuthRequest
 
 // UpdateTeamMcpServerJSONRequestBody defines body for UpdateTeamMcpServer for application/json ContentType.
 type UpdateTeamMcpServerJSONRequestBody = McpServerUpdate
+
+// ApproveTeamMcpCapabilityJSONRequestBody defines body for ApproveTeamMcpCapability for application/json ContentType.
+type ApproveTeamMcpCapabilityJSONRequestBody = McpCapabilityApproval
 
 // SetTeamMcpCapabilityRequirementJSONRequestBody defines body for SetTeamMcpCapabilityRequirement for application/json ContentType.
 type SetTeamMcpCapabilityRequirementJSONRequestBody = CapabilityRequirementOverride

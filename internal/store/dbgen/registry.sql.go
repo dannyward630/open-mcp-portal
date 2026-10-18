@@ -588,6 +588,47 @@ func (q *Queries) ListMCPCapabilities(ctx context.Context, arg ListMCPCapabiliti
 	return items, nil
 }
 
+const listMCPCapabilityFingerprints = `-- name: ListMCPCapabilityFingerprints :many
+SELECT c.server_id, c.kind, c.name, c.fingerprint
+FROM mcp_capabilities c
+WHERE c.server_id = ANY($1::uuid[]) AND c.gone_at IS NULL
+ORDER BY c.server_id, c.kind, c.name
+`
+
+type ListMCPCapabilityFingerprintsRow struct {
+	ServerID    uuid.UUID
+	Kind        string
+	Name        string
+	Fingerprint string
+}
+
+// What a reviewer's digest covers: the listed (not gone) capabilities of
+// servers, as (kind, name, fingerprint).
+func (q *Queries) ListMCPCapabilityFingerprints(ctx context.Context, serverIds []uuid.UUID) ([]ListMCPCapabilityFingerprintsRow, error) {
+	rows, err := q.db.Query(ctx, listMCPCapabilityFingerprints, serverIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMCPCapabilityFingerprintsRow{}
+	for rows.Next() {
+		var i ListMCPCapabilityFingerprintsRow
+		if err := rows.Scan(
+			&i.ServerID,
+			&i.Kind,
+			&i.Name,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMCPHealthChecks = `-- name: ListMCPHealthChecks :many
 SELECT id, server_id, checked_at, ok, latency_ms, trigger, triggered_by, error_class, http_status, message, status_since, sign_in_required FROM mcp_health_checks WHERE server_id = $1 ORDER BY checked_at DESC, id DESC LIMIT $2
 `

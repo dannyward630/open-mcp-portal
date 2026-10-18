@@ -636,7 +636,7 @@ func TestUpstreamOAuthManualLinkAndReview(t *testing.T) {
 		"upstream_auth_changed" {
 		t.Fatalf("widened = %s", sv.PublishState)
 	}
-	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", map[string]any{"decision": "approve"}, nil, nil)
+	code, ec = e.admin.call("POST", "/v1/admin/mcp-servers/"+id+"/review", approveBody(t, e.admin, id), nil, nil)
 	mustCode(t, "approve", code, ec, 200, "")
 	if code, ec, sv = e.patch(e.editor, id, map[string]any{"oauth": map[string]any{"scopes": []string{"repo"}}}); code != 200 || sv.PublishState != "published" {
 		t.Fatalf("narrowed = %d %s %s", code, ec, sv.PublishState)

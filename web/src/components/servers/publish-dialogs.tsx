@@ -5,6 +5,10 @@
  * platform admins approve or reject a request, or remove a published server
  * from the catalog (a reject). Approve needs the capabilities read from the
  * current URL (409 not_refreshed otherwise).
+ *
+ * An approval is bound to what its reader saw: the dialogs send the server's
+ * reviewDigest as it was when they opened, and a 409 changed_since_review
+ * (a refresh or an edit in between) approves nothing and says to reload.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -23,6 +27,12 @@ import { SignInSummary } from "./sign-in-card";
 import { authModeOf } from "./upstream-auth";
 
 const maxNote = 2000;
+
+/** The text for a 409 changed_since_review: what was reviewed isn't what the server holds now. */
+export const changedSinceReviewText = "This changed since you opened it. Reload and review it again.";
+
+/** Maps changed_since_review to its fixed text (for ErrorAlert's describe). */
+export const describeChangedSinceReview = (e: unknown) => (e instanceof ApiError && e.code === "changed_since_review" ? { message: changedSinceReviewText, tone: "warning" as const } : undefined);
 
 /** What the server receives with each call: how the portal authenticates (sign-in, identity) and, without OAuth, the callers' accounts. */
 function ServerReceives({ server, scope }: { server: McpServer; scope: ServerScope }) {
@@ -63,19 +73,24 @@ export function approveBlocked(server: McpServer) {
 export function PublishDialog({ server, onClose }: { server: McpServer; onClose: () => void }) {
   const qc = useQueryClient();
   const [note, setNote] = useState("");
+  // The digest of what this dialog showed when it opened: a refetch while it is open must not replace it.
+  const [seen] = useState(server.reviewDigest);
   const self = server.effectivePublishPolicy === "self_publish";
   const publish = useMutation({
     mutationFn: async () =>
       unwrap(
         await api.POST("/v1/teams/{team}/mcp-servers/{serverId}/publish", {
           params: { path: { team: server.teamSlug, serverId: server.id } },
-          body: note.trim() ? { note: note.trim() } : {},
+          body: { ...(note.trim() ? { note: note.trim() } : {}), ...(seen ? { expectedDigest: seen } : {}) },
         }),
       ),
     onSuccess: (s) => {
       storeServer(qc, s);
       toast.success(s.publishState === "published" ? `${s.name} is in the catalog` : "Review requested", s.publishState === "published" ? undefined : "A platform admin reviews it next.");
       onClose();
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) invalidateServer(qc, server);
     },
   });
   const count = plural(totalCount(server.counts), "capability", "capabilities");
@@ -96,7 +111,7 @@ export function PublishDialog({ server, onClose }: { server: McpServer; onClose:
       <Field label={self ? "Note" : "Note for the reviewer"} labelHint="Optional" description={self ? "Kept with the server's publishing record." : "What the server is for, who should use it, anything they should check."}>
         <Textarea rows={3} maxLength={maxNote} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
-      <ErrorAlert error={publish.error} />
+      <ErrorAlert error={publish.error} describe={describeChangedSinceReview} />
     </FormDialog>
   );
 }
@@ -176,6 +191,8 @@ export function ReviewDialog({ server, decision, onClose }: { server: McpServer;
   const qc = useQueryClient();
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  // What the admin was shown when the dialog opened; an approval names it (a refetch must not replace it).
+  const [seen] = useState(server.reviewDigest);
   const needsNote = decision !== "approve";
   const missing = needsNote && !note.trim();
   const text = reviewText[decision];
@@ -184,7 +201,11 @@ export function ReviewDialog({ server, decision, onClose }: { server: McpServer;
       unwrap(
         await api.POST("/v1/admin/mcp-servers/{serverId}/review", {
           params: { path: { serverId: server.id } },
-          body: { decision: decision === "approve" ? "approve" : "reject", ...(note.trim() ? { note: note.trim() } : {}) },
+          body: {
+            decision: decision === "approve" ? "approve" : "reject",
+            ...(note.trim() ? { note: note.trim() } : {}),
+            ...(decision === "approve" ? { expectedDigest: seen ?? "" } : {}),
+          },
         }),
       ),
     onSuccess: (s) => {
@@ -233,7 +254,7 @@ export function ReviewDialog({ server, decision, onClose }: { server: McpServer;
         describe={(e) =>
           e instanceof ApiError && e.code === "not_refreshed"
             ? { message: "Its capabilities haven't been read from its current URL, so there's nothing reviewed to approve. The team refreshes the server first; then approve it." }
-            : undefined
+            : describeChangedSinceReview(e)
         }
       />
     </FormDialog>

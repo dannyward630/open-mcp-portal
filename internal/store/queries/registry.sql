@@ -163,6 +163,14 @@ FROM mcp_capabilities c
 WHERE c.server_id = ANY(@server_ids::uuid[])
 GROUP BY c.server_id, c.kind;
 
+-- name: ListMCPCapabilityFingerprints :many
+-- What a reviewer's digest covers: the listed (not gone) capabilities of
+-- servers, as (kind, name, fingerprint).
+SELECT c.server_id, c.kind, c.name, c.fingerprint
+FROM mcp_capabilities c
+WHERE c.server_id = ANY(@server_ids::uuid[]) AND c.gone_at IS NULL
+ORDER BY c.server_id, c.kind, c.name;
+
 -- name: ListMCPCapabilities :many
 -- A server's capabilities ordered by kind (tool, resource, template,
 -- prompt) and name, gone ones included, with who approved each.
