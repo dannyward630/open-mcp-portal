@@ -621,8 +621,11 @@ func (s *Service) insertParams(ctx context.Context, id, teamID uuid.UUID, a auth
 // Update changes a server's settings (team editors and above); the slug
 // never changes. A new URL or header forgets the stored health. A new URL
 // also forgets when capabilities were read and reads them again from the new
-// endpoint, so nothing is approved on the strength of the old one. Audited as
-// mcp_server.update with whether the header value changed (never the value).
+// endpoint, so nothing is approved on the strength of the old one. A URL with
+// another origin never keeps the stored header value (422 auth_value_required
+// unless a new value comes with it, or the header goes). Audited as
+// mcp_server.update with whether the header value changed (never the value)
+// and, for another origin, the old and new one.
 // A request that changes nothing (for example the capture switch resent at its
 // current value) writes nothing: no revision bump and no audit entry, as a
 // member role change to the same role.
@@ -704,6 +707,9 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 		e := a.Audit("mcp_server.update", "mcp_server", id.String())
 		e.TeamID, e.Before, e.After = ta.team.ID, snapshot(cur), snapshot(row)
 		e.Metadata = map[string]any{"authValueChanged": valueChanged}
+		for k, v := range originChange(cur.URL, row.URL) {
+			e.Metadata[k] = v
+		}
 		if reset > 0 {
 			e.Metadata["overridesReset"] = reset
 		}
@@ -822,6 +828,11 @@ func (s *Service) prepareUpdate(ctx context.Context, a authz.Actor, ref string, 
 			return out, err
 		}
 	}
+	// Refused before any network exchange with the new host (F-1); applyUpdate
+	// checks again under the row lock.
+	if err := requireValueForOrigin(cur, newURL, in, out.mode); err != nil {
+		return out, err
+	}
 	switch {
 	case out.mode == AuthOAuth && (AuthModeOf(cur) != AuthOAuth || in.OAuth != nil || newURL != cur.URL || out.provider == nil):
 		header := deref(cur.AuthHeaderName)
@@ -866,7 +877,13 @@ func (s *Service) applyOAuth(ctx context.Context, q *dbgen.Queries, a authz.Acto
 		return true, authUpdateAudit(ctx, q, a, &cur, nil, row, &np, map[string]any{"registered": pre.plan.registered,
 			"clientIdChanged": true, "clientSecretChanged": pre.plan.secret != nil, "connectionsReset": 0})
 	case afterMode == AuthOAuth && prov != nil:
-		if pre.plan == nil || planUnchanged(*prov, pre.plan) {
+		// Tokens are for one resource: another origin always starts over, even
+		// when discovery at the new host happens to give an identical plan (F-1).
+		originMoved := !sameOrigin(cur.URL, row.URL)
+		if originMoved && pre.plan == nil {
+			return false, errors.New("registry: another origin without a sign-in plan")
+		}
+		if !originMoved && (pre.plan == nil || planUnchanged(*prov, pre.plan)) {
 			if row.Name != cur.Name {
 				if err := q.RenameServerProvider(ctx, dbgen.RenameServerProviderParams{Name: row.Name, ServerID: uuid.NullUUID{UUID: row.ID, Valid: true}}); err != nil {
 					return false, err
@@ -892,10 +909,13 @@ func (s *Service) applyOAuth(ctx context.Context, q *dbgen.Queries, a authz.Acto
 		}
 		meta := map[string]any{"registered": pre.plan.registered, "clientIdChanged": clientChanged,
 			"clientSecretChanged": pre.plan.secret != nil || (pre.plan.clearSecret && prov.ClientSecretCipher != nil), "connectionsReset": reset}
+		for k, v := range originChange(cur.URL, row.URL) {
+			meta[k] = v
+		}
 		if err := authUpdateAudit(ctx, q, a, &cur, prov, row, &np, meta); err != nil {
 			return false, err
 		}
-		return otherServer || widensScopes(nonNil(prov.DefaultScopes), nonNil(np.DefaultScopes)), nil
+		return otherServer || originMoved || widensScopes(nonNil(prov.DefaultScopes), nonNil(np.DefaultScopes)), nil
 	case afterMode != AuthOAuth && prov != nil:
 		if s.oauth.Hooks != nil {
 			if err := s.oauth.Hooks.DeleteConnections(ctx, q, a, *prov, pre.revoked, "server_auth_changed"); err != nil {
@@ -934,6 +954,9 @@ func (s *Service) applyUpdate(ctx context.Context, cur dbgen.McpServer, in Updat
 			return p, false, err
 		}
 		p.URL = u
+	}
+	if err := requireValueForOrigin(cur, p.URL, in, mode); err != nil {
+		return p, false, err
 	}
 	if mode == AuthNone {
 		// authMode none removes the static header with its value.

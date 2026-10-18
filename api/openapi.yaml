@@ -977,7 +977,14 @@ paths:
         approval_required (mcp_server.publish_request, reason upstream_auth_changed). Leaving oauth, a URL change,
         another authorization server or another client ID erases the tokens of every connection to the server
         (needs_reconsent; leaving oauth deletes them, revoked where possible). Audited as mcp_server.auth_update
-        (before/after, clientIdChanged, clientSecretChanged, connectionsReset; never a secret).'
+        (before/after, clientIdChanged, clientSecretChanged, connectionsReset; never a secret).
+
+
+        A URL with another origin (scheme, host or port; case, a trailing slash and the path don''t count) never keeps the
+        stored static header value, which nobody but its author can read: 422 auth_value_required (details.field authValue)
+        unless the same request sends a new authValue, removes the header (authHeaderName "") or sets authMode none.
+        Nothing changes and nothing is sent to the new host. In oauth mode another origin also erases every connection''s
+        tokens and sends the server back to the setup sign-in (as above). The audit entry names oldOrigin and newOrigin.'
       parameters:
       - $ref: '#/components/parameters/IfMatchHeader'
       requestBody:
