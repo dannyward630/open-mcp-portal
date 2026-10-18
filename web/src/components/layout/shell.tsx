@@ -21,6 +21,7 @@ import { useCurrentPageCrumbs } from "./crumb-tail";
 import { TakeoverHost } from "../templates/takeover";
 import { PALETTE_LABEL, useCommands } from "./commands";
 import { type Mode, useRememberHref } from "./mode-switch";
+import { NotificationBell } from "../notifications/bell";
 import { RateLimitBanner } from "./rate-limit-banner";
 import { AppSidebar } from "./sidebar";
 
@@ -98,6 +99,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
                   </Badge>
                 )}
                 <CommandPaletteTrigger onClick={() => setPaletteOpen(true)} label="Search or jump to…" className={styles.search} />
+                <NotificationBell />
               </>
             }
           />

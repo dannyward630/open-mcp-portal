@@ -6,7 +6,7 @@
  * up here when it's added there.
  */
 import { useNavigate } from "@tanstack/react-router";
-import { BadgeCheck, Bot, Boxes, FileClock, Gauge, KeyRound, KeySquare, Link2, Network, Plug, Plus, ServerCog, Settings, User, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Bell, Bot, Boxes, FileClock, Gauge, Inbox, KeyRound, KeySquare, Link2, Network, Plug, Plus, ServerCog, Settings, Terminal, User, UserPlus, Users } from "lucide-react";
 import { useMemo } from "react";
 import { requestIntent } from "../../lib/intents";
 import { type TeamSettingsTab } from "../../lib/tabs";
@@ -61,6 +61,22 @@ function pageGroup(navigate: Navigate, me: Me, slug: string | undefined, mine: M
       hint: "Page",
       keywords: ["account", "connections", "connect", "github", "google", "oauth", "provider", "token", "disconnect", "reconnect", "authorize", "scopes"],
       onSelect: () => void navigate({ to: "/settings/connections" }),
+    },
+    {
+      id: "inbox",
+      label: terms.inbox,
+      icon: icon(Inbox),
+      hint: "Page",
+      keywords: ["notifications", "unread", "alerts", "messages", "bell", "mark read"],
+      onSelect: () => void navigate({ to: "/notifications" }),
+    },
+    {
+      id: "notification-settings",
+      label: terms.notifications,
+      icon: icon(Bell),
+      hint: "Page",
+      keywords: ["account", "settings", "preferences", "email", "in-app", "events", "mute", "alerts"],
+      onSelect: () => void navigate({ to: "/settings/notifications" }),
     },
     {
       id: "create-api-key",
@@ -123,6 +139,24 @@ function teamPlacesGroup(navigate: Navigate, me: Me, team: { slug: string; name:
       show: a.member || a.staff,
       hint,
       onSelect: go("limits"),
+    },
+    {
+      id: "team-tab:notifications",
+      label: terms.notifications,
+      icon: <Bell aria-hidden />,
+      keywords: ["webhook", "webhooks", "slack", "destination", "alerts", "delivery log", "deliveries", "signing secret"],
+      show: a.member || a.staff,
+      hint,
+      onSelect: go("notifications"),
+    },
+    {
+      id: "team-tab:automation-tokens",
+      label: terms.automationTokens,
+      icon: <Terminal aria-hidden />,
+      keywords: ["token", "tokens", "ci", "pipeline", "publisher", "omppub", "servers:write", "servers:read", "bearer", "script"],
+      show: a.member || a.staff,
+      hint,
+      onSelect: go("automation-tokens"),
     },
     {
       id: "team-tab:general",

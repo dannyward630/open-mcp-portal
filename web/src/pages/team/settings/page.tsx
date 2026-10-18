@@ -1,11 +1,12 @@
 /*
  * Team settings: Members (with open invites) · Audit log · Limits &
- * retention (read-only) · General, as pill tabs (?tab=). General holds the
+ * retention (read-only) · Notifications (webhooks) · Automation tokens ·
+ * General, as pill tabs (?tab=). General holds the
  * team's details and the Danger zone (leave the team; platform admins
  * archive it). Later phases add tabs here in lib/tabs.ts and below.
  */
 import { Link } from "@tanstack/react-router";
-import { FileClock, Gauge, Settings, Users } from "lucide-react";
+import { Bell, FileClock, Gauge, Settings, Terminal, Users } from "lucide-react";
 import { PageTabs, useUrlTab } from "../../../components/page-tabs";
 import { teamSettingsTabs } from "../../../lib/tabs";
 import { terms } from "../../../lib/terms";
@@ -21,12 +22,14 @@ import { TeamAuditLog } from "./audit";
 import { GeneralTab } from "./general";
 import { LimitsTab } from "./limits";
 import { MembersTab } from "./members";
+import { TeamNotificationsTab } from "./notifications";
+import { TeamAutomationTokensTab } from "./automation-tokens";
 
 /** The page's description: what its tabs hold for this reader. */
 export function settingsDescription(name: string, canAudit: boolean) {
   return canAudit
-    ? `The members, open invites, audit log, limits and general details of ${name}.`
-    : `The members, limits and general details of ${name}.`;
+    ? `The members, open invites, audit log, limits, notifications, automation tokens and general details of ${name}.`
+    : `The members, limits, notifications, automation tokens and general details of ${name}.`;
 }
 
 export function TeamSettingsPage() {
@@ -55,6 +58,8 @@ export function TeamSettingsPage() {
           { value: "members", label: "Members", icon: <Users aria-hidden />, content: <MembersTab /> },
           { value: "audit", label: terms.auditLog, icon: <FileClock aria-hidden />, hidden: !canAudit, content: <TeamAuditLog /> },
           { value: "limits", label: terms.limitsAndRetention, icon: <Gauge aria-hidden />, content: <LimitsTab /> },
+          { value: "notifications", label: terms.notifications, icon: <Bell aria-hidden />, content: <TeamNotificationsTab /> },
+          { value: "automation-tokens", label: terms.automationTokens, icon: <Terminal aria-hidden />, content: <TeamAutomationTokensTab /> },
           { value: "general", label: "General", icon: <Settings aria-hidden />, content: <GeneralTab /> },
         ]}
       />

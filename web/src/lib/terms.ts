@@ -35,6 +35,9 @@ export const terms = {
   retention: "Retention",
   payloadCapture: "Payload capture",
   limitsAndRetention: "Limits & retention",
+  notifications: "Notifications",
+  inbox: "Inbox",
+  automationTokens: "Automation tokens",
 } as const;
 
 /** A switchable object's state. */
