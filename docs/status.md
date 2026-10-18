@@ -22,7 +22,7 @@ the fake MCP and OAuth servers): the overview, a test email, a webhook test with
 entry, an email and a webhook, a review with the digest, the decision notification, a platform token against the API, and F-3 end to end
 (consent naming the server, the grant ending when the server moves to another origin, allowing it again without a provider round trip).
 
-Verified after the release (2026-10-18): Claude Code 2.1.280 was run against a gateway (API-key authentication): it spoke 2026-07-28 natively (`server/discover`, the lists, and `tools/call` with the required `Mcp-Method` and `Mcp-Name` headers), and it showed the person the consent link from the tool error (it declares form-mode elicitation only, so it takes the tool-error answer of decision 59). v0.2.0 was also deployed to a real Talos cluster (CloudNativePG, Traefik, Pangolin, Authentik sign-in; health, `doctor` and the OAuth endpoints checked from outside), with continuous WAL archiving and a daily base backup of its database to object storage. A restore was tested the same day: a scratch cluster recovered in about 70 seconds with identical data and a row written after the base backup (WAL replay).
+Verified after the release (2026-10-18): Claude Code 2.1.280 was run against a gateway (API-key authentication): it spoke 2026-07-28 natively (`server/discover`, the lists, and `tools/call` with the required `Mcp-Method` and `Mcp-Name` headers), and it showed the person the consent link from the tool error (it declares form-mode elicitation only, so it takes the tool-error answer of decision 59). v0.2.0 was also deployed to a real Talos cluster (CloudNativePG, Traefik, Pangolin, Authentik sign-in; health, `doctor` and the OAuth endpoints checked from outside), with continuous WAL archiving and a daily base backup of its database to object storage. A restore was tested the same day: a scratch cluster recovered in about 70 seconds with identical data and a row written after the base backup (WAL replay). On that deployment Claude Code also signed in over OAuth (a metadata-document client, no registration or consent page) and called tools through a gateway; that run found that a public server refusing any `Authorization` header (DeepWiki) fails on its first call with the identity token on, which led to the v0.2.1 changes. A second restore, in the live namespace under its network policies, also recovered with identical data.
 
 Verified on kind (2026-10-18, `make k8s-smoke`, [deploy.md](deploy.md#smoke-test)): the Kustomize base applied through `overlays/smoke` to a
 three-node kind cluster (Kubernetes 1.37.0) with a throwaway PostgreSQL 17 and the in-cluster fake MCP server: the migrate init container and
@@ -32,9 +32,9 @@ sign-in, and team, server, gateway and API key through the API, then `tools/list
 With `SMOKE_CNI=calico` the NetworkPolicies are enforced and tested (an outside pod cannot reach the portal; the portal reaches PostgreSQL and the
 MCP server). Not covered: NetworkPolicy under the default CNI (kindnet does not enforce it), the `egress-https` rule, ingress and TLS, OIDC,
 the internal-network allowlist (development sign-in allows private upstream addresses anyway), zones, upgrades between releases and
-restores. `.github/workflows/k8s-smoke.yml` has not run on GitHub.
+restores. `.github/workflows/k8s-smoke.yml` ran on GitHub on 2026-10-18 and passed on both CNIs (kindnet and Calico).
 
-Not verified: Claude Code's OAuth sign-in on the new revision, a client that declares URL elicitation, VS Code and Cursor; a real SMTP provider over TLS and a real Slack webhook; the Kubernetes egress rows on a real cluster; a real Google or
+Not verified: a client that declares URL elicitation, VS Code and Cursor; a real SMTP provider over TLS and a real Slack webhook; the Kubernetes egress rows on a real cluster; a real Google or
 Microsoft provider. Still open from the threat model: the hardening ideas in section 9 (notably H-5, scopes per call and a per-provider
 server allow-list).
 
