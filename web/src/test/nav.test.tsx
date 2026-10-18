@@ -26,6 +26,7 @@ describe("navigation lists", () => {
     expect(teamNavFor(meFor("none", "member"), team.slug).find((n) => n.label === "Gateways")?.to).toBe("/teams/$team/gateways");
     expect(teamNavFor(meFor("none", "member"), team.slug).find((n) => n.label === "Service accounts")?.to).toBe("/teams/$team/service-accounts");
     expect(adminNav.map((n) => n.to)).toEqual([
+      "/admin",
       "/admin/users",
       "/admin/teams",
       "/admin/servers",
@@ -34,12 +35,14 @@ describe("navigation lists", () => {
       "/admin/gateways",
       "/admin/trusted-clients",
       "/admin/auth-providers",
+      "/admin/automation-tokens",
       "/admin/audit",
       "/admin/calls",
       "/admin/usage",
       "/admin/limits",
       "/admin/retention",
       "/admin/capture",
+      "/admin/notifications",
     ]);
     expect(teamNavFor(meFor("none", "editor"), team.slug).find((n) => n.label === "Usage")?.to).toBe("/teams/$team/usage");
     const labels = [...workspaceNav, ...teamNavFor(meFor("none", "owner"), team.slug), ...adminNav].map((n) => n.label);
@@ -91,7 +94,10 @@ describe("navigation lists", () => {
   });
 
   it("groups the admin pages and finds the current page's group", () => {
-    expect(adminSections.map((s) => s.label)).toEqual(["People", "Catalog", "Access", "Records", "Operations"]);
+    // Overview is first and has no group.
+    expect(adminSections.map((s) => s.label)).toEqual([undefined, "People", "Catalog", "Access", "Records", "Operations"]);
+    expect(activeAdminGroup("/admin/automation-tokens")).toBe("Access");
+    expect(activeAdminGroup("/admin/notifications")).toBe("Operations");
     expect(activeAdminGroup("/admin/usage")).toBe("Records");
     expect(activeAdminGroup("/admin/calls/501")).toBe("Records");
     expect(activeAdminGroup("/admin/limits")).toBe("Operations");
@@ -106,6 +112,7 @@ describe("navigation lists", () => {
     expect(activeAdminGroup("/admin/publishing")).toBe("Catalog");
     expect(activeAdminGroup("/admin/audit")).toBe("Records");
     expect(activeAdminGroup("/admin")).toBeUndefined();
+    expect(activeAdminGroup("/admin/")).toBeUndefined();
     expect(currentGroups(["Records", "Safety", "Records"])).toEqual(["Records"]);
   });
 });

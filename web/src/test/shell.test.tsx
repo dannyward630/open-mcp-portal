@@ -88,9 +88,13 @@ describe("app shell", () => {
 
     const portal = screen.getByRole("navigation", { name: "Portal" });
     await u.click(within(portal).getByRole("link", { name: "Admin" }));
-    // The admin portal opens on its first page.
-    await waitFor(() => expect(router.state.location.pathname).toBe("/admin/users"));
+    // The admin portal opens on the Overview, the first item of the sidebar (it has no group).
+    await waitFor(() => expect(router.state.location.pathname).toBe("/admin"));
     await waitFor(() => expect(within(portal).getByRole("link", { name: "Admin" })).toHaveAttribute("aria-current", "page"));
+    expect(await within(nav).findByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    await u.click(within(nav).getByRole("button", { name: "People" }));
+    await u.click(await within(nav).findByRole("link", { name: "Users" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/admin/users"));
     expect(await within(nav).findByRole("link", { name: "Users" })).toHaveAttribute("aria-current", "page");
     // The current page's group is open; the newer groups (Access, Records) start open; the others collapse to their headers.
     expect(within(nav).getByRole("button", { name: "People" })).toHaveAttribute("aria-expanded", "true");
@@ -116,7 +120,7 @@ describe("app shell", () => {
     await u.click(within(portal).getByRole("link", { name: "Admin" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/teams"));
     // Only groups opened or closed by hand are remembered.
-    expect(JSON.parse(localStorage.getItem("omp.adminNavOpen") ?? "[]")).toEqual(["Catalog"]);
+    expect(JSON.parse(localStorage.getItem("omp.adminNavOpen") ?? "[]")).toEqual(["People", "Catalog"]);
     expect(JSON.parse(localStorage.getItem("omp.adminNavClosed") ?? "[]")).toEqual(["Records"]);
     expect(within(nav).getByRole("button", { name: "Records" })).toHaveAttribute("aria-expanded", "false");
   });

@@ -81,6 +81,17 @@ const actionLabels: Record<string, string> = {
   "service_account_key.pepper_rehash": "Re-secured service account key after key rotation",
   "platform.secrets_reencrypt": "Re-encrypted stored secrets",
   "platform.key_rotation": "Rotated encryption keys",
+  // Notifications (docs/notifications.md) and automation tokens (docs/automation-tokens.md).
+  "notification_destination.create": "Added webhook destination",
+  "notification_destination.update": "Changed webhook destination",
+  "notification_destination.delete": "Deleted webhook destination",
+  "notification_destination.test": "Sent a test to a webhook destination",
+  "notification_destination.rotate_secret": "Rotated webhook signing secret",
+  "notification_destination.disable": "Webhook destination stopped after repeated failures",
+  "settings.notifications_test_email": "Sent a test email",
+  "automation_token.create": "Created automation token",
+  "automation_token.revoke": "Revoked automation token",
+  "automation_token.pepper_rehash": "Re-secured automation token after key rotation",
 };
 
 /** Whose view of a call's contents it was (mcp_call.payload_view, metadata.via). */
@@ -136,6 +147,8 @@ export const actionGroups: { prefix: string; label: string; platform?: boolean }
   { prefix: "service_account.", label: "Service accounts" },
   { prefix: "service_account_key.", label: "Service account keys" },
   { prefix: "mcp_call.", label: "Call contents" },
+  { prefix: "notification_destination.", label: "Webhook destinations" },
+  { prefix: "automation_token.", label: "Automation tokens" },
   { prefix: "api_key.", label: "API keys", platform: true },
   { prefix: "oauth.", label: "Connected apps", platform: true },
   { prefix: "auth_provider.", label: "Auth providers", platform: true },
@@ -169,15 +182,29 @@ export function areaOptions(platform: boolean): FacetOption[] {
 export const systemPerson = "system";
 export const systemPersonOption: FacetOption = { value: systemPerson, label: "System" };
 
-/** The Person filter's value as API filters: a person's ID, or the system as the actor. */
-export function personFilter(value: string | undefined): { actorUserId?: string; actorKind?: "system" } {
+/** The Person filter's entry for what automation tokens did (the API's actorKind=automation_token). */
+export const tokenPerson = "automation_token";
+export const tokenPersonOption: FacetOption = { value: tokenPerson, label: "Automation tokens" };
+
+/** The Person filter's value as API filters: a person's ID, the system or automation tokens as the actor. */
+export function personFilter(value: string | undefined): { actorUserId?: string; actorKind?: "system" | "automation_token" } {
   if (!value) return {};
+  if (value === tokenPerson) return { actorKind: "automation_token" };
   return value === systemPerson ? { actorKind: "system" } : { actorUserId: value };
 }
 
-/** Who did it: a person's name, or "System". */
+/** The kind of an automation token that acted, as a badge's words. */
+export const tokenKindLabels = { platform_admin: "Platform admin token", team_publisher: "Team publisher token" } as const;
+
+/** "Team publisher token" for an automation token's actor; undefined for other actors. */
+export function tokenKindLabel(actor: AuditEntry["actor"]): string | undefined {
+  return actor.kind === "automation_token" ? (actor.automationTokenKind ? tokenKindLabels[actor.automationTokenKind] : "Automation token") : undefined;
+}
+
+/** Who did it: a person's name, the token's name (as recorded when it acted), or "System". */
 export function actorName(actor: AuditEntry["actor"], _entry?: Pick<AuditEntry, "metadata" | "teamName">) {
   if (actor.kind === "system") return "System";
+  if (actor.kind === "automation_token") return actor.automationTokenName || "Automation token";
   return actor.displayName || actor.email || (actor.userId ? "Unknown user" : "Unknown");
 }
 
@@ -199,6 +226,7 @@ export function actedVia(e: ActedFields): string | undefined {
 
 /** The same for the record page's How row: a person without a key or an app acted in the app. */
 export function actedHow(e: ActedFields): string | undefined {
+  if (e.actor.kind === "automation_token") return `Automation token (${tokenKindLabel(e.actor)?.toLowerCase().replace(/ token$/, "")})`;
   if (e.via) return viaLabel(e.via) || undefined;
   return actedVia(e) ?? (e.actor.kind === "user" ? "Signed in" : undefined);
 }
@@ -220,6 +248,8 @@ export const targetTypeLabels: Record<string, string> = {
   auth_provider: "Auth provider",
   provider_connection: "Connected account",
   mcp_call: "Call",
+  notification_destination: "Webhook destination",
+  automation_token: "Automation token",
 };
 
 /** An entry's action and target in one line for a short list ("Added member: Una User"). */

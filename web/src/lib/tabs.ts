@@ -26,8 +26,11 @@ export type ServiceAccountTab = (typeof serviceAccountTabs)[number];
 export const authProviderTabs = ["overview", "settings"] as const;
 export type AuthProviderTab = (typeof authProviderTabs)[number];
 
-/** Team settings: Members (with open invites) · Audit log · Limits & retention (read-only) · General. */
-export const teamSettingsTabs = ["members", "audit", "limits", "general"] as const;
+/**
+ * Team settings: Members (with open invites) · Audit log · Limits & retention (read-only) · Notifications
+ * (webhooks) · Automation tokens (CI) · General.
+ */
+export const teamSettingsTabs = ["members", "audit", "limits", "notifications", "automation-tokens", "general"] as const;
 export type TeamSettingsTab = (typeof teamSettingsTabs)[number];
 
 /**

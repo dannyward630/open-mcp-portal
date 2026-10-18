@@ -2,3 +2,4 @@
 export { ProfilePage } from "./profile-page";
 export { ApiKeysPage } from "./api-keys";
 export { MyConnectionsPage } from "./connections-page";
+export { NotificationSettingsPage } from "./notifications-page";

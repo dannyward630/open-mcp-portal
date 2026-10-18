@@ -5,6 +5,7 @@
  * known shape are shown as recorded.
  */
 import type { Schemas } from "@/api/client";
+import { eventLabel } from "@/components/notifications/events";
 import { roleLabels } from "@/components/roles";
 
 type AuditEntry = Schemas["AuditEntry"];
@@ -85,6 +86,10 @@ const patternItems: Format = (v) => (Array.isArray(v) ? v.map((p: { pattern?: st
 const payloadViewWords: Record<string, string> = { team: "On the team's page", admin: "In Admin (platform staff)" };
 const capturedByLabels: Record<string, string> = { gateway: "The gateway", server: "The server" };
 
+const tokenKindWords: Record<string, string> = { platform_admin: "Platform admin token", team_publisher: "Team publisher token" };
+/** A list of event names (server.unhealthy…) as the words the app uses for them. */
+const eventNames: Format = (v) => (Array.isArray(v) ? v.map((e) => eventLabel(String(e))) : v);
+
 const serviceAccountRoleLabels: Record<string, string> = { member: roleLabels.member, editor: roleLabels.editor };
 
 function fieldsFor(action: string): Fields | undefined {
@@ -131,6 +136,14 @@ function fieldsFor(action: string): Fields | undefined {
     case "service_account_key.create":
     case "service_account_key.revoke":
       return { serviceAccount: ["Service account"], expiresAt: ["Expires"], gatewayIds: null, serviceAccountId: null };
+    case "notification_destination.create":
+    case "notification_destination.update":
+    case "notification_destination.delete":
+    case "notification_destination.disable":
+      return { events: ["Events", eventNames], enabled: ["Enabled", onOff], teamEvents: ["Also every team's events", onOff], urlDisplay: ["URL (host only)"], id: null };
+    case "automation_token.create":
+    case "automation_token.revoke":
+      return { kind: ["Kind", label(tokenKindWords)], scopes: ["Can"], expiresAt: ["Expires"], id: null };
     case "oauth.consent":
     case "oauth.revoke":
     case "oauth.token_issue":

@@ -14,7 +14,7 @@
  *   3. add its breadcrumb in breadcrumbs.tsx.
  * Only list pages that exist: no placeholders or "coming soon" links.
  */
-import { Activity, BadgeCheck, BarChart3, Bot, Eraser, FileClock, Gauge, Home, KeySquare, LayoutDashboard, Library, Network, Server, Settings, ShieldCheck, Timer, Users, UsersRound, Waypoints } from "lucide-react";
+import { Activity, BadgeCheck, BarChart3, Bell, Bot, Eraser, FileClock, Gauge, Home, KeySquare, LayoutDashboard, Library, Network, Server, Settings, ShieldCheck, Terminal, Timer, Users, UsersRound, Waypoints } from "lucide-react";
 import { type ReactNode } from "react";
 import { terms } from "../../lib/terms";
 import { type Me } from "../../session";
@@ -115,7 +115,7 @@ const teamNav: TeamNavItem[] = [
     label: terms.teamSettings,
     icon: icon(Settings),
     access: (a) => a.member || a.staff,
-    keywords: ["members", "invites", "audit", "general", "leave", "limits", "rate limit", "retention"],
+    keywords: ["members", "invites", "audit", "general", "leave", "limits", "rate limit", "retention", "notifications", "webhooks", "automation tokens"],
   },
 ];
 
@@ -131,6 +131,7 @@ export function teamNavFor(me: Me, slug: string): TeamNavItem[] {
 /* ---------------- admin ---------------- */
 
 export type AdminPath =
+  | "/admin"
   | "/admin/users"
   | "/admin/teams"
   | "/admin/servers"
@@ -139,21 +140,25 @@ export type AdminPath =
   | "/admin/gateways"
   | "/admin/trusted-clients"
   | "/admin/auth-providers"
+  | "/admin/automation-tokens"
   | "/admin/audit"
   | "/admin/calls"
   | "/admin/usage"
   | "/admin/limits"
   | "/admin/retention"
-  | "/admin/capture";
+  | "/admin/capture"
+  | "/admin/notifications";
 
 export type AdminNavItem = { to: AdminPath; label: string; icon: ReactNode; exact?: boolean };
 
 /**
- * Admin sidebar groups. Later phases add groups here (Settings), each with the pages it holds.
+ * Admin sidebar groups. The first has no label: Overview, the page the admin portal opens on. Later phases add
+ * groups here (Settings), each with the pages it holds.
  * `defaultOpen`: shown open until the person closes it (groups added since the first release, so
  * nobody misses them; see admin-groups.ts).
  */
 export const adminSections: { label?: string; defaultOpen?: boolean; items: AdminNavItem[] }[] = [
+  { items: [{ to: "/admin", label: terms.adminOverview, icon: icon(LayoutDashboard), exact: true }] },
   {
     label: "People",
     items: [
@@ -176,6 +181,7 @@ export const adminSections: { label?: string; defaultOpen?: boolean; items: Admi
       { to: "/admin/gateways", label: terms.gateways, icon: icon(Network) },
       { to: "/admin/trusted-clients", label: terms.trustedClients, icon: icon(ShieldCheck) },
       { to: "/admin/auth-providers", label: terms.authProviders, icon: icon(KeySquare) },
+      { to: "/admin/automation-tokens", label: terms.automationTokens, icon: icon(Terminal) },
     ],
   },
   {
@@ -194,6 +200,7 @@ export const adminSections: { label?: string; defaultOpen?: boolean; items: Admi
       { to: "/admin/limits", label: terms.limits, icon: icon(Gauge) },
       { to: "/admin/retention", label: terms.retention, icon: icon(Timer) },
       { to: "/admin/capture", label: terms.payloadCapture, icon: icon(Eraser) },
+      { to: "/admin/notifications", label: terms.notifications, icon: icon(Bell) },
     ],
   },
 ];
@@ -208,6 +215,9 @@ export function activeAdminGroup(pathname: string): string | undefined {
 
 /** Extra command-palette search words for admin pages. */
 export const adminKeywords: Partial<Record<AdminPath, string[]>> = {
+  "/admin": ["overview", "attention", "needs attention", "dashboard", "home", "health", "status", "errors", "failing", "summary"],
+  "/admin/automation-tokens": ["automation", "token", "tokens", "ci", "pipeline", "script", "bearer", "ompadm", "omppub", "platform:read", "platform:write", "terraform", "api"],
+  "/admin/notifications": ["notifications", "email", "smtp", "webhook", "webhooks", "slack", "alerts", "destinations", "test email", "deliveries"],
   "/admin/users": ["people", "person", "suspend", "reactivate", "platform role", "platform admin", "auditor"],
   "/admin/teams": ["team", "create team", "archive", "owner", "assign owner"],
   "/admin/servers": ["mcp", "servers", "review", "approve", "reject", "pending", "catalog", "capabilities", "changes"],

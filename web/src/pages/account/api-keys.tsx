@@ -137,6 +137,7 @@ export function ApiKeysPage() {
               are for clients that can&apos;t, and for your own scripts. For CI and shared automation, use a team&apos;s service account. Keep keys secret, and
               revoke a key you no longer use.
             </Alert>
+            <Alert tone="info">Automation (CI) tokens are made by team admins under Team settings.</Alert>
           </>
         }
         caption={terms.apiKeys}

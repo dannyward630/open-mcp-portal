@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
+import { Outlet, createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import { AppLayout } from "./components/layout/shell";
 import { NotFoundState } from "./components/not-found";
@@ -16,9 +16,11 @@ import styles from "./router.module.css";
  * and UI library) stays in the main bundle.
  *
  * Areas: the team's MCP servers and gateways under teams/$team, the Catalog
- * and My gateways at the top level, API keys and Connected apps next to
- * Profile, the team's Service accounts, MCP servers, Publishing, Internal
- * networks, Gateways, Trusted clients, Auth providers and Calls under admin.
+ * and My gateways at the top level, API keys, Connected apps and Notification
+ * settings next to Profile, the Inbox (/notifications), the team's Service
+ * accounts, MCP servers, Publishing, Internal networks, Gateways, Trusted
+ * clients, Auth providers, Automation tokens, Notifications and Calls under
+ * admin (the Overview is the admin portal's first page).
  * The OAuth consent page (/oauth/consent) and the account-connect pages
  * (/connect/$provider, /connect/done) sit outside the app's shell. Later
  * phases add theirs here and in components/layout/nav.tsx.
@@ -45,6 +47,10 @@ const pages = {
   teamUsage: () => import("./pages/team/usage"),
   teamCalls: () => import("./pages/team/calls/routes"),
   adminOperations: () => import("./pages/admin/operations/routes"),
+  adminOverview: () => import("./pages/admin/overview/routes"),
+  adminNotifications: () => import("./pages/admin/notifications/routes"),
+  adminTokens: () => import("./pages/admin/automation-tokens/routes"),
+  inbox: () => import("./pages/notifications/routes"),
 };
 const lazy = lazyRouteComponent;
 type Page = ReturnType<typeof lazyRouteComponent>;
@@ -123,6 +129,16 @@ const myConnectionsRoute = createRoute({
   path: "settings/connections",
   validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
   component: lazy(pages.account, "MyConnectionsPage"),
+});
+
+/** The person's notification preferences: events x In-app / Email. */
+const notificationSettingsRoute = createRoute({ getParentRoute: () => appRoute, path: "settings/notifications", component: lazy(pages.account, "NotificationSettingsPage") });
+/** The inbox (the bell's "View all"); ?unread=true passes through. */
+const inboxRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "notifications",
+  validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s,
+  component: lazy(pages.inbox, "InboxPage"),
 });
 
 /* ---------------- my gateways (everyone signed in) ---------------- */
@@ -216,14 +232,8 @@ const teamCallRoute = createRoute({ getParentRoute: () => teamRoute, path: "call
 /* ---------------- admin ---------------- */
 
 const adminRoute = createRoute({ getParentRoute: () => appRoute, path: "admin", component: AdminGate });
-/** The admin portal opens on its first page. */
-const adminIndexRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/admin/users", replace: true });
-  },
-});
+/** The admin portal opens on the Overview: what needs attention. */
+const adminIndexRoute = createRoute({ getParentRoute: () => adminRoute, path: "/", component: lazy(pages.adminOverview, "AdminOverviewPage") });
 /** An admin list page whose filters (?q=, ?status=…) and open record (?record=) live in the URL. */
 const adminList = <P extends string>(path: P, component: Page) =>
   createRoute({ getParentRoute: () => adminRoute, path, validateSearch: (s: Record<string, unknown>): Record<string, unknown> => s, component });
@@ -237,6 +247,8 @@ const appTree = appRoute.addChildren([
   apiKeysRoute,
   connectedAppsRoute,
   myConnectionsRoute,
+  notificationSettingsRoute,
+  inboxRoute,
   catalogRoute,
   catalogServerRoute,
   myGatewaysRoute,
@@ -268,6 +280,8 @@ const appTree = appRoute.addChildren([
     adminList("trusted-clients", lazy(pages.adminOAuth, "AdminTrustedClientsPage")),
     adminList("auth-providers", lazy(pages.adminProviders, "AdminAuthProvidersPage")),
     adminTabs("auth-providers/$providerId", authProviderTabs, lazy(pages.adminProviders, "AdminAuthProviderPage")),
+    adminList("automation-tokens", lazy(pages.adminTokens, "AdminAutomationTokensPage")),
+    adminList("notifications", lazy(pages.adminNotifications, "AdminNotificationsPage")),
     adminList("calls", lazy(pages.adminGateways, "AdminCallsPage")),
     adminList("calls/$callId", lazy(pages.adminGateways, "AdminCallPage")),
     adminList("usage", lazy(pages.adminOperations, "AdminUsagePage")),
