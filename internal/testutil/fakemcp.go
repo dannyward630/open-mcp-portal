@@ -56,6 +56,9 @@ type FakeMCP struct {
 	extra        []string
 	pageSize     int
 	requests     int
+	// providerTokens counts HTTP requests that carried an
+	// MCP-Gateway-Provider-Token header, whatever they were for.
+	providerTokens int
 
 	gatewayTools bool
 	// echoSecrets adds echo_secrets and image (payload capture tests).
@@ -346,6 +349,9 @@ func NewFakeMCPHandler() (*FakeMCP, http.Handler) {
 	return f, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.requests++
+		if r.Header.Get("MCP-Gateway-Provider-Token") != "" {
+			f.providerTokens++
+		}
 		name, value := f.header, f.value
 		f.mu.Unlock()
 		if p := f.protection(); p != nil {
@@ -603,6 +609,14 @@ func headerOf(req *mcp.CallToolRequest) http.Header {
 		return http.Header{}
 	}
 	return req.Extra.Header
+}
+
+// ProviderTokenRequests counts the HTTP requests, of any kind, that carried
+// a provider token (MCP-Gateway-Provider-Token).
+func (f *FakeMCP) ProviderTokenRequests() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.providerTokens
 }
 
 // Requests counts every HTTP request.
