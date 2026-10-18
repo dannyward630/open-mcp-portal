@@ -46,7 +46,9 @@ type tokenCred struct {
 }
 
 func (e *matrixEnv) pepper() []byte {
-	key, err := secrets.ParseKey(testEncryptionKey)
+	// The test deployment's API_KEY_PEPPER (distinct from ENCRYPTION_KEY: the
+	// config refuses equal values).
+	key, err := secrets.ParseKey(testPepper)
 	if err != nil {
 		e.t.Fatal(err)
 	}

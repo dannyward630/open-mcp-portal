@@ -11,7 +11,7 @@ import (
 func smtpBase() Config {
 	c := Defaults()
 	c.DatabaseURL = "postgres://x"
-	c.EncryptionKey, c.APIKeyPepper = testKey, testKey
+	c.EncryptionKey, c.APIKeyPepper = testKey, testPepper
 	c.AppURL, c.DevAuth = "http://localhost:8088", true
 	return c
 }
@@ -119,7 +119,7 @@ func TestSMTPSafety(t *testing.T) {
 		c := smtpBase()
 		c.AppURL, c.DevAuth = "https://mcp.example.com", false
 		c.OIDC.Issuer, c.OIDC.ClientID, c.OIDC.ClientSecret = "https://idp", "id", "secret"
-		c.EncryptionKey, c.APIKeyPepper = testKey, testKey
+		c.EncryptionKey, c.APIKeyPepper = testKey, testPepper
 		c.SMTP = s
 		return c
 	}
