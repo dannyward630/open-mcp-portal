@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: **approved 2026-10-17**; v0.2 released as v0.2.0 on 2026-10-18 (a real deployment with a tested backup and restore, and real-client testing on the new revision, are still open). It is an order of work, not a schedule.
+Status: **approved 2026-10-17**; v0.2 released as v0.2.0 on 2026-10-18 (a real deployment with Authentik sign-in, database backups and a tested restore was done on one cluster on 2026-10-18; real-client testing on the new revision is partly done: VS Code and Cursor are still open). It is an order of work, not a schedule.
 Sizes are relative effort: **S** a few days, **M** a week or two, **L** several weeks. Each item that needs a design
 gets one in `docs/` before code, as the earlier phases did. Decisions behind it are 47–58 in
 [decisions.md](decisions.md).
@@ -95,7 +95,7 @@ The first three items are **designed** together (decisions 56–58; they share `
 | Admin overview | S | **Designed:** [admin-overview.md](admin-overview.md). `/admin` redirects to Users today. Show failing servers, pending reviews, changed capabilities, expiring keys, providers needing re-consent; plus a team attention card. |
 | Notifications | M | **Designed:** [notifications.md](notifications.md). In-app inbox, email (SMTP) and signed webhooks (works for Slack). Server unhealthy, definition changed, review requested or decided, connection needs re-consent, key expiring. Per-person preferences; team and platform destinations. |
 | Automation tokens | M | **Designed:** [automation-tokens.md](automation-tokens.md). The management API accepts browser sessions only. Add **team publisher tokens** (register, refresh, publish a team's servers from CI) and **platform-admin tokens**, each scoped, expiring, audited, and never valid for `/mcp`. |
-| Real deployment | M | Your cluster, Authentik OIDC, a tested backup and restore, the example overlay with the real v0.1.0 digest, and a feedback channel for the pilot. |
+| Real deployment | M | Your cluster, Authentik OIDC, a tested backup and restore, the example overlay with the real v0.1.0 digest, and a feedback channel for the pilot. **Status:** done on one cluster on 2026-10-18 (Authentik sign-in, a CloudNativePG database with WAL archiving and daily backups to object storage, a restore tested with a point-in-time replay, the overlay pinned to v0.2.0's digest); the feedback channel is still open. |
 | Threat model | S | Written for security reviewers, as the sister projects have. Include how forwarded provider tokens relate to the spec's "no token passthrough" rule. |
 | Housekeeping | S | Dependabot PRs; browser re-checks of the Phase 4–7 screens. |
 
