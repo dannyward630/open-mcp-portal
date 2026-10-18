@@ -13,6 +13,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const countLiveOAuthClients = `-- name: CountLiveOAuthClients :one
+SELECT count(*) FROM oauth_clients WHERE last_used_at > $1
+`
+
+// Registered clients used since unused_since (the ones ResolveClient accepts).
+func (q *Queries) CountLiveOAuthClients(ctx context.Context, unusedSince time.Time) (int64, error) {
+	row := q.db.QueryRow(ctx, countLiveOAuthClients, unusedSince)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteExpiredOAuthCodes = `-- name: DeleteExpiredOAuthCodes :exec
 DELETE FROM oauth_codes WHERE expires_at <= now()
 `
@@ -397,6 +409,17 @@ func (q *Queries) ListUserOAuthGrants(ctx context.Context, userID uuid.UUID) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockOAuthClients = `-- name: LockOAuthClients :exec
+SELECT pg_advisory_xact_lock(hashtextextended('omp.oauth-clients', 0))
+`
+
+// Serialises registrations across replicas (transaction lock), so the cap on
+// live registered clients holds under concurrent requests.
+func (q *Queries) LockOAuthClients(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockOAuthClients)
+	return err
 }
 
 const lockOAuthGrant = `-- name: LockOAuthGrant :one

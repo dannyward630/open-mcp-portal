@@ -96,19 +96,25 @@ type Config struct {
 	// development allowance (which also lets a document be served over
 	// plain http on a loopback host) and the allowlist of internal networks.
 	Upstream *upstream.Client
+	// MaxRegisteredClients caps the live (used within ClientUnusedTTL)
+	// clients registered with Dynamic Client Registration
+	// (OAUTH_MAX_REGISTERED_CLIENTS); 0 is no cap. Metadata-document clients
+	// are not rows and never count.
+	MaxRegisteredClients int
 }
 
 // Service is the authorization server.
 type Service struct {
-	pool     *pgxpool.Pool
-	q        *dbgen.Queries
-	pepper   []byte
-	previous []byte
-	issuer   string
-	gateways *gateways.Service
-	docs     *metadataDocs
-	Log      *slog.Logger
-	now      func() time.Time
+	pool       *pgxpool.Pool
+	q          *dbgen.Queries
+	pepper     []byte
+	previous   []byte
+	issuer     string
+	maxClients int
+	gateways   *gateways.Service
+	docs       *metadataDocs
+	Log        *slog.Logger
+	now        func() time.Time
 }
 
 // New returns the service.
@@ -122,7 +128,7 @@ func New(pool *pgxpool.Pool, gws *gateways.Service, cfg Config) *Service {
 		up = &upstream.Client{}
 	}
 	s := &Service{
-		pool: pool, q: q, pepper: cfg.Pepper, previous: cfg.PepperPrevious, issuer: strings.TrimRight(cfg.Issuer, "/"), gateways: gws,
+		pool: pool, q: q, pepper: cfg.Pepper, previous: cfg.PepperPrevious, issuer: strings.TrimRight(cfg.Issuer, "/"), maxClients: cfg.MaxRegisteredClients, gateways: gws,
 		docs: newMetadataDocs(up.GuardedDial(), up.AllowPrivate),
 		Log:  slog.Default(), now: time.Now,
 	}

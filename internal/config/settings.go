@@ -138,6 +138,7 @@ var settings = []setting{
 	{key: "METRICS_MAX_OBJECTS", apply: integer(func(c *Config) *int { return &c.MetricsMaxObjects }, 10, 10_000)},
 	{key: "RETENTION_INTERVAL", apply: duration(func(c *Config) *time.Duration { return &c.RetentionInterval }, time.Minute, 24*time.Hour)},
 	{key: "RETENTION_BATCH_SIZE", apply: integer(func(c *Config) *int { return &c.RetentionBatchSize }, 10, 100_000)},
+	{key: "OAUTH_MAX_REGISTERED_CLIENTS", apply: integer(func(c *Config) *int { return &c.OAuthMaxRegisteredClients }, 0, 1_000_000)},
 	{key: "HEALTH_CHECK_INTERVAL", apply: duration(func(c *Config) *time.Duration { return &c.HealthCheckInterval }, 0, 24*time.Hour)},
 	{key: "SIGNING_KEY_PREPUBLISH", apply: duration(func(c *Config) *time.Duration { return &c.SigningKeyPrepublish }, 0, 7*24*time.Hour)},
 	{key: "SESSION_TTL", apply: duration(func(c *Config) *time.Duration { return &c.SessionTTL }, 5*time.Minute, 30*24*time.Hour)},

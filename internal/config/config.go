@@ -67,6 +67,10 @@ type Config struct {
 	RetentionInterval  time.Duration
 	RetentionBatchSize int
 
+	// OAuthMaxRegisteredClients caps the live clients registered with
+	// Dynamic Client Registration at /oauth/register (0: no cap).
+	OAuthMaxRegisteredClients int
+
 	// HealthCheckInterval is how often enabled MCP servers are re-tested
 	// (0: never; one replica at a time).
 	HealthCheckInterval time.Duration
@@ -156,17 +160,18 @@ func Defaults() Config {
 			GroupsClaim:          "groups",
 			RequireVerifiedEmail: true,
 		},
-		SessionTTL:             12 * time.Hour,
-		HealthCheckInterval:    5 * time.Minute,
-		NotificationInterval:   15 * time.Second,
-		SigningKeyPrepublish:   24 * time.Hour,
-		MetricsMaxObjects:      200,
-		RetentionInterval:      15 * time.Minute,
-		RetentionBatchSize:     1000,
-		RequestsPerMinute:      600,
-		LoginAttemptsPerMinute: 20,
-		ShutdownDelay:          5 * time.Second,
-		ShutdownTimeout:        60 * time.Second,
+		SessionTTL:                12 * time.Hour,
+		HealthCheckInterval:       5 * time.Minute,
+		NotificationInterval:      15 * time.Second,
+		SigningKeyPrepublish:      24 * time.Hour,
+		MetricsMaxObjects:         200,
+		RetentionInterval:         15 * time.Minute,
+		RetentionBatchSize:        1000,
+		OAuthMaxRegisteredClients: 1000,
+		RequestsPerMinute:         600,
+		LoginAttemptsPerMinute:    20,
+		ShutdownDelay:             5 * time.Second,
+		ShutdownTimeout:           60 * time.Second,
 	}
 }
 
