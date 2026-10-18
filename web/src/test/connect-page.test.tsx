@@ -42,7 +42,7 @@ describe("Connect page", () => {
     const scopes = screen.getByRole("list", { name: "GitHub will ask you to allow" });
     const items = within(scopes).getAllByRole("listitem");
     expect(items[0]).toHaveTextContent("read:org");
-    expect(items[0]).toHaveTextContent("Already allowed");
+    expect(items[0]).toHaveTextContent("Already granted");
     expect(items[1]).toHaveTextContent("repo");
     expect(items[1]).toHaveTextContent("New");
     expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();

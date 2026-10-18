@@ -145,7 +145,7 @@ export function ConfirmBody({ request: r, titleId, email, start, allow, leaving 
                 <span className={c.scopeName}>{s}</span>
                 {granted.has(s) ? (
                   <Badge size="sm" tone="neutral">
-                    Already allowed
+                    Already granted
                   </Badge>
                 ) : (
                   <Badge size="sm" tone="info">
