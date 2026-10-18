@@ -36,9 +36,9 @@ Decided out of scope:
 ### A. Speak both protocol eras (L)
 
 **Status:** the server side (`/mcp/{slug}`, consent as a multi-round-trip request, authorization alignment, and the
-MCP conformance suite run against a gateway) is **done**: [mcp-protocol.md](mcp-protocol.md). The client side
-(upstream era negotiation, relaying elicitation, streaming, trace context) and the SDK matrix with real clients are
-still open.
+MCP conformance suite run against a gateway) and the upstream side (era negotiation, relaying elicitation, streaming,
+trace context, client authorization alignment, the conformance suite's client scenarios) are **done**:
+[mcp-protocol.md](mcp-protocol.md). The SDK matrix with real clients is still open.
 
 The portal keeps serving 2025-11-25 and earlier clients exactly as today and adds the 2026-07-28 era, chosen **per
 request** (decision 51). The spec's own compatibility rule applies: a request carrying the new `_meta` and
@@ -64,8 +64,8 @@ that don't declare it, and all legacy clients, keep today's `-32042` error with 
 connect page's "the person who opens the link must be the person who asked" check already matches the spec's
 phishing guidance.
 
-**As the client talking to your MCP servers.** The upstream client has multi-round-trip support switched off and
-declares no capabilities.
+**As the client talking to your MCP servers** — *done*. (Before this, the upstream client had multi-round-trip support
+switched off and declared no capabilities.)
 
 - Negotiate the era per server (`server/discover` first, `initialize` fallback) and make it visible on the server
   page. (S)
@@ -77,7 +77,7 @@ declares no capabilities.
   closing the stream cancels the upstream call; set `X-Accel-Buffering: no`; document ingress timeouts. (M)
 - Send `traceparent`/`tracestate`/`baggage` in `_meta` in both directions (pairs with tracing in v0.3). (S)
 
-**Authorization alignment (S).** Accept `application_type` in dynamic registration; prefer Client ID Metadata
+**Authorization alignment (S)** — *done*. Accept `application_type` in dynamic registration; prefer Client ID Metadata
 Documents and mark dynamic registration as deprecated in the docs (the revision deprecates it); key an upstream's
 client credentials by issuer and re-register when the authorization server changes (SEP-2352); keep the `iss`
 check.

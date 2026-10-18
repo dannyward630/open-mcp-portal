@@ -28,6 +28,33 @@ now speak the new protocol era next to 2024-11-05 to 2025-11-25, chosen per requ
 - `cmd/fakemcp -schema-tools`; `secrets.Box.Derive`. The MCP conformance suite was run against a gateway
   (results in docs/mcp-protocol.md).
 
+**MCP 2026-07-28, client side** ([docs/mcp-protocol.md](docs/mcp-protocol.md#the-portal-as-a-client-of-your-servers),
+decisions 51 and 54). How the portal talks to your servers. Migration `00016` (three nullable columns on `mcp_servers`).
+
+- **Era negotiation per server.** Discovery, refresh, test, health checks and forwarded calls try the modern era first
+  (`server/discover`) and fall back to `initialize` only by the specification's rule (a `400` whose body is not a
+  recognized modern error; `404` and `405` from an HTTP+SSE-only server stay errors). The newest mutually supported
+  version is used. The era is cached in memory per server ID and URL for 5 minutes. The last negotiated `protocol`
+  (`era`, `version`, `negotiatedAt`) is stored on the server by refresh, test and health checks and returned by the API
+  (`McpServer.protocol`; cleared when the URL changes).
+- **Elicitation is relayed.** An upstream `input_required` result reaches a modern client that declared elicitation as
+  `inputRequests` (validated, bounded, https URLs only) with a sealed `requestState` bound to the person, gateway, call
+  and upstream server; the retry goes back to the server with the original parameters, the answers and the server's own
+  state. The portal declares to the server exactly the elicitation modes the client declared, per request. Sampling and
+  roots are refused with a tool error. Legacy clients keep getting no relay. Recorded `ok` with error class
+  `input_required`.
+- **Streaming.** A `tools/call` with `_meta.progressToken` from a client that accepts `text/event-stream` is answered
+  as SSE: the server's progress (at most 64 events, 4 MiB), then the response; `X-Accel-Buffering: no`, a keep-alive
+  comment every 15 s; closing the connection cancels the upstream call. [deploy.md](docs/deploy.md#ingress) has the
+  ingress settings.
+- `traceparent`, `tracestate` and `baggage` pass from the client's `_meta` to the server's (validated).
+- Upstream OAuth: dynamic registration says `application_type: "web"` (SEP-837); a client registered by dynamic
+  registration is registered again, and chosen afresh (a Client ID Metadata Document is preferred), when the resource
+  metadata names another authorization server (SEP-2352).
+- A request id of its own for every modern request, a retry included (found by the conformance suite, which passes its
+  client scenarios for this revision except the interactive `auth/*` ones: `cmd/upstream-conformance`).
+- `cmd/fakemcp -protocol legacy|modern|both`, `-mrtr-tools`, `-stream-tools`.
+
 ## [0.1.0] - 2026-10-17
 
 The first release ([release notes](docs/releases/v0.1.0.md)): a self-hosted portal where teams register MCP servers, publish them to a company catalog, curate

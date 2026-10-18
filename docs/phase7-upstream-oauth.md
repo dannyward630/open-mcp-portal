@@ -74,8 +74,8 @@ responses of at most 64 KiB, at most 8 requests.
 **Save** (`POST`/`PATCH` with `authMode: oauth`). The gateway runs the discovery again itself and never trusts
 endpoints sent by the browser. For DCR it registers before the transaction (RFC 7591): `client_name` "<instance> ·
 <server>", `redirect_uris` [`<APP_URL>/connect/callback`], `grant_types` `authorization_code refresh_token`, and
-`token_endpoint_auth_method` `client_secret_basic`/`client_secret_post` when listed, else `none`. RFC 7592 management
-isn't used. For CIMD the client ID is `<APP_URL>/oauth/upstream-client-metadata.json`, a public client the gateway
+`token_endpoint_auth_method` `client_secret_basic`/`client_secret_post` when listed, else `none`, and
+`application_type` `web` (SEP-837). RFC 7592 management isn't used. For CIMD the client ID is `<APP_URL>/oauth/upstream-client-metadata.json`, a public client the gateway
 serves outside the contract. Secrets are sealed with the AAD `auth_provider:<id>`. In oauth mode a new server's first
 capability discovery is skipped (`setupRequired: true`).
 
@@ -274,7 +274,10 @@ migration `00012_upstream_oauth.sql`.
   stops discovery there. 10 a minute per person (`429 slow_down`), counted before authorization.
 - **Save:** discovery always runs again. Re-sending the stored registration (`dcr`, `cimd`, `auto`, `manual` without a
   secret, `platform_provider`) with the same issuer keeps the client: nothing is registered again and, when nothing else
-  changed, nothing is written (tested). An `oauth` input with another `authMode` is ignored, since clients send its
+  changed, nothing is written (tested). A client belongs to the issuer it was registered at (SEP-2352): when the resource
+metadata names another authorization server (another issuer), a DCR client is registered again at the new one, with the
+choice made afresh (CIMD first), and connections are reset; a manual client needs a new client ID (tested:
+`upstream_oauth_issuer_integration_test.go`). An `oauth` input with another `authMode` is ignored, since clients send its
   defaults. DCR asks for `client_secret_basic` when listed (or no list), else `client_secret_post`, else `none`.
 - **Setup and callback:** authorize-setup shares the 20/min connect-start limit. The callback checks the state's resource
   snapshot, `iss` (must match when present; required when the issuer advertises it), and a linked provider still on and

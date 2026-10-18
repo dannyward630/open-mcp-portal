@@ -212,8 +212,24 @@ images:
 - The host must equal `APP_URL`'s host, and TLS terminates at the ingress.
 - **Timeouts.** A `/mcp/{slug}` call waits up to 120s for its upstream server (the maximum per-server timeout). Allow
   reads of a few minutes: the example sets `proxy-read-timeout: 300` for ingress-nginx and `timeouts.request: 300s` on the
-  HTTPRoute. Responses are buffered JSON today, but SSE relays are planned, so the example already turns off proxy
-  buffering. Requests are capped at 1 MiB.
+  HTTPRoute. Requests are capped at 1 MiB.
+- **Streaming (SSE).** A `tools/call` that carries `_meta.progressToken` from a client that accepts
+  `text/event-stream` is answered as a Server-Sent Events stream (the server's progress, then the response), with an SSE
+  comment (`: keep-alive`) every 15 s while it waits. The portal sends `X-Accel-Buffering: no` and sets no write timeout
+  of its own, so the proxy in front must neither buffer the response nor cut a quiet one. These are the settings to
+  check (the nginx example is in `deploy/kubernetes/overlays/example`; the others are not tested here):
+  - **ingress-nginx:** `proxy-buffering: "off"` (the example sets it; the response header does the same) and a
+    `proxy-read-timeout` above the longest server timeout, 120s (the example: 300). Don't compress `text/event-stream`.
+  - **Traefik:** don't put the `buffering` middleware on the portal's route, leave the entrypoint's
+    `respondingTimeouts.writeTimeout` at 0, keep `idleTimeout` above 120s, and, if a `ServersTransport` sets
+    `forwardingTimeouts.responseHeaderTimeout`, make it at least 300s.
+  - **Gateway API (`HTTPRoute`):** `timeouts.request` of at least 300s (the example), and the same or unset for
+    `timeouts.backendRequest`.
+  - **Cloud load balancers** have idle timeouts of their own (AWS ALB: 60s by default). The keep-alive comments count as
+    traffic, but a total call time above the balancer's request limit still ends the stream.
+  A client that closes the stream cancels the call to the upstream server, so a proxy that ends a response early also
+  cancels the call. Calls without a progress token, or without `text/event-stream` in `Accept`, stay one buffered JSON
+  response (at most 1 MiB); a streamed call relays at most 64 progress events and 4 MiB.
 - **No sticky sessions.** `/mcp/{slug}` is stateless: no MCP session lives in a pod, and browser sessions and OIDC login
   state are in PostgreSQL. Any replica can serve any request.
 - Set `TRUSTED_PROXIES` to the controller's pod network.
