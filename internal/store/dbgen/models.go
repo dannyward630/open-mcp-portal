@@ -237,40 +237,43 @@ type McpHealthCheck struct {
 }
 
 type McpServer struct {
-	ID                 uuid.UUID
-	TeamID             uuid.UUID
-	Slug               string
-	Name               string
-	Description        string
-	URL                string
-	Transport          string
-	AuthHeaderName     *string
-	AuthValueCipher    []byte
-	AuthValueHint      string
-	TimeoutSeconds     int32
-	Enabled            bool
-	PublishState       string
-	PublishRequestedAt *time.Time
-	PublishRequestedBy uuid.NullUUID
-	PublishRequestNote *string
-	PublishReviewedAt  *time.Time
-	PublishReviewedBy  uuid.NullUUID
-	PublishReviewNote  *string
-	PublishedAt        *time.Time
-	RefreshedAt        *time.Time
-	LastRefreshError   *string
-	Revision           int64
-	CreatedBy          uuid.NullUUID
-	CreatedAt          time.Time
-	UpdatedBy          uuid.NullUUID
-	UpdatedAt          time.Time
-	AuthProviderID     uuid.NullUUID
-	AuthScopes         []string
-	CapturePayloads    bool
-	AuthMode           string
-	OauthSetupUserID   uuid.NullUUID
-	OauthSetupAt       *time.Time
-	SendIdentity       bool
+	ID                   uuid.UUID
+	TeamID               uuid.UUID
+	Slug                 string
+	Name                 string
+	Description          string
+	URL                  string
+	Transport            string
+	AuthHeaderName       *string
+	AuthValueCipher      []byte
+	AuthValueHint        string
+	TimeoutSeconds       int32
+	Enabled              bool
+	PublishState         string
+	PublishRequestedAt   *time.Time
+	PublishRequestedBy   uuid.NullUUID
+	PublishRequestNote   *string
+	PublishReviewedAt    *time.Time
+	PublishReviewedBy    uuid.NullUUID
+	PublishReviewNote    *string
+	PublishedAt          *time.Time
+	RefreshedAt          *time.Time
+	LastRefreshError     *string
+	Revision             int64
+	CreatedBy            uuid.NullUUID
+	CreatedAt            time.Time
+	UpdatedBy            uuid.NullUUID
+	UpdatedAt            time.Time
+	AuthProviderID       uuid.NullUUID
+	AuthScopes           []string
+	CapturePayloads      bool
+	AuthMode             string
+	OauthSetupUserID     uuid.NullUUID
+	OauthSetupAt         *time.Time
+	SendIdentity         bool
+	ProtocolEra          *string
+	ProtocolVersion      *string
+	ProtocolNegotiatedAt *time.Time
 }
 
 type NetworkSetting struct {

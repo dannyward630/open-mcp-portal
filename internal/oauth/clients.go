@@ -156,7 +156,20 @@ type ClientMetadata struct {
 	GrantTypes              []string `json:"grant_types,omitempty"`
 	ResponseTypes           []string `json:"response_types,omitempty"`
 	Scope                   string   `json:"scope,omitempty"`
+	// ApplicationType is "web" or "native" (OpenID Connect Dynamic Client
+	// Registration; MCP 2026-07-28 requires clients to send it when they
+	// register). It is validated and echoed in the registration response, and
+	// otherwise ignored: the portal is not an OpenID Provider, so it doesn't
+	// restrict redirect URIs by it (loopback http and https are both
+	// accepted for either).
+	ApplicationType string `json:"application_type,omitempty"`
 }
+
+// Application types of a registration.
+const (
+	ApplicationWeb    = "web"
+	ApplicationNative = "native"
+)
 
 func invalidMetadata(msg string) *Error { return oauthError("invalid_client_metadata", msg) }
 
@@ -197,6 +210,8 @@ func (m ClientMetadata) check() (Client, *Error) {
 type Registered struct {
 	Client
 	IssuedAt int64
+	// ApplicationType is what the client registered ("" if it sent none).
+	ApplicationType string
 }
 
 // Register registers a public client (RFC 7591). Registrations unused for
@@ -206,6 +221,9 @@ func (s *Service) Register(ctx context.Context, m ClientMetadata, requestID, cli
 	c, bad := m.check()
 	if bad != nil {
 		return Registered{}, bad
+	}
+	if t := m.ApplicationType; t != "" && t != ApplicationWeb && t != ApplicationNative {
+		return Registered{}, invalidMetadata(`application_type must be "web" or "native".`)
 	}
 	c.ID, c.Kind = newToken(clientPrefix), KindRegistered
 	var out Registered
@@ -219,12 +237,21 @@ func (s *Service) Register(ctx context.Context, m ClientMetadata, requestID, cli
 		if err != nil {
 			return err
 		}
-		out = Registered{Client: c, IssuedAt: row.CreatedAt.Unix()}
+		out = Registered{Client: c, IssuedAt: row.CreatedAt.Unix(), ApplicationType: m.ApplicationType}
 		return audit.Record(ctx, q, audit.Entry{
 			ActorKind: audit.ActorSystem, Action: "oauth.client_register", TargetType: "oauth_client", TargetID: row.ID.String(),
-			After:    map[string]any{"clientName": c.Name, "clientUri": c.URI, "redirectUris": c.RedirectURIs},
+			After:    registrationAudit(c, m.ApplicationType),
 			Metadata: map[string]any{"clientId": c.ID, "name": c.Name}, RequestID: requestID, ClientIP: clientIP,
 		})
 	})
 	return out, err
+}
+
+// registrationAudit is what an audit entry records of a registration.
+func registrationAudit(c Client, applicationType string) map[string]any {
+	after := map[string]any{"clientName": c.Name, "clientUri": c.URI, "redirectUris": c.RedirectURIs}
+	if applicationType != "" {
+		after["applicationType"] = applicationType
+	}
+	return after
 }

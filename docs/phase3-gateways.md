@@ -36,7 +36,7 @@ it may use, and every upstream call carries a signed identity of the user. Calls
 
 - Streamable HTTP, stateless; `POST` only at first (`GET`/`DELETE` → 405). JSON responses; upstream SSE streams
   are relayed for `tools/call`.
-- Methods: `initialize`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, and (follow-up, see
+- Methods (the 2026-07-28 era adds `server/discover` and drops `ping`; [mcp-protocol.md](mcp-protocol.md)): `initialize`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, and (follow-up, see
   "Resources" under "As built") `resources/list`, `resources/templates/list`, `resources/read`.
 - Exposed names: `{server-slug}__{name}` for tools and prompts; titles and descriptions as approved.
 - Every list and every call re-checks: credential valid, user active, gateway enabled, caller granted, capability
@@ -133,8 +133,10 @@ Code: `internal/gateways` (service, availability, grants), `internal/mcpgw` (`/m
 - **Runtime.** Lists are served from the stored, approved definitions (name replaced by the exposed name) without
   contacting servers, paged at 512 KiB with an opaque cursor. Calls are buffered (the SDK client reads an upstream SSE
   stream; no relay), response ≤ 1 MiB. Negotiated versions: 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05. An
-  `MCP-Protocol-Version` header outside these (and older than 2026-07-28) is `400`. `server/discover` is "method not
-  found", so 2026-07-28 clients fall back to `initialize`. JSON-RPC batches are `400`. A foreign `Origin` is `403`. Unknown
+  `MCP-Protocol-Version` header outside these (and older than 2026-07-28) is `400`. Requests of the 2026-07-28 era
+  (chosen per request) are served too, with `server/discover`, header validation, `resultType` and cache hints:
+  see [mcp-protocol.md](mcp-protocol.md). Without the modern signs `server/discover` is "method not found", so
+  older clients are unaffected. JSON-RPC batches are `400`. A foreign `Origin` is `403`. Unknown
   or disabled gateways and no access are HTTP `404`; refused calls are JSON-RPC `-32602 Unknown tool/prompt`.
   Notifications get `202`. `clientInfo.name` is recorded when the same request carries it (`initialize`, or the
   2026-07-28 `_meta` `io.modelcontextprotocol/clientInfo`); otherwise omitted.

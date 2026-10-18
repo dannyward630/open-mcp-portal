@@ -22,7 +22,9 @@ import (
 //     recorded denied);
 //  3. without an active connection covering the scopes gets a consent link
 //     (-32042 URLElicitationRequiredError, the link also in the message;
-//     recorded needs_authorization) and nothing is forwarded;
+//     a modern client that declared URL elicitation gets an
+//     input_required result instead; recorded needs_authorization) and
+//     nothing is forwarded;
 //  4. with a token expiring within a minute refreshes it first; a provider
 //     that can't be reached is -32010 provider_unavailable (recorded
 //     upstream_error) and nothing is forwarded;
@@ -117,12 +119,20 @@ func (rc *request) providerDisabled(req *registry.Requirement, rec *calls.Call) 
 }
 
 // needsAuthorization answers URLElicitationRequiredError (MCP 2025-11-25)
-// with one URL elicitation. The gateway is stateless and clients only state
-// their capabilities on initialize, so every client gets it, and the
+// with one URL elicitation. Legacy clients only state their capabilities on
+// initialize, which the stateless gateway doesn't keep, so every legacy
+// client gets it (and so does a modern one without URL elicitation), and the
 // message carries the link too for clients that only show errors. The URL
 // holds an opaque ID only: it signs nobody in, and works only in the
 // person's own browser session.
+//
+// A modern request (2026-07-28) from a client that declared URL elicitation
+// gets the same link as a multi round-trip input request instead
+// (requeststate.go); nothing in the link, or elsewhere, changes.
 func (rc *request) needsAuthorization(o gateways.Offer, c *providers.ConsentNeeded, rec *calls.Call, class string) {
+	if rc.consentInputRequired(o, c, rec, class) {
+		return
+	}
 	name, scopes := c.Provider.Name, scopeNote(c.Scopes)
 	var msg, elicit string
 	switch {

@@ -1066,7 +1066,7 @@ func (s *Service) Client() *upstream.Client { return s.client }
 // is checked against the address rule again (it may have been saved under
 // the development allowance, or the allowlist may have changed since).
 func (s *Service) target(ctx context.Context, sv dbgen.McpServer) (upstream.Target, error) {
-	t := upstream.Target{URL: sv.URL, Timeout: timeout(sv)}
+	t := upstream.Target{URL: sv.URL, Timeout: timeout(sv), ServerID: sv.ID.String()}
 	if _, err := s.client.NormalizeURL(ctx, sv.URL); err != nil {
 		msg := errNotAllowedNow.Message
 		if e, ok := apperr.As(err); ok {

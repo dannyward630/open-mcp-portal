@@ -86,17 +86,19 @@ type FakeOAuth struct {
 	// (invalid_target), as authorization servers without RFC 8707 do.
 	RejectResource bool
 
-	codes     map[string]fakeCode
-	access    map[string]fakeGrant // token -> grant
-	refresh   map[string]fakeGrant
-	clients   map[string]string // registered client ID -> secret
-	revoked   []string
-	issued    []string
-	issuedRT  []string
-	lastAuth  url.Values
-	resources []string
-	tokens    int
-	refreshs  int
+	codes   map[string]fakeCode
+	access  map[string]fakeGrant // token -> grant
+	refresh map[string]fakeGrant
+	clients map[string]string // registered client ID -> secret
+	// registrations are the bodies of every /register request.
+	registrations []map[string]any
+	revoked       []string
+	issued        []string
+	issuedRT      []string
+	lastAuth      url.Values
+	resources     []string
+	tokens        int
+	refreshs      int
 }
 
 type fakeCode struct {
@@ -213,7 +215,13 @@ func (f *FakeOAuth) register(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs []string `json:"redirect_uris"`
 		Method       string   `json:"token_endpoint_auth_method"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil || len(in.RedirectURIs) == 0 {
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	var whole map[string]any
+	_ = json.Unmarshal(raw, &whole)
+	f.mu.Lock()
+	f.registrations = append(f.registrations, whole)
+	f.mu.Unlock()
+	if err := json.Unmarshal(raw, &in); err != nil || len(in.RedirectURIs) == 0 {
 		f.fail(w, http.StatusBadRequest, "invalid_client_metadata")
 		return
 	}
@@ -234,6 +242,13 @@ func (f *FakeOAuth) register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+// Registrations are the bodies of the /register requests received.
+func (f *FakeOAuth) Registrations() []map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]map[string]any(nil), f.registrations...)
 }
 
 // RegisteredClients are the client IDs registered through /register.

@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +14,26 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/config"
 	"github.com/ncecere/open-mcp-portal/internal/doctor"
 	"github.com/ncecere/open-mcp-portal/internal/testutil"
+	"github.com/ncecere/open-mcp-portal/migrations"
 )
+
+// latestMigration is the number of the newest embedded migration.
+func latestMigration(t *testing.T) int {
+	t.Helper()
+	files, err := fs.Glob(migrations.FS, "*.sql")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("migrations: %v", err)
+	}
+	latest := 0
+	for _, f := range files {
+		n, err := strconv.Atoi(strings.SplitN(f, "_", 2)[0])
+		if err != nil {
+			t.Fatalf("migration %s: %v", f, err)
+		}
+		latest = max(latest, n)
+	}
+	return latest
+}
 
 func find(rep doctor.Report, group, name string) (doctor.Check, bool) {
 	for _, c := range rep.Checks {
@@ -36,7 +58,9 @@ func TestDoctorHealthyInstall(t *testing.T) {
 	if !rep.OK {
 		t.Fatalf("report not ok: %+v", rep.Checks)
 	}
-	if c, _ := find(rep, "postgres", "migrations"); c.Status != doctor.OK || !strings.Contains(c.Detail, "current (version 13)") {
+	// The newest migration (not a number written here: each new one would break
+	// the test).
+	if c, _ := find(rep, "postgres", "migrations"); c.Status != doctor.OK || !strings.Contains(c.Detail, fmt.Sprintf("current (version %d)", latestMigration(t))) {
 		t.Errorf("migrations = %+v", c)
 	}
 	if c, _ := find(rep, "safety", "production"); c.Status != doctor.Info {

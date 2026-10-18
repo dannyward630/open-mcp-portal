@@ -106,9 +106,15 @@ RETURNING *;
 -- name: SetMCPServerRefreshed :exec
 UPDATE mcp_servers SET refreshed_at = now(), last_refresh_error = NULL WHERE id = $1;
 
+-- name: SetMCPServerProtocol :exec
+-- The era and version the portal last negotiated with the server (set when a
+-- refresh, test or health check reads it).
+UPDATE mcp_servers SET protocol_era = @era, protocol_version = @version, protocol_negotiated_at = now() WHERE id = @id;
+
 -- name: ClearMCPServerRefreshed :exec
--- A new URL: the stored capabilities were read from the old endpoint.
-UPDATE mcp_servers SET refreshed_at = NULL WHERE id = $1;
+-- A new URL: the stored capabilities (and the protocol negotiated) were read
+-- from the old endpoint.
+UPDATE mcp_servers SET refreshed_at = NULL, protocol_era = NULL, protocol_version = NULL, protocol_negotiated_at = NULL WHERE id = $1;
 
 -- name: SetMCPServerRefreshError :exec
 UPDATE mcp_servers SET last_refresh_error = @message WHERE id = @id;

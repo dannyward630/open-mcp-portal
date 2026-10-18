@@ -22,7 +22,9 @@ Creating a server runs discovery straight away. The server is created even if di
 
 ## Discovery and change detection
 
-**Refresh** connects and lists every kind the server advertises. It reads every page, accepts at most 500 entries per kind, and gives up after 500 pages or on a repeated cursor. Each response is at most 1 MiB. Titles are clipped to 200 characters and descriptions to 10,000. Names and URIs can be up to 1000 characters; longer or invalid entries are skipped. A definition over 64 KiB fails discovery. A kind that the server advertises but answers with "method not found" counts as empty. Discovery never calls a tool, and the portal offers no roots, sampling or elicitation.
+**Refresh** connects and lists every kind the server advertises. It reads every page, accepts at most 500 entries per kind, and gives up after 500 pages or on a repeated cursor. Each response is at most 1 MiB. Titles are clipped to 200 characters and descriptions to 10,000. Names and URIs can be up to 1000 characters; longer or invalid entries are skipped. A definition over 64 KiB fails discovery. A kind that the server advertises but answers with "method not found" counts as empty. Discovery never calls a tool, and the portal offers no roots, sampling or elicitation to a server it reads (calls forwarded for a client that declared elicitation are another matter: [mcp-protocol.md](mcp-protocol.md#relaying-a-servers-elicitation)).
+
+**Protocol era.** The portal tries the newest protocol first and falls back to the older handshake only when the server isn't a 2026-07-28 server; the full rule, the cache and what it records are in [mcp-protocol.md](mcp-protocol.md#the-portal-as-a-client-of-your-servers). A refresh, a test and a health check that read the server store the era (`legacy` or `modern`) and version they negotiated on the server (`protocol` in the API: `era`, `version`, `negotiatedAt`; null until the first successful read; cleared when the URL changes). A failing check leaves what was stored.
 
 Each capability stores its **definition**: the listed object as canonical JSON (sorted keys, numbers kept exactly) without `_meta`, which servers use for data that changes between calls. Its **fingerprint** is the SHA-256 of that JSON.
 
@@ -87,7 +89,7 @@ The loop runs at start-up and then every `HEALTH_CHECK_INTERVAL` (default `5m`, 
 
 ## Local fake server
 
-`make fake-mcp` starts `cmd/fakemcp` on `http://127.0.0.1:8091/mcp`. It has tools `check_outage`, `search_tickets`, `create_ticket`, and for gateways `whoami`, `provider_token` and `echo` (see [upstream-identity.md](upstream-identity.md); `-gateway-tools=false` leaves them out), the resource `status://services`, the template `status://services/{service}` and the prompt `incident_summary`. `-header`/`-value` make it require a header. `-describe tool=text` (or `FAKEMCP_DESCRIBE`, with entries separated by `;`) changes a tool's description, so the next refresh sees a change.
+`make fake-mcp` starts `cmd/fakemcp` on `http://127.0.0.1:8091/mcp`. It has tools `check_outage`, `search_tickets`, `create_ticket`, and for gateways `whoami`, `provider_token` and `echo` (see [upstream-identity.md](upstream-identity.md); `-gateway-tools=false` leaves them out), the resource `status://services`, the template `status://services/{service}` and the prompt `incident_summary`. `-header`/`-value` make it require a header. `-describe tool=text` (or `FAKEMCP_DESCRIBE`, with entries separated by `;`) changes a tool's description, so the next refresh sees a change. `-protocol legacy|modern|both` makes it speak one protocol era only (a legacy server answers a modern probe with a plain-text `400`; a modern one is stateless and refuses `initialize`), `-mrtr-tools` adds `ask_form`, `ask_url` and `ask_sampling` (they answer `input_required`) and `-stream-tools` adds `progress` and `block` and answers with SSE.
 
 ## API
 

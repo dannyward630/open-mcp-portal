@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ncecere/open-mcp-portal/internal/httpapi"
 	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-portal/internal/testutil"
 )
@@ -37,10 +38,14 @@ type provEnv struct {
 	responses []string
 }
 
-func newProvEnv(t *testing.T) *provEnv {
+func newProvEnv(t *testing.T) *provEnv { return newProvEnvHook(t, nil) }
+
+// newProvEnvHook is newProvEnv with a hook that adjusts the services before
+// the handler is built (nil: none).
+func newProvEnvHook(t *testing.T, hook func(*httpapi.Deps)) *provEnv {
 	t.Helper()
 	logs := &syncBuffer{}
-	e := &provEnv{gwEnv: newGwEnv(t, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))), logs: logs}
+	e := &provEnv{gwEnv: newGwEnvHook(t, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), hook), logs: logs}
 	e.fake.SetJWKS(e.app.URL+"/.well-known/jwks.json", e.fake.URL())
 	e.oauth = testutil.NewFakeOAuth(t)
 	e.provider = e.createProvider("github", e.oauth, nil)

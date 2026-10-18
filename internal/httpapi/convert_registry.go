@@ -66,9 +66,19 @@ func (a *api) toAPIServer(v registry.ServerView) apitypes.McpServer {
 		Counts: toAPICounts(v.Counts), PendingChanges: v.PendingChanges, Health: toAPIHealth(v.Health, true),
 		RefreshedAt: s.RefreshedAt, LastRefreshError: s.LastRefreshError,
 		Requirement: toAPIServerRequirement(v.Requirement), CapturePayloads: &s.CapturePayloads,
-		AuthMode: authModePtr(s), Oauth: a.toAPIServerOAuth(v), SendIdentity: &s.SendIdentity,
+		AuthMode: authModePtr(s), Oauth: a.toAPIServerOAuth(v), SendIdentity: &s.SendIdentity, Protocol: toAPIProtocol(s),
 		Revision: s.Revision, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
+}
+
+// toAPIProtocol is the era and version last negotiated with the server (nil
+// until a refresh, test or health check has read it).
+func toAPIProtocol(s dbgen.McpServer) *apitypes.McpServerProtocol {
+	if s.ProtocolEra == nil || s.ProtocolVersion == nil || s.ProtocolNegotiatedAt == nil {
+		return nil
+	}
+	return &apitypes.McpServerProtocol{Era: apitypes.McpServerProtocolEra(*s.ProtocolEra), Version: *s.ProtocolVersion,
+		NegotiatedAt: *s.ProtocolNegotiatedAt}
 }
 
 func authModePtr(s dbgen.McpServer) *apitypes.McpServerAuthMode {

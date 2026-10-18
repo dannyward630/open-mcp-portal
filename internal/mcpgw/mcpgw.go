@@ -8,8 +8,15 @@
 // prompts/list, prompts/get, and (when the gateway selects resources or
 // resource templates) resources/list, resources/templates/list and
 // resources/read; other methods are "method not found", including
-// resources/subscribe and server/discover, so clients of the 2026-07-28
-// protocol fall back to initialize.
+// resources/subscribe.
+//
+// It speaks two protocol eras, chosen per request (era.go, modern.go,
+// requeststate.go; docs/mcp-protocol.md). The legacy era (2024-11-05 to
+// 2025-11-25) is as described above. A modern request (2026-07-28: per
+// request _meta and the MCP-Protocol-Version, Mcp-Method and Mcp-Name
+// headers, which must match the body) also gets server/discover, resultType,
+// cache hints, era-specific error codes, and "connect your account" as a
+// multi round-trip input request.
 //
 // Every request is authenticated (Authorization: Bearer ...) with a
 // personal API key (omp_...), an OAuth access token of a connected client
@@ -50,6 +57,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,6 +77,7 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/providers"
 	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
 	"github.com/ncecere/open-mcp-portal/internal/registry"
+	"github.com/ncecere/open-mcp-portal/internal/secrets"
 	"github.com/ncecere/open-mcp-portal/internal/serviceaccounts"
 	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-portal/internal/upstream"
@@ -88,9 +97,8 @@ const (
 // Protocol versions this endpoint negotiates, newest first.
 var protocolVersions = []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
 
-// statelessVersion is the first protocol version without initialize; such
-// versions in the MCP-Protocol-Version header are accepted (server/discover
-// then fails, and the client falls back to initialize).
+// statelessVersion is the first protocol version without initialize (the
+// modern era, era.go).
 const statelessVersion = "2026-07-28"
 
 // metaClientInfo is where 2026-07-28 clients put clientInfo in every
@@ -121,11 +129,16 @@ const (
 	// codeRateLimited is the implementation-defined code of a request over
 	// a rate limit (HTTP 429).
 	codeRateLimited = -32029
+	// codeRateLimitedModern is what modern requests get instead: 2026-07-28
+	// reserves -32020 to -32099 for the specification, so ours moves out of
+	// the JSON-RPC range (the HTTP status).
+	codeRateLimitedModern = 429
 )
 
 // Methods.
 const (
 	methodInitialize  = "initialize"
+	methodDiscover    = "server/discover"
 	methodPing        = "ping"
 	methodToolsList   = "tools/list"
 	methodToolsCall   = "tools/call"
@@ -161,10 +174,26 @@ type Handler struct {
 	// Capture stores the payloads of calls whose gateway or server captures
 	// them (nil: never).
 	Capture *capture.Service
+	// Secrets derives the key that protects requestState (the consent
+	// input request of the modern era; nil: consent is -32042 for everyone).
+	Secrets *secrets.Box
 	Pool    *pgxpool.Pool
 	AppURL  string
 	Log     *slog.Logger
+
+	// keepAlive is the interval of SSE keep-alive comments (stream.go; 0:
+	// 15 s).
+	keepAlive time.Duration
+
+	stateOnce sync.Once
+	state     *stateBox
+	// now is the clock of requestState expiry (tests set it; nil: time.Now).
+	now func() time.Time
 }
+
+// SetClock sets the clock that expires requestState tokens (tests). Call it
+// before the handler serves its first request.
+func (h *Handler) SetClock(now func() time.Time) { h.now = now }
 
 func (h *Handler) log() *slog.Logger {
 	if h.Log == nil {
@@ -250,10 +279,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		refuse(w, http.StatusNotAcceptable, "Accept must include application/json")
 		return
 	}
-	if v := r.Header.Get("MCP-Protocol-Version"); v != "" && !slices.Contains(protocolVersions, v) && v < statelessVersion {
-		refuse(w, http.StatusBadRequest, "Unsupported MCP-Protocol-Version (supported: "+strings.Join(protocolVersions, ", ")+")")
-		return
-	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxRequestBytes))
 	if err != nil {
 		var mbe *http.MaxBytesError
@@ -278,8 +303,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeRPC(w, http.StatusBadRequest, msg.ID, nil, &rpcError{Code: codeInvalidRequest, Message: "Not a JSON-RPC 2.0 request"})
 		return
 	}
+	era, eerr := detectEra(msg, r.Header)
+	if eerr != nil {
+		writeRPC(w, eerr.status, msg.ID, nil, &rpcError{Code: eerr.code, Message: eerr.message, Data: eerr.data})
+		return
+	}
+	if v := r.Header.Get(headerProtocolVersion); !era.modern && v != "" && !slices.Contains(protocolVersions, v) && v < statelessVersion {
+		refuse(w, http.StatusBadRequest, "Unsupported MCP-Protocol-Version (supported: "+strings.Join(protocolVersions, ", ")+")")
+		return
+	}
 
-	rc := &request{h: h, w: w, r: r, start: start, msg: msg, principal: principal, requestBytes: int64(len(body))}
+	rc := &request{h: h, w: w, r: r, start: start, msg: msg, principal: principal, requestBytes: int64(len(body)),
+		modern: era.modern, clientCaps: era.caps}
 	if !rc.resolveGateway(slug) {
 		return
 	}
@@ -428,6 +463,13 @@ type request struct {
 	// server's answer should it echo them (the client and the model never
 	// see them).
 	scrub []string
+	// modern: the request is of the 2026-07-28 era (era.go); clientCaps are
+	// the capabilities it declared.
+	modern     bool
+	clientCaps map[string]json.RawMessage
+	// stream is the SSE response of a streamed call (stream.go; nil: the
+	// answer is one JSON object). Once set, w is the stream.
+	stream *stream
 }
 
 // observe records the request's metrics.
@@ -488,7 +530,11 @@ func (rc *request) rateLimit() bool {
 	observability.MCPRateLimited.WithLabelValues(d.Exceeded).Inc()
 	rc.w.Header().Set("Retry-After", strconv.Itoa(retry))
 	name := strings.TrimSuffix(d.Exceeded, "_per_minute")
-	n := writeRPC(rc.w, http.StatusTooManyRequests, rc.msg.ID, nil, &rpcError{Code: codeRateLimited,
+	limitedCode := int64(codeRateLimited)
+	if rc.modern {
+		limitedCode = codeRateLimitedModern
+	}
+	n := writeRPC(rc.w, http.StatusTooManyRequests, rc.msg.ID, nil, &rpcError{Code: limitedCode,
 		Message: fmt.Sprintf("Rate limit exceeded (%s); try again in %d s", strings.ReplaceAll(name, "_", " "), retry),
 		Data:    map[string]any{"reason": "rate_limited", "limit": d.Exceeded, "limitPerMinute": d.LimitPerMinute, "retryAfterSeconds": retry}})
 	rc.outcome = calls.OutcomeRateLimited
@@ -635,6 +681,9 @@ func (rc *request) record(c calls.Call, responseBytes int64) {
 		c.UserID = p.user.ID
 	}
 	c.ClientName = rc.clientName()
+	if rc.stream != nil {
+		responseBytes = rc.stream.bytes() // progress events and the response
+	}
 	c.Latency, c.RequestBytes, c.ResponseBytes = time.Since(rc.start), rc.requestBytes, responseBytes
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(rc.r.Context()), 5*time.Second)
 	defer cancel()
@@ -663,7 +712,7 @@ func (rc *request) record(c calls.Call, responseBytes int64) {
 }
 
 func (rc *request) reply(result any) int64 {
-	return writeRPC(rc.w, http.StatusOK, rc.msg.ID, result, nil)
+	return writeRPC(rc.w, http.StatusOK, rc.msg.ID, rc.shape(result), nil)
 }
 
 func (rc *request) fail(code int64, msg string) int64 {
@@ -678,7 +727,18 @@ func (rc *request) dispatch() {
 	switch rc.msg.Method {
 	case methodInitialize:
 		rc.initialize()
+	case methodDiscover:
+		if rc.modern {
+			rc.discover()
+		} else {
+			rc.methodNotFound()
+		}
 	case methodPing:
+		if rc.modern {
+			// Removed in 2026-07-28.
+			rc.methodNotFound()
+			return
+		}
 		rc.reply(struct{}{})
 	case methodToolsList:
 		rc.list(upstream.KindTool, "tools")
@@ -707,8 +767,14 @@ func (rc *request) dispatch() {
 	}
 }
 
+// methodNotFound answers an unknown method: 200 as always, and 404 in the
+// modern era (streamable-http, "Protocol Version Header").
 func (rc *request) methodNotFound() {
-	rc.fail(codeMethodNotFound, "Method not found: "+clip(rc.msg.Method, 100))
+	status := http.StatusOK
+	if rc.modern {
+		status = http.StatusNotFound
+	}
+	writeRPC(rc.w, status, rc.msg.ID, nil, &rpcError{Code: codeMethodNotFound, Message: "Method not found: " + clip(rc.msg.Method, 100)})
 }
 
 // hasResources reports whether the gateway selects any resource or
@@ -750,21 +816,34 @@ func (rc *request) initialize() {
 	if slices.Contains(protocolVersions, p.ProtocolVersion) {
 		version = p.ProtocolVersion
 	}
-	caps := map[string]any{
-		"tools":   map[string]any{"listChanged": false},
-		"prompts": map[string]any{"listChanged": false},
-	}
-	if has, err := rc.hasResources(); err != nil {
+	caps, err := rc.capabilities()
+	if err != nil {
 		rc.internal(err)
 		return
-	} else if has {
-		caps["resources"] = map[string]any{"listChanged": false, "subscribe": false}
 	}
 	rc.reply(map[string]any{
 		"protocolVersion": version,
 		"capabilities":    caps,
 		"serverInfo":      map[string]any{"name": rc.gateway.Slug, "title": rc.gateway.Name, "version": buildinfo.Version},
 	})
+}
+
+// capabilities are what the gateway advertises to this caller: tools and
+// prompts, and resources when the gateway selects any (no subscriptions, no
+// list change notifications).
+func (rc *request) capabilities() (map[string]any, error) {
+	caps := map[string]any{
+		"tools":   map[string]any{"listChanged": false},
+		"prompts": map[string]any{"listChanged": false},
+	}
+	has, err := rc.hasResources()
+	if err != nil {
+		return nil, err
+	}
+	if has {
+		caps["resources"] = map[string]any{"listChanged": false, "subscribe": false}
+	}
+	return caps, nil
 }
 
 // offers reads what the caller may use of kind now, by exposed name.
@@ -786,7 +865,12 @@ func (rc *request) offers(kind string) ([]gateways.Offer, error) {
 // listed is a stored definition with the exposed name (tools, prompts) or
 // URI (resources: uri, templates: uriTemplate); a resource's own name,
 // title, description and mimeType stay as approved.
-func listed(o gateways.Offer) (json.RawMessage, error) {
+func listed(o gateways.Offer) (json.RawMessage, error) { return listedFor(o, false) }
+
+// listedFor is listed for an era: the modern era allows any JSON Schema as
+// outputSchema, so it is passed through; legacy clients get only object
+// schemas.
+func listedFor(o gateways.Offer, modern bool) (json.RawMessage, error) {
 	def := map[string]json.RawMessage{}
 	if err := json.Unmarshal(o.Capability.Definition, &def); err != nil {
 		return nil, err
@@ -801,7 +885,7 @@ func listed(o gateways.Offer) (json.RawMessage, error) {
 		def["name"] = exposed
 	}
 	delete(def, "_meta")
-	if raw, ok := def["outputSchema"]; ok && !objectSchema(raw) {
+	if raw, ok := def["outputSchema"]; ok && !modern && !objectSchema(raw) {
 		// The MCP schema requires an outputSchema of type "object"; strict
 		// clients reject the whole list when one isn't (GitHub's server
 		// lists ["null","array"] and oneOf schemas). Without it, results
@@ -857,7 +941,7 @@ func (rc *request) list(kind, key string) {
 		if !o.Allowed || (after != "" && o.ExposedName <= after) {
 			continue
 		}
-		def, err := listed(o)
+		def, err := listedFor(o, rc.modern)
 		if err != nil {
 			rc.internal(err)
 			return
@@ -873,6 +957,7 @@ func (rc *request) list(kind, key string) {
 	if next != "" {
 		result["nextCursor"] = next
 	}
+	rc.cacheable(result, listTTLms)
 	n := rc.reply(result)
 	rc.record(calls.Call{Outcome: calls.OutcomeOK}, n)
 }

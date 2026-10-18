@@ -41,7 +41,10 @@ type TestResult struct {
 	Latency                                    time.Duration
 	Counts                                     upstream.Counts
 	ServerName, ServerVersion, ProtocolVersion string
-	Err                                        *upstream.Error // nil when OK
+	// Protocol is the era and version negotiated with the server (zero when
+	// it wasn't read); a successful check stores it on the server.
+	Protocol upstream.Protocol
+	Err      *upstream.Error // nil when OK
 	// ReadAs names the person whose sign-in (the setup connection) an
 	// oauth server was read with; SetupRequired says there was none usable
 	// (SetupStatus is missing or needs_reconsent).
@@ -95,6 +98,7 @@ func (s *Service) probe(ctx context.Context, sv dbgen.McpServer, trigger string)
 	}
 	d, err := s.client.Discover(ctx, t)
 	res.Latency, res.ServerName, res.ServerVersion, res.ProtocolVersion = d.Latency, d.ServerName, d.ServerVersion, d.ProtocolVersion
+	res.Protocol = d.Protocol
 	if err != nil {
 		e, ok := err.(*upstream.Error)
 		if !ok {
@@ -139,6 +143,13 @@ func recordCheck(ctx context.Context, q *dbgen.Queries, serverID uuid.UUID, res 
 	}
 	if _, err := q.InsertMCPHealthCheck(ctx, p); err != nil {
 		return err
+	}
+	// What the server speaks, as last negotiated by a check that read it.
+	if res.OK && res.Protocol.Era != "" && res.Protocol.Version != "" {
+		if err := q.SetMCPServerProtocol(ctx, dbgen.SetMCPServerProtocolParams{ID: serverID, Era: ptr(string(res.Protocol.Era)),
+			Version: ptr(res.Protocol.Version)}); err != nil {
+			return err
+		}
 	}
 	_, err := q.PruneMCPHealthChecks(ctx, dbgen.PruneMCPHealthChecksParams{ServerID: serverID, Keep: KeepChecks})
 	return err

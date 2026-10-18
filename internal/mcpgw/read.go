@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/ncecere/open-mcp-portal/internal/calls"
 	"github.com/ncecere/open-mcp-portal/internal/gateways"
 	"github.com/ncecere/open-mcp-portal/internal/upstream"
@@ -17,6 +15,15 @@ const maxReadURI = 8 << 10
 // resourceNotFound is what a refused or unknown read sees.
 func resourceNotFound(uri string) string {
 	return fmt.Sprintf("Resource not found: %s", clip(uri, 200))
+}
+
+// resourceNotFoundCode is "resource not found": -32602 (invalid params) in
+// the modern era, MCP's own -32002 before it.
+func (rc *request) resourceNotFoundCode() int64 {
+	if rc.modern {
+		return codeInvalidParams
+	}
+	return codeResourceNotFound
 }
 
 // readTarget is the selected resource or template a read is allowed by.
@@ -71,6 +78,10 @@ func (rc *request) read() {
 		rc.record(calls.Call{Outcome: calls.OutcomeBadRequest, ErrorClass: "invalid_params"}, n)
 		return
 	}
+	again, ok := rc.checkRetry(calls.Call{ExposedName: p.URI})
+	if !ok {
+		return
+	}
 	all, err := rc.h.Gateways.Offers(rc.r.Context(), rc.gateway, rc.caller)
 	if err != nil {
 		rc.internal(err)
@@ -78,7 +89,7 @@ func (rc *request) read() {
 	}
 	target, allowed := matchRead(all, p.URI)
 	if !allowed {
-		n := rc.fail(codeResourceNotFound, resourceNotFound(p.URI))
+		n := rc.fail(rc.resourceNotFoundCode(), resourceNotFound(p.URI))
 		c := calls.Call{Outcome: calls.OutcomeDenied, ErrorClass: "unknown", ExposedName: p.URI}
 		if target != nil {
 			o := target.offer
@@ -90,12 +101,16 @@ func (rc *request) read() {
 		rc.record(c, n)
 		return
 	}
-	rc.forwardRead(p.URI, *target)
+	if again.declined {
+		rc.declined(target.offer)
+		return
+	}
+	rc.forwardRead(p.URI, *target, again)
 }
 
 // forwardRead reads the resource from its server with the caller's signed
 // identity and gives the contents' URIs back in the exposed form.
-func (rc *request) forwardRead(exposed string, t readTarget) {
+func (rc *request) forwardRead(exposed string, t readTarget, again retry) {
 	ctx := rc.r.Context()
 	o := t.offer
 	rec := calls.Call{ExposedName: exposed, Server: &o.Server, CapabilityID: o.Capability.ID}
@@ -113,21 +128,9 @@ func (rc *request) forwardRead(exposed string, t readTarget) {
 		return
 	}
 	rc.captureCall(o, readArguments(exposed), target, token, cred)
-	out, _, ok := rc.exchange(o, &rec, cred, target, func(tg upstream.Target) (any, bool, error) {
-		res, _, err := rc.h.Registry.Client().ReadResource(ctx, tg, t.original)
-		if err != nil {
-			return nil, false, err
-		}
-		return res, false, nil
-	})
+	fwd, ok := rc.forwardRequest(upstream.MethodResourcesRead, t.original, nil, o, again, &rec)
 	if !ok {
 		return
 	}
-	res := out.(*mcp.ReadResourceResult)
-	for _, c := range res.Contents {
-		if c != nil {
-			c.URI = gateways.ExposedURI(o.Server.Slug, c.URI)
-		}
-	}
-	rc.relay(rec, res, false)
+	rc.forwardCall(o, rec, cred, target, fwd)
 }
