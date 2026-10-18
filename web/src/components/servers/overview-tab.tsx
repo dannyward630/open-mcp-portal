@@ -22,6 +22,7 @@ import { toast } from "@/components/ui/toast/toast";
 import s from "../../pages/shared.module.css";
 import { EnabledBadge, HealthBadge } from "./badges";
 import { CatalogCard } from "./catalog-card";
+import { ProtocolText } from "./protocol";
 import { RequirementCard } from "./requirement-card";
 import { SetupConnectedNotice, SetupNotice } from "./setup";
 import { SignInCard } from "./sign-in-card";
@@ -132,6 +133,7 @@ function ConnectionCard({ server, scope, abilities, onRun }: Props & { onRun: ()
           items={[
             { label: "URL", value: <code className={m.url}>{server.url}</code> },
             { label: "Transport", value: "Streamable HTTP" },
+            { label: "Upstream", value: <ProtocolText protocol={server.protocol} /> },
             { label: mode === "static_header" ? "Header" : "Authentication", value: auth },
             { label: "Timeout", value: `${server.timeoutSeconds} s` },
             { label: "Status", value: <EnabledBadge enabled={server.enabled} /> },
