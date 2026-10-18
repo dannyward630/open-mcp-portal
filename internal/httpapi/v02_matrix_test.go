@@ -21,7 +21,7 @@ import (
 // adminTestEmail has somewhere to send (its outcome is a 200 body either way).
 func matrixSMTP(t *testing.T) func(*config.Config) {
 	smtp := testutil.NewFakeSMTP(t)
-	smtp.OfferStartTLS = false
+	smtp.Configure(func(f *testutil.FakeSMTP) { f.OfferStartTLS = false })
 	return func(c *config.Config) {
 		c.SMTP = config.SMTP{Host: smtp.Host, Port: smtp.Port, From: "portal@example.com", TLS: "none"}
 	}

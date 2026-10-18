@@ -40,8 +40,7 @@ func TestDoctorEmailOffAndWebhooks(t *testing.T) {
 // port, mode and "authenticated", never the username or the password.
 func TestDoctorEmailConfigured(t *testing.T) {
 	smtp := testutil.NewFakeSMTP(t)
-	smtp.OfferStartTLS = false
-	smtp.Username, smtp.Password = "mailer", "s3cret-pass"
+	smtp.Configure(func(f *testutil.FakeSMTP) { f.OfferStartTLS, f.Username, f.Password = false, "mailer", "s3cret-pass" })
 	cfg := config.Defaults()
 	cfg.SMTP = config.SMTP{Host: smtp.Host, Port: smtp.Port, Username: "mailer", Password: "s3cret-pass", From: "portal@example.com", TLS: "none"}
 	c := notifyChecks(t, cfg)["email"]

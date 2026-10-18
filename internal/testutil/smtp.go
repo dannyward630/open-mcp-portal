@@ -82,6 +82,29 @@ func NewFakeSMTP(t testing.TB) *FakeSMTP {
 	return f
 }
 
+// smtpSettings are a FakeSMTP's behaviours, read once per connection under
+// the lock so a test may change them while the server runs.
+type smtpSettings struct {
+	offerStartTLS, requireTLS, rejectRcpt bool
+	username, password                    string
+}
+
+// Configure changes the server's behaviour (OfferStartTLS, RequireTLS,
+// Username, Password, RejectRcpt) while holding the lock the server reads
+// them under. Set them only through it once the server is running:
+// NewFakeSMTP has already started accepting connections.
+func (f *FakeSMTP) Configure(set func(f *FakeSMTP)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	set(f)
+}
+
+func (f *FakeSMTP) settings() smtpSettings {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return smtpSettings{f.OfferStartTLS, f.RequireTLS, f.RejectRcpt, f.Username, f.Password}
+}
+
 // Messages are the messages received so far.
 func (f *FakeSMTP) Messages() []SMTPMessage {
 	f.mu.Lock()
@@ -109,11 +132,12 @@ func (f *FakeSMTP) serve() {
 func (f *FakeSMTP) handle(c net.Conn) {
 	defer c.Close()
 	_ = c.SetDeadline(time.Now().Add(20 * time.Second))
+	cfg := f.settings()
 	var (
 		r      = bufio.NewReader(c)
 		w      = c
 		secure bool
-		authed = f.Username == ""
+		authed = cfg.username == ""
 		user   string
 		msg    SMTPMessage
 	)
@@ -132,15 +156,15 @@ func (f *FakeSMTP) handle(c net.Conn) {
 		switch verb {
 		case "EHLO", "HELO":
 			say("250-fake")
-			if f.OfferStartTLS && !secure {
+			if cfg.offerStartTLS && !secure {
 				say("250-STARTTLS")
 			}
-			if f.Username != "" && (secure || !f.OfferStartTLS) {
+			if cfg.username != "" && (secure || !cfg.offerStartTLS) {
 				say("250-AUTH PLAIN")
 			}
 			say("250 OK")
 		case "STARTTLS":
-			if !f.OfferStartTLS {
+			if !cfg.offerStartTLS {
 				say("502 not offered")
 				continue
 			}
@@ -155,7 +179,7 @@ func (f *FakeSMTP) handle(c net.Conn) {
 			if len(parts) == 3 && strings.EqualFold(parts[1], "PLAIN") {
 				raw, _ := base64.StdEncoding.DecodeString(parts[2])
 				f2 := strings.Split(string(raw), "\x00")
-				if len(f2) == 3 && f2[1] == f.Username && f2[2] == f.Password {
+				if len(f2) == 3 && f2[1] == cfg.username && f2[2] == cfg.password {
 					authed, user = true, f2[1]
 					say("235 ok")
 					continue
@@ -163,14 +187,14 @@ func (f *FakeSMTP) handle(c net.Conn) {
 			}
 			say("535 bad credentials")
 		case "MAIL":
-			if (f.RequireTLS && !secure) || !authed {
+			if (cfg.requireTLS && !secure) || !authed {
 				say("530 Must issue a STARTTLS command first / authenticate")
 				continue
 			}
 			msg = SMTPMessage{From: line[strings.Index(line, ":")+1:], TLS: secure, User: user}
 			say("250 ok")
 		case "RCPT":
-			if f.RejectRcpt {
+			if cfg.rejectRcpt {
 				say("550 no such user")
 				continue
 			}

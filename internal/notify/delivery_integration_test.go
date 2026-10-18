@@ -535,7 +535,7 @@ func TestDestinationCRUDSealingAndSentinels(t *testing.T) {
 
 func TestSMTPDelivery(t *testing.T) {
 	smtp := testutil.NewFakeSMTP(t)
-	smtp.RequireTLS, smtp.Username, smtp.Password = true, "mailer", "s3cret"
+	smtp.Configure(func(f *testutil.FakeSMTP) { f.RequireTLS, f.Username, f.Password = true, "mailer", "s3cret" })
 	cfg := config.SMTP{Host: smtp.Host, Port: smtp.Port, Username: "mailer", Password: "s3cret", From: "Test Portal <portal@example.com>"}
 	e := newEnv(t, nil)
 	e.svc.cfg.SMTP = cfg
@@ -576,7 +576,7 @@ func TestSMTPDelivery(t *testing.T) {
 
 	// No STARTTLS offered: the send fails (never a downgrade) and nothing is sent.
 	plain := testutil.NewFakeSMTP(t)
-	plain.OfferStartTLS = false
+	plain.Configure(func(f *testutil.FakeSMTP) { f.OfferStartTLS = false })
 	m := &SMTPMailer{Config: config.SMTP{Host: plain.Host, Port: plain.Port, From: "p@example.com"}, RootCAs: plain.Roots}
 	if merr := m.Send(context.Background(), Mail{To: "a@example.com", Subject: "x", Text: "t", HTML: "h"}); merr == nil || merr.Class != ClassTLS || len(plain.Messages()) != 0 {
 		t.Errorf("without STARTTLS: %+v, %d message(s)", merr, len(plain.Messages()))
@@ -596,12 +596,12 @@ func TestSMTPDelivery(t *testing.T) {
 	if merr := badPw.Send(context.Background(), Mail{To: "a@example.com", Subject: "x", Text: "t", HTML: "h"}); merr == nil || merr.Class != ClassAuth {
 		t.Errorf("a wrong password: %+v", merr)
 	}
-	smtp.RejectRcpt = true
+	smtp.Configure(func(f *testutil.FakeSMTP) { f.RejectRcpt = true })
 	if merr := (&SMTPMailer{Config: cfg, RootCAs: smtp.Roots}).Send(context.Background(), Mail{To: "a@example.com", Subject: "x", Text: "t", HTML: "h"}); merr == nil || merr.Class != ClassAddress || !merr.Permanent {
 		t.Errorf("a refused recipient: %+v", merr)
 	}
 	// doctor's check: connect, EHLO, TLS, AUTH, QUIT, no message.
-	smtp.RejectRcpt = false
+	smtp.Configure(func(f *testutil.FakeSMTP) { f.RejectRcpt = false })
 	n := len(smtp.Messages())
 	if merr := CheckWith(context.Background(), cfg, smtp.Roots); merr != nil {
 		t.Errorf("check: %+v", merr)
