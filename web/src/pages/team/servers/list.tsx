@@ -12,14 +12,15 @@ import { useState } from "react";
 import { api, unwrap } from "../../../api/client";
 import { teamServersKey } from "../../../api/queries";
 import { AddServerForm } from "../../../components/servers/add-server-form";
-import type { McpServer } from "../../../components/servers/labels";
+import { type McpServer, publishStateLabels } from "../../../components/servers/labels";
 import { PublishDialog, publishBlocked, UnpublishDialog } from "../../../components/servers/publish-dialogs";
 import { serverColumns } from "../../../components/servers/server-columns";
 import { useFormParam } from "../../../components/templates/form-page";
 import { ListPage, useListFilters } from "../../../components/templates/list-page";
 import { terms } from "../../../lib/terms";
 import { Button } from "@/components/ui/button/button";
-import { useDebounced } from "../../admin/hooks";
+import type { Facet } from "@/components/ui/filter-bar/filter-bar";
+import { one, useDebounced } from "../../admin/hooks";
 import { ReadOnlyNotice } from "../access";
 import { useTeam } from "../common";
 import { ArchivedNotice } from "../layout";
@@ -28,12 +29,26 @@ import { ArchivedNotice } from "../layout";
 export const whatIsAServer =
   "An MCP server offers tools, resources and prompts to AI clients such as Claude Code or Cursor over the Model Context Protocol. Register the remote servers your team runs: the portal reads what they offer, checks their health, and can publish them to the company catalog.";
 
+type PublishState = McpServer["publishState"];
+
+/** Catalog state (?publishState=pending, the link of "servers waiting for review"). The API has no such filter: it applies to the servers loaded. */
+const facets: Facet<McpServer>[] = [
+  {
+    id: "publishState",
+    label: "Catalog",
+    type: "toggle",
+    allLabel: "All",
+    options: (["pending", "published", "rejected", "private"] as PublishState[]).map((v) => ({ value: v, label: publishStateLabels[v] })),
+  },
+];
+
 export function TeamServersPage() {
   const { slug, team, canEdit, isManager, archived } = useTeam();
   const form = useFormParam();
   const [dialog, setDialog] = useState<{ server: McpServer; kind: "publish" | "unpublish" } | null>(null);
   const manage = isManager && !archived;
-  const { query } = useListFilters();
+  const { query, values } = useListFilters(facets);
+  const publishState = one(values, "publishState");
   const q = useDebounced(query.trim());
   const servers = useInfiniteQuery({
     queryKey: [...teamServersKey(slug), "list", q],
@@ -42,7 +57,7 @@ export function TeamServersPage() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
-  const items = servers.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = (servers.data?.pages.flatMap((p) => p.items) ?? []).filter((x) => !publishState || x.publishState === publishState);
   const link = (x: McpServer) => <Link to="/teams/$team/servers/$serverId" params={{ team: slug, serverId: x.id }} />;
   const add = canEdit && (
     <Button onClick={() => form.open("new")}>
@@ -67,6 +82,7 @@ export function TeamServersPage() {
         data={items}
         getRowId={(x) => x.id}
         rowLabel={(x) => x.name}
+        facets={facets}
         search={{ label: "Search servers", placeholder: "Name, slug or URL" }}
         manual
         loading={servers.isLoading}
@@ -79,7 +95,7 @@ export function TeamServersPage() {
           ...rejectedActions(x, manage, (kind) => setDialog({ server: x, kind })),
         ]}
         empty={
-          q
+          q || publishState
             ? { icon: <Server />, title: "No servers match." }
             : { icon: <Server />, title: "No MCP servers yet.", description: whatIsAServer, action: add || undefined }
         }

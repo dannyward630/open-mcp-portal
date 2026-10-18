@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
-import { serverId, team } from "./fixtures";
+import { mcpServer, page, serverId, team } from "./fixtures";
 import { attentionItem, overview, teamAttention, teamRef } from "./fixtures-v02";
 import { type Handler, Reply, mockApi, renderApp, shellRoutes } from "./harness";
 
@@ -178,5 +178,17 @@ describe("Team overview › Needs attention", () => {
     fail = false;
     await u.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Service status is failing its health checks")).toBeInTheDocument();
+  });
+});
+
+describe("Team servers ?publishState= (the link of servers waiting for review)", () => {
+  it("lists only the servers in that catalog state", async () => {
+    const pendingServer = mcpServer({ id: "p1", slug: "pending-one", name: "Pending one", publishState: "pending" });
+    const privateServer = mcpServer({ id: "p2", slug: "private-one", name: "Private one", publishState: "private" });
+    mockApi({ ...shellRoutes("none", "owner"), [`GET /v1/teams/${team.slug}/mcp-servers`]: () => page([pendingServer, privateServer]) });
+    renderApp(`/teams/${team.slug}/servers?publishState=pending`);
+    const table = await screen.findByRole("table", { name: "MCP servers" });
+    expect(await within(table).findByText("Pending one")).toBeInTheDocument();
+    expect(within(table).queryByText("Private one")).toBeNull();
   });
 });
