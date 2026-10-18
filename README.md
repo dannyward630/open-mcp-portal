@@ -99,6 +99,7 @@ generate your own `ENCRYPTION_KEY` and `API_KEY_PEPPER` (`openssl rand -base64 3
 - For MCP server authors: [verifying the identity token](docs/upstream-identity.md) and the Gmail example in
   [`examples/mail-mcp`](examples/mail-mcp)
 - Management API: [`api/openapi.yaml`](api/openapi.yaml)
+- [Threat model](docs/threat-model.md): assets, actors, trust boundaries, threats with the code and tests that address them, and code review findings
 
 ## Releases and security
 

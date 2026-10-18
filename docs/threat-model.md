@@ -1,0 +1,422 @@
+# Threat model
+
+This is a STRIDE-style threat model of Open MCP Portal v0.1.0, for code reviews and any independent security review. It records what the code does today, the tests that cover it, and where it falls short. It is not a certification or a penetration test. It is modelled on the sister project's [Open Model Gateway threat model](https://github.com/ncecere/open-model-gateway/blob/main/docs/threat-model.md).
+
+Every mitigation names the file and function that implement it. Tests are named by Go test function and were found with `grep` on `main` at commit `c6dcf29` (the commit after the v0.1.0 release). "No test found" means a search found none, not that the behaviour is wrong. Paths are relative to `internal/` unless they start with `api/`, `deploy/`, `migrations/`, `.github/` or `docs/`. Tests named `Test…` live beside the package; the `httpapi` integration tests (`internal/httpapi/*_integration_test.go`) run against a real PostgreSQL.
+
+The review that produced section 8 read the code and ran throwaway Go tests against a scratch copy of the tree and per-test databases. Findings F-1 to F-4 were reproduced that way; the tests are described, not committed (this document adds no code).
+
+The product's invariants are in [SPEC.md](../SPEC.md) §10 and [decisions](decisions.md); the security-relevant promises are in [SECURITY.md](../SECURITY.md).
+
+## 1. Scope and assumptions
+
+**Deployment model.** One installation serves one company. One Go binary (`open-mcp-portal serve`) runs behind a TLS ingress, one or more replicas, sharing one PostgreSQL. The same listener serves the management API (`/v1/*`, browser session), the MCP endpoints (`/mcp/{slug}`, API key, service account key or OAuth access token), the OAuth authorization server for MCP clients (`/oauth/*`, `/.well-known/oauth-*`), the sign-in and connect callbacks (`/auth/*`, `/connect/callback`), the identity JWKS (`/.well-known/jwks.json`), health probes and the embedded SPA. Metrics are on an optional separate listener (`METRICS_ADDR`, no authentication). Background loops (health checks, signing-key rotation, retention, usage rollups, cleanup) run in every replica; the singleton ones take PostgreSQL advisory locks.
+
+**Trust boundaries** (numbered as in the diagram in section 5):
+
+1. Internet to ingress to portal: every request is untrusted until a credential is verified.
+2. Browser to portal: the browser holds a session cookie; CSRF, Origin and `Host` checks apply.
+3. MCP client to `/mcp/{slug}`: bearer credential, gateway scope and live access checks on every request.
+4. Portal to PostgreSQL: one role does everything (no split between a migration and a runtime role).
+5. Portal to the company IdP: OIDC discovery, token endpoint, JWKS.
+6. Portal to **MCP servers** (team-registered, untrusted or semi-trusted): the SSRF guard, response bounds, and the credentials the portal chooses to send.
+7. Portal to **upstream authorization servers and auth providers** (platform-admin-configured providers; for `oauth`-mode servers, whatever the server's own metadata names).
+8. Portal to **OAuth client metadata documents** (CIMD), fetched for a `client_id` URL chosen by an anonymous caller.
+9. Operator to host: environment variables, secret files, the CLI (`migrate`, `doctor`, `rotate-keys`), backups.
+
+**Assumptions.** TLS terminates at the ingress. The host, container runtime, `ENCRYPTION_KEY`, `API_KEY_PEPPER` and the database owner are trusted. The IdP is trusted to sign correct `sub`, `email`, `email_verified` and group claims. Platform admins are trusted with platform settings and reviews; team members are trusted with their team's content (section 7.3). An MCP server is trusted only as far as its team and the platform's review take it.
+
+**In scope:** the binary, the web UI in `web/`, the image (`Dockerfile`), the Kubernetes base and example overlay (`deploy/kubernetes`), the CI and release workflows. This matches [SECURITY.md](../SECURITY.md).
+
+**Out of scope:** what an MCP server does with a call it was allowed to receive; prompt injection through tool results and descriptions beyond what the portal can detect (section 7.5); volumetric denial of service; a compromised host, database owner or master keys; the development sign-in, the demo and the fake servers (all refused off a loopback `APP_URL`, `config/safety.go` `SafetyErrors`; tests `TestSafetyChecks`, `TestExampleKeyHashesMatchEnvExample`, `TestDevLoginRefusals`).
+
+## 2. Assets
+
+| Asset | Where it lives |
+| --- | --- |
+| Personal API keys, service account keys | HMAC-SHA256 digest under `API_KEY_PEPPER` in `api_keys.digest` and `service_account_keys.digest`; plaintext only in the creation response (`apikeys.Create`, `serviceaccounts`) |
+| OAuth access, refresh tokens and codes for MCP clients | HMAC of `"oauth:"+token` under the pepper in `oauth_tokens`, `oauth_codes` (`oauth/oauth.go` `digest`) |
+| Browser sessions, CSRF tokens | SHA-256 of the cookie secret in `sessions` (`auth/auth.go` `Digest`); the CSRF token is stored in the clear in the session row |
+| People's delegated tokens (platform providers and `oauth` servers) | AES-256-GCM sealed in `provider_connections` with AAD = connection ID and field (`providers/connections.go` `seal`); consent link IDs and PKCE verifiers sealed too |
+| MCP server static header values | Sealed with AAD `mcp_server:<id>` (`registry/registry.go` `ServerAAD`); only the name and a 4-character hint are returned |
+| Auth provider and upstream client secrets | Sealed with AAD `auth_provider:<id>` (`providers/endpoint.go` `secretOf`) |
+| Identity signing keys | ES256 private keys sealed with AAD `signing_key:<kid>` (`identity/identity.go` `keyAAD`); public keys at `/.well-known/jwks.json` |
+| Captured call payloads | Arguments and results, redacted and truncated to 16 KiB, sealed per part (`capture/capture.go`) |
+| Identities and roles | `users` (issuer, subject, email, name, last-seen groups), `platform_role`, `team_members` |
+| Catalog integrity | Capability definitions, fingerprints, approvals, publish state (`mcp_capabilities`, `mcp_servers`) |
+| Audit and call history | `audit_log`, `mcp_calls`, `usage_hourly` (append-only by trigger; retention purges them) |
+| Master keys | `ENCRYPTION_KEY`, `ENCRYPTION_KEY_PREVIOUS`, `API_KEY_PEPPER`, `API_KEY_PEPPER_PREVIOUS`, `OIDC_CLIENT_SECRET`, `DATABASE_URL` in the environment or `_FILE` secrets |
+| Release images | `ghcr.io/ncecere/open-mcp-portal`, cosign-signed with SBOM and provenance |
+
+## 3. Actors
+
+| Actor | Can do |
+| --- | --- |
+| Anonymous internet client | Reach `/oauth/*` (authorize, token, register, revoke), the well-known documents, `/auth/*`, health, the SPA, `/mcp/*` (401). Can cause the portal to fetch a CIMD URL of their choice (`/oauth/authorize?client_id=https://…`) and register DCR clients |
+| Signed-in person | Own sessions, API keys, connected apps, connections; read gateways they may use; call them |
+| Team member / editor / admin / owner | Member: read team servers and gateways. Editor: register, edit, test, refresh servers; set requirements. Admin and owner: publish, delete, build team gateways, service accounts, read team calls and recorded payloads |
+| Platform admin / auditor | Admin: reviews, settings, providers, platform gateways, retention, internal-network allowlist. Auditor: reads everything administrative, including recorded payloads (audited). Neither is a team member by virtue of the role |
+| MCP client | Holds an API key, an OAuth token or a service account key; reaches only `/mcp/{slug}` |
+| Service account | Team-owned identity, role `member` or `editor`; cannot use capabilities that need a person's account |
+| Upstream MCP server | Untrusted or semi-trusted: returns any status, headers, body, SSE stream, tool descriptions, error text; receives identity JWTs and, for some capabilities, people's tokens |
+| Identity provider | Trusted to authenticate and to supply groups; not asked at request time |
+| Delegated provider / upstream authorization server | Issues tokens the portal stores; an `oauth`-mode server's authorization server is named by the server's own metadata |
+| CIMD host | Anyone who controls a `client_id` URL |
+| Operator | Host, environment, database owner, CLI, backups |
+
+## 4. Reading the threats
+
+Each entry gives the STRIDE category (S, T, R, I, D, E), the attack, the mitigation with code paths and tests, and the residual risk. "Gap" marks something this review found missing and that section 8 or 9 follows up.
+
+## 5. Data flows
+
+```text
+ [Browser] ──cookie+CSRF+Origin──►  /v1/*  ─────────────────────────────┐
+     │ ▲   ──OIDC code+PKCE──►  /auth/login → IdP → /auth/callback      │
+     │ └── /connect/callback ◄── provider / upstream AS (state+session)  ▼
+     │                                                           ┌──────────────┐
+ [MCP client] ──Bearer omp_/omp_sa_/ompat_──► /mcp/{slug} ──────►│  mcpgw       │──► PostgreSQL
+     │                      re-check: credential, person, gateway, │ (stateless)  │    (sealed secrets,
+     │                      scope, grant, role, availability       └──────┬───────┘     digests, audit)
+ [Anonymous] ─► /oauth/authorize,token,register,revoke  ── CIMD fetch ──►│ CIMD host (guarded dial)
+                                                                          │
+        identity JWT (aud = server URL) ─ and, per capability ─────────────┤
+        MCP-Gateway-Provider-Token | Authorization: Bearer <person's token>▼
+                                                                  [Upstream MCP server]
+                                                          guarded dial: public, or allow-listed internal;
+                                                          no redirects, no proxy, ≤1 MiB, timeout ≤120 s
+```
+
+- **MCP call** (`mcpgw/mcpgw.go` `ServeHTTP`). Origin check, authenticate (API key, service account key or access token for this gateway only), Content-Type and Accept, 1 MiB body, JSON-RPC parse, `resolveGateway` (key scope, `Unserved`, caller access), rate limit, then `dispatch`. `tools/call`, `prompts/get`, `resources/read` re-run the offer check, then `delegated` (person's token if the capability requires a provider), `prepareTarget` (identity JWT, bearer), `exchange` against `upstream.Client`, `relay` (scrub `_meta`, redact echoed tokens, 1 MiB) and `record` (metadata, optional sealed payload).
+- **Sign-in** (`auth/oidc.go`). State cookie plus server-side state, nonce and PKCE verifier; ID token verified by `go-oidc`; `(issuer, subject)` is the identity; `email_verified` gates invites; one-time bootstrap admin by `sub`.
+- **Connect** (`providers/connect.go`). A consent link (`-32042`) names an opaque request bound to one person; start stores a single-use state bound to the browser session; the callback checks session, person, provider, `iss` and resource before exchanging the code.
+- **MCP client sign-in** (`oauth/*`, `httpapi/oauth.go`). CIMD or DCR client, exact redirect match (loopback any port), PKCE S256, `resource` = one gateway, consent per person, client and gateway, trusted-client list, rotating refresh tokens.
+
+## 6. Threats
+
+### 6.1 Browser sessions and management API
+
+| ID | STRIDE | Attack | Mitigation (code; tests) | Residual |
+| --- | --- | --- | --- | --- |
+| BR-1 | S | Forge or steal a session | 32-byte random cookie, stored as SHA-256 (`auth/auth.go` `createSession`, `Digest`); `__Host-` prefix, `Secure`, `HttpOnly`, `SameSite=Lax` under https (`SessionCookieName`, `setCookie`). Tests: `TestSessionSecretIsStoredAsDigest`, `TestSessionCookieName` | 12 h absolute lifetime (`SESSION_TTL`), no idle timeout, not bound to IP or user agent |
+| BR-2 | T | CSRF on `/v1` | `RequireSession` demands an `X-CSRF-Token` equal (constant time) to the session's on every non-safe method, plus Origin equal to `APP_URL` when present (`auth/auth.go` `RequireSession`, `originAllowed`). `Authorization` headers are refused. Tests: `TestDevLoginSessionAndCSRF`, `TestOriginAllowed`, `TestAuthorizationMatrix` | A request without `Origin` relies on the CSRF token alone |
+| BR-3 | E | An MCP credential or OAuth token calls `/v1` | `RequireSession` reads only the cookie and rejects any `Authorization` header. Tests: `TestSessionSecretIsStoredAsDigest`, `TestAPIKeys` and `TestOAuthFlowWithMetadataDocument` (a bearer on `/v1/me` is `401`) | None found |
+| BR-4 | E | Missing server-side check behind a UI gate | Every route is in the `apiRoutes` table; `TestRoutesMatchOpenAPI` compares it with `api/openapi.yaml`; `TestAuthzMatrixClassifiesEveryOperation` forces every operation into the platform-role × team-role × foreign-team matrix; `TestAuthorizationMatrix` runs it | The matrix covers `/v1`; protocol endpoints (`/mcp`, `/oauth`, `/connect/callback`) are covered by their own tests |
+| BR-5 | S | OIDC login CSRF, code injection, ID-token substitution | State in a cookie and a digest row, consumed first (`takeState`); PKCE S256 verifier and nonce stored server-side; `go-oidc` verifies signature, issuer, audience and expiry; nonce compared in constant time (`verifyCode`). Tests: `TestOIDCLoginFlow`, `TestOIDCCallbackRequiresMatchingState`, `TestOIDCRejections` | The state cookie is not `__Host-` prefixed (hardening) |
+| BR-6 | E | An unverified IdP email claims a team invite or the bootstrap role | `OIDC_REQUIRE_VERIFIED_EMAIL` defaults to true; invites are accepted only when `email_verified` (`auth/login.go` `completeLogin`); users are keyed by `(issuer, subject)` (`UpsertLoginUser`), never by email; the bootstrap role is granted once per `(issuer, subject)` (`applyBootstrapRole`). Tests: `TestOIDCSignInAcceptsInvites`, `TestBootstrapRoleIsGrantedOnlyOnce` | Bootstrap matches `sub` only, so a second issuer cannot be configured safely |
+| BR-7 | S | Open redirect after sign-in | `safeNext` (`auth/oidc.go`) allows only one-leading-slash paths without `//`, `\` or CR/LF. Tests: `TestSafeNext`, `TestOIDCOpenRedirectBlocked` | **Gap: F-4.** A tab or other control character other than CR/LF passes and browsers strip it, giving `//evil` |
+| BR-8 | I | Cached or framed pages leak data | `Cache-Control: no-store` on API and OAuth JSON; `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` on every response (`httpapi/middleware.go` `chain`); CSP with `frame-ancestors 'none'`, `script-src 'self'` on the SPA and the OAuth error page (`httpapi/spa.go`, `httpapi/oauth.go` `oauthPage`). Tests: `TestChainSetsRequestIDAndSecurityHeaders`, `TestSPAHandler`, `TestSPAIndexPersonalised` | No HSTS from the app (the ingress must send it); `style-src 'unsafe-inline'` |
+| BR-9 | D | Sign-in and API flooding | Per-address (hashed) and per-person limits in PostgreSQL (`ratelimit.PostgresStore`, `auth/auth.go` `admit`). Tests: `TestRateLimits`, `TestPostgresStoreIsShared` | Without `TRUSTED_PROXIES` every client behind the ingress shares one address bucket (section 7.10) |
+| BR-10 | R | A platform admin hides what they did | Mutations write `audit_log` in the same transaction; append-only trigger (`migrations/00001_identity.sql`, `00013`). Tests: `TestAuditLogIsAppendOnly`, the authz matrix | Platform admins can shorten the audit retention to 30 days; no off-host export (section 7.9) |
+
+### 6.2 MCP endpoint and credentials
+
+| ID | STRIDE | Attack | Mitigation (code; tests) | Residual |
+| --- | --- | --- | --- | --- |
+| MCP-1 | E | Call a tool that is not selected, not granted, or whose server is off, unpublished, changed or archived | `resolveGateway` then `offers`/`offer.Allowed` on every call; refusals look like "unknown" and never reach the server (`mcpgw/call.go` `call`, `mcpgw/read.go` `matchRead`). Tests: `TestMCPRechecksBeforeEveryCall`, `TestMCPEndToEnd`, `TestArchivedTeams`, `TestGatewaySelectionRules`, `TestAvailability`, `TestMatchRead` | In-flight calls are not cancelled by a revocation (bounded by the server timeout, ≤120 s) |
+| MCP-2 | E | A key limited to some gateways reaches others | `principal.inScope` is checked before the gateway's switch (`resolveGateway`); the key's scope never widens the owner's access. Tests: `TestAPIKeyScopes` | None found |
+| MCP-3 | S | Replay of a revoked, expired or rotated credential; suspended owner | Every request looks the credential up by digest and re-checks status, expiry, person, service account and team (`apikeys.Authenticate`, `serviceaccounts.Authenticate`, `oauth.Authenticate`); no cache. Tests: `TestSuspendedUserIsBlocked`, `TestOAuthRechecksEveryRequest`, `TestServiceAccountsAtTheGateway`, `TestMCPRechecksBeforeEveryCall` | Suspension keeps connections and keys (decisions 38, 53) |
+| MCP-4 | S | Token confusion: an OAuth access token for gateway A used on gateway B, or on `/v1` | `oauth.Authenticate` checks the token's resource, grant and the gateway slug; `/v1` ignores tokens. Tests: `TestOAuthFlowWithMetadataDocument`, `TestOAuthRechecksEveryRequest` | None found |
+| MCP-5 | S | DNS rebinding or cross-site `fetch` to `/mcp` | Any `Origin` other than `APP_URL` is refused; `Content-Type` must be `application/json` (no simple CORS request); a bearer credential is required (`ServeHTTP`). Tests: `TestMCPEndToEnd` (foreign Origin `403`) | The `Host` header is not validated; the bearer requirement is the control |
+| MCP-6 | T | Header or JSON-RPC smuggling to the upstream | The gateway builds a new request through the SDK client; static header names are validated and reserved names refused (`registry/registry.go` `reservedHeaders`, `checkHeader`); values may not hold CR, LF or NUL; `Mcp-Param-*` names are tokens, values are base64 when not printable ASCII (`upstream/paramheaders.go`); Go's transport rejects invalid header values. Tests: `TestParamHeaders`, `TestParamHeadersOnToolsCallOnly`, `TestMcpServerRegistration` | None found |
+| MCP-7 | I | An echoed credential reaches the client or a recorded payload | `relay` replaces an `oauth` server's token in the answer; the capture service redacts the identity JWT, provider token, static header value and the client's own bearer wherever they appear (`mcpgw/capture.go` `captureCall`, `capture/redact.go`). Tests: `TestPayloadCapture`, `TestUpstreamOAuthEndToEnd`, `TestSensitiveKeysPatternsSecretsAndBinary`, `TestBuiltInRules` | A platform provider's token echoed by a server is redacted in recordings but not in the response to the caller (it is the caller's own token) |
+| MCP-8 | D | Unauthenticated floods and slow bodies | 401 before any body is read; per-credential, person, service account and gateway limits shared by replicas (`limits/check.go`); no unauthenticated limit on `/mcp` itself | See 7.10 |
+| MCP-9 | R | A call cannot be attributed | `mcp_calls` records principal, key, client, gateway, server, capability, outcome, sizes; append-only trigger. Tests: `TestMCPEndToEnd`, `TestCallDetailAndUsageEndpoints` | `clientInfo.name` is self-asserted unless the OAuth client was identified by a metadata document (`client_verified`) |
+
+### 6.3 OAuth authorization server for MCP clients
+
+| ID | STRIDE | Attack | Mitigation (code; tests) | Residual |
+| --- | --- | --- | --- | --- |
+| OA-1 | S | Authorization code interception or injection | PKCE S256 required (`oauth/authorize.go` `Check`); code stored as a digest, deleted before any check, 60 s, bound to client, redirect URI, challenge and resource (`oauth/token.go` `takeCode`, `exchange`); verifier compared in constant time (`verifyPKCE`); `iss` on every response (RFC 9207). Tests: `TestPKCE`, `TestOAuthFlowWithMetadataDocument`, `TestOAuthAuthorizeValidation` | None found |
+| OA-2 | S | Redirect URI manipulation | Exact string match; a loopback `http` URI may change port only (`matchRedirect`); a bad client or redirect is shown as a page, never redirected (`pageError`). Tests: `TestRedirectURIs`, `TestRequestShapes`, `TestOAuthAuthorizeValidation` | A DCR client may register any https redirect, so its error redirects act as an open redirector for that client (hardening H-4) |
+| OA-3 | S | Phishing through a look-alike client | The consent page names the client, shows "Unverified" for DCR clients, shows the redirect host and the gateway; trusted clients are only metadata-document clients on the admin list (`httpapi/oauth_consent.go` `toAPIClientInfo`, `oauth/trusted.go`). Tests: `TestOAuthTrustedRegisteredAndConnectedApps`, `TestValidateTrusted` | Trusted clients skip consent entirely and may use loopback redirects on any port (hardening H-1) |
+| OA-4 | S | Refresh token theft | Rotating refresh tokens; reuse after a 30 s grace revokes the grant (`oauth/token.go` `refresh`); revoking a grant deletes its tokens. Tests: `TestOAuthFlowWithMetadataDocument`, `TestOAuthRechecksEveryRequest` | Within the 30 s grace a rotated token yields a fresh pair, forking the chain (hardening H-8); no absolute refresh lifetime |
+| OA-5 | E | Consent bypass or consent replay across gateways | Consent is per person, client and gateway (`oauth_grants_active_key`); the resource must be exactly `<APP_URL>/mcp/{slug}` of a gateway the person may use now (`oauth.Gateway`); the consent POST re-validates the query (`decideOAuthConsent`). Tests: `TestOAuthAuthorizeValidation`, `TestOAuthTrustedRegisteredAndConnectedApps` | None found |
+| OA-6 | I | Which gateways exist is revealed | Protected-resource metadata is served for any well-formed slug; unknown, off and no-access answer alike, after sign-in (`httpapi/oauth.go` `oauthResourceMetadata`). Tests: `TestOAuthDiscovery` | Gateway slugs are guessable by an authenticated person through `/mcp/{slug}` timing; not material |
+| OA-7 | S, D | CIMD fetch used as SSRF or probe | See 7.2 | Anonymous callers can trigger fetches (rate-limited, cached) |
+
+### 6.4 Portal to MCP servers (outbound)
+
+| ID | STRIDE | Attack | Mitigation (code; tests) | Residual |
+| --- | --- | --- | --- | --- |
+| UP-1 | E | SSRF to loopback, link-local, metadata, internal hosts | See 7.2 | Allow-listed internal ranges are reachable by any editor |
+| UP-2 | T | A server changes a tool's definition after approval (rug pull) | Fingerprint (SHA-256 of canonical JSON without `_meta`) per capability; a changed capability drops out of the catalog at once; a refresh never approves (`registry/discovery.go`; `gateways/selection.go` `Availability`). Tests: `TestMcpPublishingApprovalRequired`, `TestApprovedAndChanged`, `TestAvailability`, `TestCanonicalAndFingerprint` | **Gap: F-2** (approval is not bound to what the reviewer saw). A team's own server needs no approval for its own gateways |
+| UP-3 | I | The server learns who calls | The identity JWT is `ES256`, `aud` = the server URL, 5 min, `jti`, `nbf` (`identity/identity.go` `Sign`); the client's own credential is never forwarded; `sendIdentity` can be turned off per server (decision 45). Tests: `TestSigningAndRotation`, `TestMCPEndToEnd` (JWT verified against the JWKS) | `sendIdentity` defaults to on, so email, name and team slugs go to every registered server, including third-party hosts, unless the team turns it off |
+| UP-4 | I | A server receives a credential it should not | See 7.1 | **Gap: F-1, F-3** |
+| UP-5 | D | A server stalls or floods | Whole exchange bounded by the server's timeout (1–120 s); every HTTP response capped at 1 MiB (`upstream/guard.go` `cappedBody`); list reads bounded to 500 pages and 500 entries per kind, 64 KiB per definition (`upstream/client.go` `pager`); SSE events capped (`MaxEventSize`). Tests: `TestDiscoverErrorClasses`, `TestDiscoverEveryKind` | Concurrent slow calls hold goroutines for up to 120 s each within the rate limits |
+| UP-6 | S | A server redirects the portal elsewhere | `CheckRedirect` refuses every redirect (`httpClient`); proxy environment variables are ignored (`Proxy: nil`). Tests: `TestClientRefusesURLOutsidePolicy`, `TestDialerRefusesPrivateResolution` | None found |
+| UP-7 | I | A server's error text is relayed | `classify` keeps at most 300 characters of an error body's first message, redacted of the static header, JWT and tokens (`upstream/client.go` `errorDetail`, `SafeMessage`). Tests: `TestErrorBodyExplainsFailure`, `TestSafeMessage`, `TestErrorDetail` | Text from an allow-listed internal host's `4xx/5xx` response reaches the editor (Test page) and the MCP client (hardening H-6) |
+
+### 6.5 Delegated credentials and upstream OAuth
+
+| ID | STRIDE | Attack | Mitigation (code; tests) | Residual |
+| --- | --- | --- | --- | --- |
+| DC-1 | S | OAuth CSRF or mix-up on `/connect/callback` | State is 256-bit random, stored as a digest, deleted first, bound to session, person, provider, request and resource; `iss` must match for `oauth` servers (`providers/connect.go` `Callback`). Tests: `TestDelegatedCredentialsEndToEnd` (wrong person, signed out, expired, reused state), `TestConnectResponseFormatsAndAdmin` (mix-up), `TestUpstreamOAuthEndToEnd` (missing and wrong `iss`) | None found |
+| DC-2 | S | A consent link used by someone else | Link IDs are 256-bit, stored as a digest, bound to one person, 10 minutes, used once (`loadRequest`); the confirm page shows scopes before the provider is contacted. Tests: `TestDelegatedCredentialsEndToEnd` | The link rides in the JSON-RPC error and so in client logs; it is useless to anyone but its person |
+| DC-3 | S | Open redirect through `returnTo` | `SafeReturnPath` rejects `//`, `\`, encoded slashes at every decoding layer and any control character (`providers/connect.go`). Tests: `TestSafeReturnPath`, `TestConnectReturnToEncoded` | `auth/oidc.go` `safeNext` is weaker (F-4) |
+| DC-4 | I | Tokens leak through logs, audit, call records, health, errors | Token-endpoint errors are reduced to a code (`providers/endpoint.go` `safeCode`); sealed at rest; never audited. Tests: the sentinel checks in `TestDelegatedCredentialsEndToEnd`, `TestUpstreamOAuthEndToEnd`, `TestPayloadCapture` | No end-to-end test that a provider token echoed by a provider-backed server is redacted from a recorded payload (status.md); the redactor's exact-value rule has unit tests |
+| DC-5 | E | A provider token reaches a server that was not meant to have it | See 7.1 | **Gap: F-3** |
+| DC-6 | E | A malicious server names a real authorization server in its metadata | Discovery checks `resource` equals the URL, `issuer` equals the identifier, PKCE S256, https, guarded fetches; the consent page names the server and the authorization server's host (`registry/oauth.go`, `oauthmeta`). Tests: `TestUpstreamOAuthDetect`, `TestUpstreamOAuthDetectGuard` | A linked platform provider lends the company's OAuth client to any server whose metadata names the same authorization server (7.1) |
+| DC-7 | D | Refresh storms or a provider outage | Refresh under a row lock (`providers/runtime.go` `refreshConnection`); outages keep the connection and answer `-32010`; start limited to 20 per minute per person. Tests: `TestDelegatedCredentialsEndToEnd` (concurrent refresh, outage) | Rate counters are per database, shared; ok |
+
+### 6.6 Registry, gateways, tenancy
+
+| ID | STRIDE | Attack | Mitigation (code; tests) | Residual |
+| --- | --- | --- | --- | --- |
+| TN-1 | I, E | Read or change another team's servers, gateways, service accounts, calls | Team routes resolve the team and role first (`registry.access`, `gateways.access`, `calls.teamScope`); non-members get `404 team_not_found`; IDs are re-checked against the team (`registry.teamServer`, `serviceaccounts.account`). Tests: `TestAuthorizationMatrix`, `TestMcpServerRegistration`, `TestServiceAccountsManagement`, `TestGatewaySelectionRules` | Isolation is in application queries, not row-level security |
+| TN-2 | E | Select another team's private capability into a gateway | `ListGatewayOptions` offers only the team's own servers and published, approved catalog ones; `setSelection` re-checks (`gateways/selection.go`). Tests: `TestGatewaySelectionRules`, `TestGatewayOptionsPaging` | None found |
+| TN-3 | E | A platform role is used as team membership | Platform staff read but "can only use a gateway if they are members or granted" (`gateways/access.go` `CallerOf`); platform roles never write through team routes. Tests: `TestAuthorizationMatrix`, `TestGatewayGrantsAndMyGateways` | Platform auditors read recorded payloads of any team by design (audited) |
+| TN-4 | I | Recorded payloads read by the wrong people | Readable by owners and admins of the team whose switch captured it, platform admins and auditors; every view audited (`capture/capture.go` `TeamPayload`, `AdminPayload`, `open`). Tests: `TestPayloadCapture` | Callers from other teams' gateways are captured when the server's team turns capture on |
+| TN-5 | E | Group-based access outlives the IdP | Group grants match `users.groups`, refreshed only at interactive sign-in (`auth/login.go` `UpsertLoginUser`; `gateways/access.go` `groupsOf`) | **Known gap:** a leaver's keys and refresh tokens keep working; roadmap: SCIM 2.0 item |
+
+### 6.7 Supply chain, operations, secrets
+
+Covered in 7.8, 7.11 and 7.12.
+
+## 7. Specific analyses
+
+### 7.1 Forwarding people's tokens to MCP servers: the spec's "no token passthrough" and "confused deputy" rules
+
+**What the MCP rules say.** The 2026-07-28 authorization page says: "MCP clients **MUST NOT** send tokens to the MCP server other than ones issued by the MCP server's authorization server", "MCP servers **MUST** validate that access tokens were issued specifically for them as the intended audience" and "MCP servers **MUST NOT** accept or transit any other tokens". Clients "**MUST** send" the RFC 8707 `resource` parameter "regardless of whether authorization servers support it". The security best practices page forbids token passthrough and requires per-client consent, exact redirect matching, a one-time state and `__Host-` consent cookies of MCP *proxy* servers that front a third-party authorization server.
+
+**What the portal does, in three separate cases.**
+
+1. **Identity JWT** (always, unless `sendIdentity` is off). A token the portal itself signs, `aud` = the server's URL. This is the portal acting as the server's identity provider, not passing a client's token. It is compliant if the server validates `aud` and `iss` ([upstream-identity.md](upstream-identity.md)); a server that does not can be replayed with the JWT for its own audience only.
+2. **`oauth` mode** (Phase 7). The portal is an MCP *client* of an OAuth-protected server. Each person's token goes in `Authorization: Bearer` **only** to the server's stored URL, and only while that URL equals the `resource` the token was requested for (`mcpgw/upstreamoauth.go` `prepareTarget`; `DeniedResourceMismatch`), the `resource` parameter is sent on authorize, token and refresh requests (`providers/endpoint.go` `resourceParam`, unless the team turns `sendResource` off), and a URL, authorization-server or client change erases every connection (`registry/oauth.go` `applyOAuth`, `ResetProviderConnections`). This follows the rule: the token is issued by the authorization server the server's own metadata names. It is **not** a confused deputy in the spec's sense because the portal is not a proxy using a static client ID with a consent cookie. Two caveats the spec does not remove: (a) audience binding is only as strong as the authorization server's support for RFC 8707 (GitHub ignores `resource`, so the token works at `api.github.com` with its scopes); (b) the server's metadata decides which authorization server is trusted, so a malicious server can name a real one (DC-6). With `registration = platform_provider` the portal then lends the company's OAuth client to that exchange, and the person sees the company's app, not the server's, on the provider's consent page. The portal's consent page does name the server and the authorization server's host, and a published server's authorization server is highlighted at review.
+3. **Platform provider token** (Phase 5, header `MCP-Gateway-Provider-Token`). This **deviates from the letter of the rule**: the token is issued by GitHub, Google or similar, not by the server's authorization server, and it is not audience-restricted to the MCP server. The design reframes the "MCP server" as the company's own tool backend that calls the provider API as the person (decisions 25–29, [phase 5](phase5-delegated-credentials.md)). The server does not accept the token as its own credential (the identity JWT does that), so this is delegation rather than passthrough, but the spec's risk list (bypassed controls, lost accountability, trust-boundary confusion) applies to it.
+
+**What bounds the risk today, and how well it holds.**
+
+| Bound | How it works | Holds? |
+| --- | --- | --- |
+| Admin review | A platform admin approves a server before other teams can use it; a requirement that widens what is sent, or a switch to `oauth`, another authorization server or wider scopes, sends a published server back to review under `approval_required` (`registry/requirements.go`, `registry/oauth.go`). Test: `TestRequirementReview`, `TestUpstreamOAuthManualLinkAndReview` | **Only for other teams.** A team's own server needs no approval for its own gateways, and approval is not bound to what the reviewer saw (F-2) |
+| Token audience | `oauth` mode: `resource` on every request, URL = resource checked before every send | Only as strong as the authorization server (above). Platform providers: none |
+| Only sent to the server it was issued for | `oauth` mode: yes, enforced. Platform providers: the token is sent to whichever server's **effective requirement** names the provider, for whatever URL the server has *now* | **No** (F-3): the connection is per person and provider; it carries the union of every scope the person ever granted (`providers/connect.go` `Start`: `union(granted, asked, required)`; `runtime.go` `Credential`: `Covers`), and a URL change needs no new consent |
+| `sendIdentity` switch | Controls whether names, emails and teams go to the server; says nothing about provider tokens | Orthogonal; the default (on) leaks identity to third-party servers until a team turns it off |
+| Service accounts excluded | `-32010` for capabilities that need a person's account (`mcpgw/delegated.go`) | Yes (test `TestDelegatedCredentialRefusals`) |
+| Roles | Editors set requirements; platform roles never through team routes | Any editor of any team can name any enabled platform provider (no per-provider team allow-list) |
+
+**Conclusion.** Within one team, a team editor (or a compromised server the team trusts) can obtain the provider tokens of every teammate who has connected that provider, with the union of the scopes they granted, and can keep receiving them after re-pointing the server's URL. Across teams, a platform admin's review is the barrier, and review currently has the F-2 gap. The mitigations that would actually bind the risk: consent and a stored grant per (person, provider, **server**), scopes minimised per call (or tokens narrowed on refresh where the provider allows it), tokens never forwarded to a URL other than the one that was consented to, and a per-provider list of teams or servers allowed to use it. These are listed as F-3 and hardening H-5.
+
+### 7.2 SSRF
+
+Every outbound fetch of a URL that a person or the internet chose goes through one rule (`netpolicy`, `upstream/guard.go`, [registry.md](registry.md#security)).
+
+| Surface | Control | Tests |
+| --- | --- | --- |
+| MCP server URL (save, discovery, test, health, every forwarded call) | `NormalizeURLWith` at save and before every exchange; `dialer.dial` resolves once, checks **every** resolved address with `Policy.CheckAddr`, and connects to the checked address (pinned); no redirects; no proxy | `TestNormalizeURL`, `TestNormalizeURLWithPolicy`, `TestDialerRefusesPrivateResolution`, `TestDialerPolicy`, `TestClientRefusesURLOutsidePolicy`, `TestInternalServerAllowlist`, `TestNetworkSettingsAPI` |
+| Address classes | Always blocked: loopback, link-local (incl. `169.254.169.254`), unspecified, `0.0.0.0/8`, multicast, broadcast, Azure, Alibaba and AWS-IPv6 metadata, zoned IPv6, and the IPv4-mapped, IPv4-compatible and NAT64 forms of those (`netpolicy/policy.go` `Classify`, `blockedAddr`); everything not global unicast (RFC 1918, CGNAT, ULA, 6to4, Teredo, documentation) is "private", allowed only by an allowlist entry | `TestClassify`, `TestCheckAddr`, `TestPublicAddr` |
+| Host spellings | Numeric hosts (`0177.0.0.1`, `0x7f000001`, `2130706433`) are refused at save (`NumericHost`) and, since the resolved address is classified at dial time, would be refused again; `localhost` and `*.localhost` by name; user info, query and fragment are refused | `TestNormalizeURL`, `TestCanonical` |
+| DNS rebinding | One resolution per dial; all addresses checked; the dial uses the IP, TLS uses the host name | `TestDialerRefusesPrivateResolution` |
+| Registration of a provider (token, revocation, userinfo URLs) | `providers/endpoint.go` `do` re-runs `NormalizeURL` and dials with the guarded dialer; 10 s, 64 KiB, no redirects. `authorizationUrl` is browser-only | `TestValidateEndpoints`, `TestEndpointGuard` |
+| Upstream OAuth discovery (PRM, authorization server metadata, DCR, probe) | `oauthmeta.Fetcher` uses the same client: 8 requests, 5 s, 64 KiB, no redirects; the `resource_metadata` URL from a 401 is untrusted input and must match | `TestUpstreamOAuthDetectGuard`, `TestDiscoverGuard`, `TestRegisterAndProbe` |
+| CIMD fetch for a `client_id` URL | `oauth/metadata.go`: https URL with a path, guarded dial, no redirects, 5 s, 16 KiB, `application/json`, `client_id` must equal the URL, cached 1–60 min | `TestMetadataDocumentAddressGuard`, `TestMetadataDocumentCache`, `TestOAuthMetadataDocumentRules` |
+| Webhook-like fetches | None in v0.1.0 (no webhooks). v0.2 adds them (section 10) | n/a |
+
+**Residual.** (1) The allowlist (`UPSTREAM_ALLOWED_NETWORKS`, Admin › Internal networks) opens internal ranges to *any* editor's server URL, with POST requests of a fixed shape; a response of status ≥ 400 gives back its first message (≤300 characters) in the health message and to MCP clients (H-6). (2) `GET /oauth/authorize?client_id=https://…` is unauthenticated and makes the portal fetch the URL on every request (a valid document is cached for 1–60 minutes, a failure is not), with distinct error messages for blocked, unreachable, wrong status and wrong type (H-3); limited to 60 per minute per address, and, for internal targets, to allowlisted ranges. (3) The Kubernetes egress policy allows TCP 443 anywhere; the application guard is the control. (4) The guard resolves with the system resolver; a resolver that returns different answers per query is handled by pinning, not by DNSSEC.
+
+### 7.3 Multi-tenant isolation
+
+- **Team scoping.** Every team route resolves the team, then the actor's role in it, before touching an ID (`registry.access`, `teams.MemberRole`); an ID belonging to another team yields the same `404` as a missing one (`teamServer`). Tests: `TestAuthorizationMatrix`, `TestMcpServerRegistration`, `TestServiceAccountsManagement`.
+- **Foreign IDs in bodies.** Gateway selections, key scopes (`gatewayIds`), service-account key scopes and grants are validated against what the actor may use now (`gateways.Usable`, `apikeys.Create`). Tests: `TestGatewaySelectionRules`, `TestAPIKeyScopes`, `TestServiceAccountGatewaysAndAdminList`.
+- **Platform vs team content.** Platform roles read administrative metadata but do not use team gateways, change team servers through team routes, or (as members) read payloads through team routes (`403`); platform admins and auditors read payloads through the admin route, and every view is audited into the capturing team's log (`capture.AdminPayload`). Team call lists include calls by *other teams'* people through the team's gateways and servers: the server's team owners and admins see who called (accountability).
+- **Within a team** the model is trust: an editor can change a server's URL, header and requirement; an admin can build the gateway that exposes it. This is where F-1 and F-3 bite.
+- **Gap.** No row-level security: a new query without the team predicate leaks. No test found that runs every `internal/store/queries` statement with a foreign team.
+
+### 7.4 Credential lifecycle
+
+| Credential | Issue | Store | Use-time checks | Revoke | Residual |
+| --- | --- | --- | --- | --- | --- |
+| Personal API key `omp_` | Session only; ≤20 active; 1–365 days; shown once | HMAC digest, 12-char prefix | Digest lookup, status, expiry, owner active, gateway scope, owner's live access | Immediate on revoke; owner suspended: next request | Not tied to the IdP: a leaver's key works until it expires or an admin suspends the person |
+| Service account key `omp_sa_` | Team owners and admins; ≤2 active, ≤365 days | as above | key, account enabled, team active, scope, team grants | Immediate | Outlives its creator by design |
+| OAuth access `ompat_` / refresh `omprt_` | PKCE code flow, consent | HMAC of `"oauth:"+token` | Expiry (1 h), grant, person active, resource = this gateway | RFC 7009, Connected apps, reuse detection revokes the grant | 30 s reuse grace; refresh lifetime rolls without limit |
+| Browser session | OIDC or dev login | SHA-256 | Per request | Logout, suspension, expiry | No idle timeout |
+| Provider and `oauth`-server connections | Consent link or proactive connect | AES-GCM, AAD per connection and field | Active, scopes cover, refresh within 60 s of expiry under a row lock | Disconnect (RFC 7009 where offered), provider delete, URL or client change | F-3; suspension keeps connections |
+| Identity JWT | Per call | n/a (signed) | Server verifies | Expires in 5 min; keys rotate every 30 days, pre-published 24 h | Not single-use; servers should check `aud` |
+
+Revocation timing: every `/mcp` request goes back to PostgreSQL for the credential, person, gateway and access, so there is no cache to age out. The remaining windows are in-flight calls (≤ server timeout), the 30-second refresh grace, and the 30-second caches of platform settings and the internal-network allowlist (`registry/networks.go`). Tests: `TestMCPRechecksBeforeEveryCall`, `TestOAuthRechecksEveryRequest`, `TestPepperRotation`, `TestSigningAndRotation`.
+
+### 7.5 Tool poisoning and change detection
+
+- **What the portal does.** It fingerprints every discovered definition (canonical JSON without `_meta`, SHA-256; `upstream/capability.go`), keeps an approved fingerprint per capability, and serves a catalog capability only while `approved_fingerprint = fingerprint` (`gateways/selection.go` `Availability`). A changed definition drops out at once; new capabilities on a published server stay unapproved; lists are served from stored definitions and never contact servers. Titles and descriptions are clipped (200 and 10,000 characters), names validated, definitions over 64 KiB fail discovery. Annotations are shown, never trusted for authorization (SPEC §10). Tests: `TestMcpPublishingApprovalRequired`, `TestApprovedAndChanged`, `TestCapabilityDefinition`, `TestValidNameAndClip`.
+- **What it does NOT do (decision 50).** No scanning of descriptions, arguments or results for prompt injection, instruction hijacking, data exfiltration patterns or hidden Unicode; no diff view with a semantic judgement; no sandbox for the model's use of results. A reviewer is the control, and a server can behave differently from its description at call time without any definition change. Content scanning is "wanted but not scheduled" and must be designed before it is built.
+- **Gaps.** F-2 (approval not bound to the reviewed definitions); a team's own server needs no approval for its own gateway, so a poisoned description reaches teammates immediately; results from servers reach clients unmodified apart from `_meta` and echoed tokens.
+
+### 7.6 Malicious upstream servers
+
+| Vector | Control | Test |
+| --- | --- | --- |
+| Huge or endless body | 1 MiB per HTTP response, timeout per exchange, SSE event cap | `TestDiscoverErrorClasses` |
+| Redirect to an internal host | Never followed | `TestClientRefusesURLOutsidePolicy` |
+| Many pages or entries, repeated cursors | ≤500 pages, ≤500 entries per kind, repeated cursor rejected | `TestDiscoverEveryKind` |
+| Response header injection | Response headers are not relayed to the client; `WWW-Authenticate` is parsed, never echoed | `TestParseChallenges` |
+| SSE | Read through the SDK as one exchange; no standalone SSE stream, no reconnects (`MaxRetries: -1`, `DisableStandaloneSSE`) | `TestMCPEndToEnd` |
+| Server asks the portal for sampling, elicitation or roots | The client advertises no capabilities; multi-round-trip input is refused | `TestDiscoverEveryKind` |
+| Non-object `structuredContent` / `outputSchema` | Dropped before relay for strict clients | `TestScrubMeta`, `TestListedDropsNonObjectOutputSchema` |
+| Echoed credentials | Section 6.2 MCP-7 | `TestPayloadCapture` |
+| Upstream identity claims | Servers never see the client's credential, only the signed JWT | `TestMCPEndToEnd` |
+| Result content steering the model | Not addressed (7.5) | none |
+
+### 7.7 Consent and connect flows
+
+- **Phishing and `wrong_person`.** A consent link works only in the browser session of the person it was made for; another person gets `404` (`connect_request_not_found`), an expired or used link `410`; the callback checks session digest and person and ends at `/connect/done?result=wrong_person`. Test: `TestDelegatedCredentialsEndToEnd`.
+- **State binding.** Connect: state bound to session, person, provider, request, resource, single use, 10 minutes. Sign-in: state in a cookie and a server row. OAuth for MCP clients: no `state` of the portal's own; the client's `state` is echoed (≤1000 characters) with `iss`.
+- **Open redirects.** `SafeReturnPath` for `returnTo`; `safeNext` for sign-in (F-4); `/oauth/authorize` redirects errors only to a verified redirect URI; the callback redirects only to `returnTo` or fixed paths. Tests: `TestSafeReturnPath`, `TestConnectReturnToEncoded`, `TestOIDCOpenRedirectBlocked`, `TestOAuthAuthorizeValidation`.
+- **MCP spec consent rules.** The consent page names the client, shows the redirect host, is not frameable (`X-Frame-Options: DENY`, `frame-ancestors 'none'`), and is a CSRF-protected POST. The portal is an authorization server, not a proxy to a third-party one, so the proxy-specific rules (consent cookie, state before consent) do not apply; the provider connect flow sets no consent cookie.
+
+### 7.8 Secrets at rest and rotation
+
+- All stored secrets use AES-256-GCM with a key ID in the ciphertext and **per-row associated data** so a ciphertext cannot be moved (`secrets/secrets.go`; `TestSealOpenRoundTrip`, `TestRotation`). API keys and OAuth tokens are HMAC digests, not ciphertexts.
+- `rotate-keys` re-seals every column in `keyrotation.Columns`; a test fails when the schema gains a `*_cipher` column that is not listed (`TestColumnsCoverTheSchema`, `TestRotateKeys`). Pepper rotation is by use (`TestPepperRotation`).
+- Start-up refuses the public example key and pepper off loopback (`TestSafetyChecks`, `TestExampleKeyHashesMatchEnvExample`). No check that `ENCRYPTION_KEY` and `API_KEY_PEPPER` differ (H-7).
+- The CSRF token is stored in the clear next to the digest of the session secret: a database read gives CSRF tokens but not sessions.
+- One database role does everything; the append-only triggers and the retention purge use a session setting (`omp.audit_purge`, `omp.calls_purge`) that anyone with SQL access can set. Defence in depth for a stolen database credential would be a split role (as in the sister project).
+
+### 7.9 Logging, audit and payload capture
+
+- **Logs.** JSON via `slog`; the access log records the route pattern, never the raw path or headers (`httpapi/middleware.go`). Upstream error text is redacted before logging (`Target.safe`). CIMD fetches log host, status and outcome only. No test found that greps logs for tokens across *every* route; sentinels exist for the MCP, provider and capture paths.
+- **Audit.** Mutations and audit are one transaction (BR-10). The retention loop purges audit after 30–3650 days (default 400); a platform admin can lower it, and every setting change is itself audited before the purge. No off-host export.
+- **Capture.** Opt-in per gateway or server; redaction of keys by name, built-in patterns, admin RE2 patterns and exact values; 16 KiB truncation; sealed; viewing audited (`mcpgw/capture.go`, `capture/redact.go`). A secret that is not matched by a rule or an exact value is stored. Tests: `TestPayloadCapture`, `TestBuiltInRules`, `TestCompileRefusals`.
+- **Log injection.** Structured fields are quoted by the handler; free text from servers is clipped and redacted. No raw `fmt` logging of request data found.
+
+### 7.10 Denial of service and limits
+
+| Surface | Limit |
+| --- | --- |
+| Request bodies | 1 MiB (`httpx.Decode`, `mcpgw`); OAuth token/revoke/register 16 KiB |
+| `/mcp` | Per person, credential, service account and gateway per minute in PostgreSQL; calls ≤ server timeout (≤120 s) |
+| Sign-in and `/oauth/*` | Per hashed address per minute (login `LOGIN_ATTEMPTS_PER_MINUTE`, OAuth 60, register 10) |
+| `/v1` | Per person per minute |
+| Outbound | 1 MiB per response, 500 entries per kind, 8 discovery requests, 10 detect requests per minute per person |
+| Recording | 16 KiB per payload part |
+
+Gaps: no `ReadTimeout`; slow bodies on unauthenticated POSTs (`/oauth/token`, `/oauth/register`) hold a connection until the ingress cuts them (H-5b); with `TRUSTED_PROXIES` unset every client shares the ingress address and one attacker can exhaust the sign-in and OAuth limits for everyone; no per-address limit on `/mcp` before authentication; each DCR registration is a row for 30 days; rate counters are `UNLOGGED` and may reset on a crash.
+
+### 7.11 Supply chain
+
+- **CI** (`.github/workflows/ci.yml`): `permissions: contents: read`, every action pinned by commit SHA, tests with `-race` against PostgreSQL 17, `make check-generated`, `actionlint`, `k8s-validate`, docker build. **Not run on GitHub yet** (status.md).
+- **Release** (`image.yml`): multi-arch build, SBOM and provenance attestations, Trivy scan, cosign keyless signing, GitHub Release; job-scoped permissions (`packages: write` and `id-token: write` only where needed). Verify with `cosign verify … --certificate-identity …/image.yml@refs/tags/v0.1.0` ([deploy.md](deploy.md#image)). First run is the v0.1.0 tag.
+- **Dependabot**: gomod, npm, github-actions and docker weekly, grouped.
+- **Image**: distroless `static:nonroot`, UID 65532, read-only root filesystem, no shell; `npm ci --ignore-scripts`; Go built with `-trimpath`, `CGO_ENABLED=0`.
+- **Gaps**: Dockerfile base images pinned by tag, not digest; no `govulncheck` or `npm audit` step in CI; the example overlay's image digest is a placeholder; the Trivy result is a gate only if configured to fail.
+
+### 7.12 What an operator must do
+
+- **TLS and HSTS** at the ingress; `APP_URL` is the https origin (the app refuses `http` off loopback). Send HSTS from the ingress (the app does not).
+- **Proxy.** Set `TRUSTED_PROXIES` to the ingress's pod network, otherwise limits and audit client addresses are the proxy's. Add ingress limits for unauthenticated traffic (`/oauth/*`, `/auth/*`, `/mcp/*`) and read and write timeouts (the app sets only a header timeout).
+- **Network policy.** Narrow the base's egress (TCP 443 anywhere, TCP 5432 anywhere) to the database and the services you use; add rules for internal MCP servers and their ports; keep the metrics listener behind a policy (no authentication).
+- **Internal allowlist.** Keep `UPSTREAM_ALLOWED_NETWORKS` and Admin › Internal networks as small as possible; they open those ranges to every editor.
+- **Secrets.** Generate distinct `ENCRYPTION_KEY` and `API_KEY_PEPPER`; store them outside the database backups; rotate with `*_PREVIOUS` and `rotate-keys`.
+- **Backups.** The database holds sealed secrets, digests, recorded payloads and audit; encrypt backups, restrict access, and know that restoring revives keys, grants and connections revoked after the backup.
+- **People.** Until SCIM exists, suspend leavers in the portal; the IdP alone does not revoke keys, service accounts or refresh tokens.
+- **Review.** Treat approval as reading the definitions; recheck a server's definitions immediately before approving.
+
+## 8. Code review findings
+
+The review read `internal/auth`, `authz`, `httpapi`, `mcpgw`, `oauth`, `providers`, `upstream`, `netpolicy`, `secrets`, `apikeys`, `serviceaccounts`, `identity`, `capture`, `retention`, `ratelimit`, `registry`, `gateways`, `config`, the migrations' triggers and the deployment files. It looked for authorization gaps and IDOR, time-of-check races, state and nonce handling, timing comparisons, error leaks, unbounded reads, header and CRLF injection, SSRF bypasses (IPv6, mapped, rebinding, redirects, numeric hosts), JWT claim confusion, cookie flags, CSP, log injection and string-built SQL. The only string-built SQL (`usage/report.go`, `keyrotation`) uses constant fragments and placeholders. A scratch test of 25 SSRF spellings through `NormalizeURL` (IPv4-mapped, NAT64, IPv4-compatible, 6to4, zoned IPv6, `127.1`, `0x7f.1`, `2130706433`, `0177.0.0.1`, metadata addresses, `localhost.`, user info, backslash) refused every one at save; a name that merely resolves to loopback (`127.0.0.1.nip.io`) passes at save and is refused when dialled (`TestDialerRefusesPrivateResolution`). The review found no state, nonce, PKCE, redirect or timing defect in the OIDC and OAuth flows, and no IDOR on the team-scoped routes it traced; it did not fuzz.
+
+| ID | Severity | Where | Summary |
+| --- | --- | --- | --- |
+| F-1 | Medium | `registry/registry.go:629-720`, `:958-995` | An editor can send another person's stored static header value to a URL they control |
+| F-2 | Medium | `registry/publishing.go:213-262`, `:290-345` | Approving a server or a capability is not bound to what the reviewer saw |
+| F-3 | Medium | `providers/runtime.go:87-135`, `providers/connect.go:315`, `registry/registry.go:718` | A person's provider token is bound to (person, provider), not to a server: union scopes, and a URL change redirects it with no consent |
+| F-4 | Low | `auth/oidc.go:247-253` (used at `:79`, `:123`) | Open redirect after sign-in through a tab character |
+
+**F-1: stored static header value exfiltration through a URL change (Medium).**
+- *Why it is exploitable.* `PATCH …/mcp-servers/{id}` with only `url` keeps the sealed header value (`applyAuth`: `in.AuthValue == nil` keeps `cur.AuthValueCipher`). The URL passes the SSRF guard (any public https host). A URL change immediately re-reads capabilities from the new endpoint (`Update`, `resubmit`; `docs/registry.md`), so the next request already carries `X-API-Key: <value>` to the new host. Editors cannot read the value ("never returned"), and an owner or another editor may have entered it. Under `approval_required` a published server goes back to `pending`, but the secret has already been sent.
+- *Reproduction.* Test `TestPOCStaticHeaderExfilOnURLChange` (scratch copy, `newRegistryEnv`): the owner creates a server with `authValue`; the editor PATCHes `url` to a second fake MCP server configured to require that header value; the PATCH succeeds, discovery succeeds against the second host (5 requests) and 6 capabilities are read. The editor view shows only `hasAuth=true`, hint `0001`.
+- *Fix.* When the URL's origin (scheme, host, port) changes, drop the stored value unless the request also supplies a new `authValue` (`422 auth_value_required`). Audit `authValueChanged: true`. The same rule applies to a requirement (F-3). Test: PATCH url only → `422`, nothing sent to the new host.
+
+**F-2: approval is not bound to the reviewed definitions (Medium; High where review is the only defence against tool poisoning).**
+- *Why.* `Review` (`publishing.go:213`) takes only `decision` and `note`; `ApproveListedMCPCapabilities` approves "every currently listed capability" at commit time, and `approve` (`:308`) approves "the current fingerprint" of a capability by ID. Refresh of a `pending` server by an editor is allowed and replaces stored definitions. Nothing carries the fingerprints or revision the reviewer's page showed.
+- *Reproduction.* `TestPOCReviewTOCTOU`: owner requests publication; the admin reads the capabilities ("Reports whether a company service has an outage right now."); the editor changes the tool description to an instruction-injection text and refreshes; the admin approves; `check_outage` is `approved=true` with the new description, now served to every team. The same applies to approving a changed capability.
+- *Fix.* Require the reviewed state in the request: the server `revision` (bumped by any refresh that changes a definition) as `If-Match`, or the list of `(capabilityId, fingerprint)` the reviewer saw; answer `409 changed_since_review` when they differ; make `approve` take the expected fingerprint. Test: refresh between GET and approve → `409`, nothing approved.
+
+**F-3: provider tokens are not bound to a server (Medium).**
+- *Why.* `Credential` returns the person's connection token whenever the person's granted scopes cover the capability's scopes (`runtime.go:110`), and `Start` always asks for the union of granted, requested and required scopes (`connect.go:315`), so one token holds every scope the person ever granted for that provider. The token is forwarded to the URL the server has *now*. A URL change needs no re-consent for platform providers (only `oauth`-mode connections are reset, `registry.go` `applyOAuth`), and a server that requires fewer scopes still receives the full-scope token. Consent is asked only when scopes are missing, so a malicious server that requires a subset never prompts.
+- *Reproduction.* `TestPOCProviderTokenFollowsURLChange` (`newProvEnv`): a member connects the provider (scope `repo`) and calls a tool of the legitimate server; the editor re-points the server at a second fake MCP server; the member repeats the same call, which is not refused, and the second host receives `MCP-Gateway-Provider: github` and the member's token (header `MCP-Gateway-Provider-Token`). A platform-provider-linked `oauth` server named by a malicious server's metadata is the sign-in variant of the same trust gap (7.1).
+- *Fix.* Store consent per (person, provider, server) and send the token only to a server the person consented to, at the URL consented to (reset on URL change, as for `oauth` mode); ask for and send per-call scopes (downscope on refresh where the provider supports it); optionally add a per-provider list of teams or servers allowed to require it. Update [phase5](phase5-delegated-credentials.md) ("which scopes are sent") to match. Test: URL change → `-32042`; a second server with fewer scopes → consent prompt.
+
+**F-4: open redirect after sign-in (Low).**
+- *Why.* `safeNext` rejects CR and LF only. `/auth/login?next=%2F%09%2Fevil.example` stores `/\t/evil.example`; `Callback` answers `303 Location: /\t/evil.example` (`http.Redirect` leaves a path with a control character unchanged), and browsers drop tabs and newlines when parsing a URL, giving `//evil.example`. No token is in the redirect; it needs the victim to sign in through the crafted link.
+- *Reproduction.* A scratch unit test (`TestPOCSafeNextTab`) shows `safeNext("/\t/evil.example")` returning the input and `http.Redirect` emitting `Location: "/\t/evil.example"`; `TestSafeNext` has no control-character case.
+- *Fix.* Reuse `providers.SafeReturnPath` (it rejects every control character, `//`, `\` and encoded slashes) in `safeNext`, or reject `unicode.IsControl`; add `\t`, `\v`, `%09` and `%5c` cases to `TestSafeNext` and `TestOIDCOpenRedirectBlocked`.
+
+## 9. Hardening ideas (not findings)
+
+- **H-1** Trusted OAuth clients skip consent and may redirect to `http://localhost:<any port>`; a local process can start the flow with its own PKCE pair and receive a code for the signed-in person. Require consent (or a one-time notice) for loopback redirects of trusted clients.
+- **H-2** `sendIdentity` defaults to on; default it off for hosts outside the internal allowlist, or show the claim set at review.
+- **H-3** `GET /oauth/authorize` fetches an anonymous caller's CIMD URL and reports distinct failures; return one generic page for fetch failures, fetch only after sign-in, and cap distinct fetches per address.
+- **H-4** DCR is open and unauthenticated; each client is a row for 30 days and its error redirects act as an open redirector. Cap total registrations and require a `Sec-Fetch`-checked browser POST or admin-set toggle.
+- **H-5** (a) Per-provider allow-list of teams or servers (F-3); (b) `http.Server` `ReadTimeout`, or per-handler read deadlines on unauthenticated POSTs.
+- **H-6** Do not relay the first message of an upstream error body to MCP clients; show it only to editors on the Test and Health pages.
+- **H-7** Refuse start when `ENCRYPTION_KEY` and `API_KEY_PEPPER` are equal; warn when `TRUSTED_PROXIES` is empty and `X-Forwarded-For` is present; give the OIDC state cookie a `__Host-` name.
+- **H-8** Refresh tokens: an absolute lifetime and, within the reuse grace, no new pair for a token already rotated.
+- **H-9** CI: `govulncheck`, `npm audit --omit=dev`, Dockerfile base images by digest, Trivy set to fail on fixable high severities.
+- **H-10** Off-host, tamper-evident audit export and a minimum audit retention a platform admin cannot lower below the data's retention.
+- **H-11** Split database roles (migration owner and runtime) and revoke `UPDATE`/`DELETE` on the append-only tables from the runtime role.
+- **H-12** Idle session timeout and a session list ("sign out everywhere").
+
+## 10. v0.2 additions under review
+
+These are designs, not code. They are reviewed here so tests exist before the first line is merged. Sources: [notifications.md](notifications.md), [automation-tokens.md](automation-tokens.md), and the "connect your account becomes native" part of [roadmap.md](roadmap.md) section A.
+
+### 10.1 Notifications: signed webhooks and SMTP (decision 56)
+
+| Design risk | Why it matters | What must be true / tests |
+| --- | --- | --- |
+| Team-owned webhook URLs reuse the **internal-network allowlist** (decision 20) | Any team owner or admin can make the portal POST a fixed JSON body to any allowlisted internal URL path, and the delivery log returns the HTTP status: a blind-SSRF POST gadget and a port/path oracle | Use a separate "notification destinations" allowlist, default public https only; log status class only; test loopback, metadata, rebinding, redirect, plain http without an entry, internal path scanning through the log, re-check at every send |
+| Destination URLs are credentials (Slack) | Logs, errors, audit or the guarded dialer's error text can quote them | Sealed storage, `urlDisplay` = scheme and host; sentinel test that the path never reaches responses, audit, logs, `omp_*` metrics labels or errors |
+| HMAC `v1=` over `timestamp.body` | Replay and downgrade | 5-minute window documented; reference verifier test with two `v1=` values during rotation; constant-time compare in the reference; `slack` format is unsigned (URL is the secret): say so in the UI |
+| Delivery workers shared by all destinations (8 at a time, 10 s timeout) | A team's slow endpoint stalls everyone's notifications | Per-destination concurrency and fair scheduling; test with a tarpit destination |
+| User-controlled text in notifications (server name, `publish.requested` note ≤300 characters, capability names) | Phishing and Slack-markup injection through the portal's own mail and webhook | Clip and delimit user text, no links except `APP_URL`, escape Slack `& < >` and mentions; test hostile names, newlines, `<!channel>`, a `<https://evil.example\|x>` link |
+| Email goes to profile addresses | If `OIDC_REQUIRE_VERIFIED_EMAIL=false`, an attacker-chosen unverified address receives team notifications | Send only to addresses with `email_verified`; test |
+| SMTP header injection, `STARTTLS` downgrade, credentials in clear | Operator trust, but names flow into headers | CR/LF stripped and RFC 2047-encoded, a fake SMTP server that refuses without STARTTLS, `none` with credentials refused off loopback (`config/safety.go`), 30 emails per person per hour |
+| Emission inside the change's transaction | A notification failure must not fail or leak the change; recipients resolved from live roles at fan-out | Savepoint test; role change between emit and fan-out; personal events never to webhooks |
+| `capability.changed` payload lists capability names of private servers to platform destinations | Data minimisation | Counts by default, names only for the team's own destinations |
+
+### 10.2 Automation tokens: bearer tokens on `/v1`, scopes via `x-omp-token-scopes` (decisions 55, 58)
+
+| Design risk | Why it matters | What must be true / tests |
+| --- | --- | --- |
+| A bearer on the same routes as the session | Ambient session cookies and explicit tokens must never combine | An `Authorization` header means token only (cookie ignored); `RequireSession` keeps refusing `Authorization` on session-only routes; no cookie ever set on a token response; no CSRF dependence |
+| Default deny comes from an OpenAPI extension | A missing annotation must mean `403`, and the contract test must be backed by a runtime allow-list built from the route table, failing closed if the spec cannot be loaded | Token matrix over every operation (the 63 annotated and every other one), `route.Token` equals the annotations, the four token-management operations answer `session_required` |
+| `platform:write` includes gateway **grants** and `adminSetGatewayCapabilities` | Granting a group or user access to a gateway widens who can reach tools, which the design says tokens must never do (it excludes role changes and settings that widen trust) | Move grants and capability selection out of `platform:write` into a scope that needs a person; or limit them to grantees inside the creator's own teams; test that a token cannot add `everyone` to a platform gateway |
+| `platform:write` includes limit changes and team archive/unarchive | Raises ceilings and cost, or switches a team off | Tighten-only for tokens or leave to sessions |
+| `servers:write` includes `updateTeamMcpServer` | With **F-1** and **F-3** a leaked publisher token can re-point a server and steal its static header value and teammates' provider tokens | Fix F-1 and F-3 first, and add a field rule (as for `capturePayloads`): a token may not change `url`, auth headers, requirement or `sendIdentity` of a server that already has credentials |
+| `publishTeamMcpServer` under `self_publish` publishes at once | "The review gate stays human" is false for self-publishing teams | State it; add `servers:publish` as a separate scope; audit the token name |
+| `detectTeamMcpServerAuth` | An SSRF probe with a token | Keep the 10 per minute limit per token, count it |
+| Platform token dies with its creator's platform-admin role | A join at authentication time with a race on demotion | Test demote then use (next request `401`); restoring revives it, so say so |
+| Hash with the pepper, prefix `ompadm_`/`omppub_` | Secret scanners and capture redaction must learn the prefixes | `LooksLikeKey` false for both on `/mcp`; redaction rule and test; GitHub secret-scanning pattern |
+| Failed-attempt limit shares the sign-in limit per address | The shared-ingress-address lockout (7.10) becomes a way to lock out CI | Per-token and per-address limits separate; `TRUSTED_PROXIES` check |
+| Audit actor kind | The previous release cannot list the new actor kind | Migration note (design says so); test that audit lists with the new kind work |
+
+### 10.3 MRTR consent state (`requestState`) and relayed elicitation (roadmap A)
+
+| Design risk | Why it matters | What must be true / tests |
+| --- | --- | --- |
+| `requestState` is client-held | A client or another person can tamper with, replay or move it | Authenticated encryption or HMAC under a **dedicated key** (not `API_KEY_PEPPER` directly; derive with a context label), key ID for rotation; bind person, gateway, capability, upstream server ID **and URL**, argument digest, provider, scopes, nonce and a short expiry; single use (store the nonce); size cap; verify before parsing. Tests: tamper each field, replay, another person, another gateway, expired, URL changed, oversized |
+| The consent link inside the state | A copied state must not let someone else connect an account | Keep the consent link's own person binding and 10-minute single use; state never contains a token |
+| Wrapping an **upstream's** `requestState` | The upstream controls its own state and the elicitation message | Wrap as opaque bytes; forward the inner state only to the upstream it came from, only for the same person, call and argument digest; never parse it; limit size and count; tests that state from server A cannot reach server B, even after a URL change |
+| Relayed URL elicitation from an upstream | A semi-trusted server can show the person any link and text through the portal's trusted client: phishing | Show the server name and the link host; allow only https; show the portal's own `APP_URL` link for portal consent; never relay credential-bearing elicitation (spec: servers must not use URL mode for tokens); refuse sampling and roots (as today); test hostile `message`, `javascript:` and `data:` URLs |
+| Legacy fallback keeps `-32042` | Two code paths for one flow | Same checks in both; test parity |
+| Approvals (decision 48, v0.3) bound to arguments | TOCTOU between approval and call; the F-2 lesson | Bind to argument digest (canonical JSON), capability fingerprint, server URL revision and requester; single use; requester can never approve; expiry; audit; test a definition change between approval and retry |
+
+## 11. Gaps and follow-ups
+
+| Gap | Threats | Follow-up |
+| --- | --- | --- |
+| Static header value is kept across a URL change | UP-4, F-1 | Fix F-1 |
+| Approval not bound to reviewed definitions | UP-2, F-2 | Fix F-2 |
+| Provider tokens not bound to a server; union scopes | DC-5, F-3 | Fix F-3, H-5 |
+| `safeNext` allows control characters | BR-7, F-4 | Fix F-4 |
+| No IdP deprovisioning signal; group grants frozen at last sign-in | TN-5, MCP-3 | Roadmap SCIM; until then, operator process (7.12) |
+| No row-level security; no test runs every query against a foreign team | TN-1 | Review; consider RLS |
+| CI and release workflows have never run on GitHub | 7.11 | status.md next steps 2 |
+| No `govulncheck` or `npm audit`; base images by tag | 7.11 | H-9 |
+| No content scanning of tool descriptions, arguments or results | 7.5 | Decision 50 (design first) |
+| Trusted clients skip consent; loopback redirects | OA-3 | H-1 |
+| Anonymous CIMD fetch and open DCR | OA-7, OA-2 | H-3, H-4 |
+| No off-host audit export; single database role | BR-10, 7.8 | H-10, H-11 |
+| Shared-ingress rate-limit address without `TRUSTED_PROXIES`; no body read timeout | BR-9, 7.10 | H-5b, H-7 |
+| v0.2 designs: notifications, automation tokens, MRTR state | Section 10 | Tests listed there before merge |
