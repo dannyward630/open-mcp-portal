@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: **draft for the owner's review**, written 2026-10-17 after v0.1.0. It is an order of work, not a schedule.
+Status: **approved 2026-10-17**; v0.2 in progress. It is an order of work, not a schedule.
 Sizes are relative effort: **S** a few days, **M** a week or two, **L** several weeks. Each item that needs a design
 gets one in `docs/` before code, as the earlier phases did. Decisions behind it are 47–51 in
 [decisions.md](decisions.md).
@@ -163,12 +163,12 @@ Real Google and Microsoft providers for delegated credentials (only the fake and
 VS Code and Cursor over OAuth; the Kubernetes manifests on a real cluster; end-to-end redaction of provider tokens in
 recorded contents. These are items in v0.2 B and the compatibility matrix above.
 
-## Open questions
+## Resolved questions (2026-10-17)
 
-1. **Suspension.** Should suspending a person disconnect their apps permanently (they sign in again after
-   reactivation), or only block them (today)? Compliance teams usually want the first.
-2. **Tool scoping.** Decision 49 reads it as "limit which tools a credential can use, and constrain arguments".
-   Confirm that is the intent.
-3. **Who approves.** Server owners, gateway owners, or a named approver list per rule?
-4. **Oldest protocol.** Keep accepting 2024-11-05 clients, or start at 2025-03-26?
-5. **Automation tokens.** Platform-admin plus team-publisher tokens, as proposed, or one kind?
+1. **Suspension blocks** and does not disconnect (decision 53).
+2. **Tool scoping** means limiting which tools a credential can use and constraining arguments (decision 49, confirmed).
+3. **Who approves:** the server's team owners and admins by default, named approvers per rule, never the requester,
+   platform admins as the fallback (decision 52).
+4. **Oldest protocol:** keep every revision accepted today and add 2026-07-28; negotiation prefers the newest
+   (decision 54).
+5. **Automation tokens:** two kinds, platform-admin and team publisher (decision 55).
