@@ -1,13 +1,25 @@
 # Status and handoff
 
-Last updated: 2026-10-17. Open MCP Portal (formerly Open MCP Gateway, decision 46), version 0.1.0, **cut on 2026-10-17**
-(release notes: [releases/v0.1.0.md](releases/v0.1.0.md)).
+Last updated: 2026-10-18. Open MCP Portal (formerly Open MCP Gateway, decision 46), version 0.2.0, **cut on 2026-10-18**
+(release notes: [releases/v0.2.0.md](releases/v0.2.0.md); the first release is [v0.1.0](releases/v0.1.0.md)).
 
-## v0.2 backend (in progress, branch `v02-backend`)
+## v0.2.0 (2026-10-18)
 
-Admin overview, notifications and automation tokens are built (backend only; migrations `00014`, `00015`; each design has an "As built" section: [admin-overview.md](admin-overview.md), [notifications.md](notifications.md), [automation-tokens.md](automation-tokens.md)).
-Verified: unit and integration tests (`go test ./...` with PostgreSQL), the authorization matrix over all 33 new operations, a token matrix over every operation, SMTP against an in-test server, webhooks against `httptest` receivers.
-Not verified: a real SMTP server and a real Slack webhook, the Kubernetes egress rows on a real cluster, the web screens (another branch).
+Built: MCP 2026-07-28 toward clients and toward upstream servers ([mcp-protocol.md](mcp-protocol.md); migration `00016`), the admin
+overview and team attention, notifications (inbox, email, signed and Slack webhooks), automation tokens (migrations `00014`, `00015`;
+designs: [admin-overview.md](admin-overview.md), [notifications.md](notifications.md), [automation-tokens.md](automation-tokens.md)), and the
+fixes F-1 to F-4 from the [threat model](threat-model.md), F-3 with migration `00017` (decisions 59 and 60).
+
+Verified: Go tests with PostgreSQL (the route test and an authorization and token matrix over every operation), the web tests, the
+`@modelcontextprotocol/conformance` suite, and a browser walkthrough of the new screens against a real stack (an SMTP sink, a webhook receiver,
+the fake MCP and OAuth servers): the overview, a test email, a webhook test with its signature checked, a publish request raising a bell
+entry, an email and a webhook, a review with the digest, the decision notification, a platform token against the API, and F-3 end to end
+(consent naming the server, the grant ending when the server moves to another origin, allowing it again without a provider round trip).
+
+Not verified: Claude Code, VS Code and Cursor against the 2026-07-28 revision (the Claude CLI's sign-in had expired in the test
+environment); a real SMTP provider over TLS and a real Slack webhook; the Kubernetes egress rows on a real cluster; a real Google or
+Microsoft provider. Still open from the threat model: the hardening ideas in section 9 (notably H-5, scopes per call and a per-provider
+server allow-list).
 
 ## Summary
 

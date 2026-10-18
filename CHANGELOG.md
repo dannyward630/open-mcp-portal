@@ -6,7 +6,10 @@ Notable changes to Open MCP Portal, one entry per release. Design notes for each
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, minor releases may include
 breaking changes; the entry says how to adapt.
 
-## Unreleased (0.2.0)
+## [0.2.0] - 2026-10-18
+
+Support for the MCP 2026-07-28 revision, pilot readiness (admin overview, notifications, automation tokens) and fixes from
+a security review ([release notes](docs/releases/v0.2.0.md)). Migrations `00014` to `00017`.
 
 **MCP 2026-07-28, server side** ([docs/mcp-protocol.md](docs/mcp-protocol.md), decision 51). Gateways at `/mcp/{slug}`
 now speak the new protocol era next to 2024-11-05 to 2025-11-25, chosen per request; legacy clients see no change.
@@ -90,6 +93,8 @@ approving now names what was reviewed. People re-consent once per server for pro
   `//evil.example`; sign-in and the connect flow now share one path rule (`internal/safepath`).
 - `serve` refuses an `ENCRYPTION_KEY` equal to the `API_KEY_PEPPER`; the main listener's `ReadHeaderTimeout` (10 s) and
   `IdleTimeout` are pinned by a test; CI runs `govulncheck` and `npm audit --audit-level=high` (none reported).
+
+**v0.2 pilot readiness, web UI.** Admin Overview (replaces the redirect to Users) and a team attention card; a bell and inbox in the header, notification preferences per event and channel, team and platform webhook destinations (shown as a host, the signing secret shown once), a test email; Automation tokens pages (platform and team); the protocol a server last negotiated on its overview; the consent page names the server and team and allows it without a round trip (F-3); the review dialogs send what the reviewer saw (F-2).
 
 **v0.2 pilot readiness, backend** (migrations `00014`, `00015`; designs: [admin overview](docs/admin-overview.md), [notifications](docs/notifications.md), [automation tokens](docs/automation-tokens.md)).
 

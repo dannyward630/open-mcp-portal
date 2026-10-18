@@ -24,7 +24,7 @@ resources:
 # Pin by digest (never a mutable tag).
 images:
   - name: ghcr.io/ncecere/open-mcp-portal
-    newTag: v0.1.0
+    newTag: v0.2.0
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 configMapGenerator:
