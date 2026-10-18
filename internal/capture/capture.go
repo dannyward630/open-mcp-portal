@@ -59,6 +59,7 @@ var (
 	errAdminOnly       = apperr.Forbidden("Only platform admins can do this")
 	errPlatformRead    = apperr.Forbidden("Only platform admins and auditors can see this")
 	errPayloadNotFound = apperr.NotFound("payload_not_found", "No captured contents are stored for this call that you can open")
+	errTokenActor      = apperr.New(403, "token_not_allowed", "Recorded contents are for people: automation tokens never read them")
 	errTeamOnly        = apperr.Forbidden("Only the team's owners and admins can open captured contents here; platform staff use Admin › Calls")
 )
 
@@ -387,6 +388,12 @@ func (s *Service) AdminPayload(ctx context.Context, a authz.Actor, callID int64)
 }
 
 func (s *Service) open(ctx context.Context, a authz.Actor, row calls.Row, team uuid.UUID, via string) (Payload, error) {
+	// Defence in depth (docs/automation-tokens.md): recorded contents are for
+	// people. No operation that reads them accepts tokens, and this refuses
+	// one even if an annotation were added by mistake.
+	if a.IsToken() {
+		return Payload{}, errTokenActor
+	}
 	var out Payload
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		p, err := q.GetMCPCallPayload(ctx, row.ID)
