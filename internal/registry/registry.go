@@ -74,6 +74,8 @@ type Service struct {
 	oauth OAuthSettings
 	// notify is told what people may want to hear about (SetNotifier).
 	notify Notifier
+	// ids signs the identity token a manual Test sends (SetIdentity).
+	ids IdentitySigner
 }
 
 // New returns a Service. client reaches the servers (its AllowPrivate is the

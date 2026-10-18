@@ -12,6 +12,7 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/apperr"
 	"github.com/ncecere/open-mcp-portal/internal/audit"
 	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/identity"
 	"github.com/ncecere/open-mcp-portal/internal/store"
 	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 	"github.com/ncecere/open-mcp-portal/internal/upstream"
@@ -58,11 +59,20 @@ type TestResult struct {
 	Note           string
 }
 
-// probe discovers a server's capabilities (no storing). headerValue is
-// returned so messages can be scrubbed of it. A server in oauth mode is read
-// with the setup connection, except by scheduled checks, which use nobody's
-// token (probeSignIn).
+// probe discovers a server's capabilities (no storing), without an identity
+// token: refresh, discovery and scheduled health checks never send one (see
+// testIdentity for why). headerValue is returned so messages can be scrubbed
+// of it. A server in oauth mode is read with the setup connection, except by
+// scheduled checks, which use nobody's token (probeSignIn).
 func (s *Service) probe(ctx context.Context, sv dbgen.McpServer, trigger string) (TestResult, upstream.Discovery, string) {
+	return s.probeAs(ctx, sv, trigger, "")
+}
+
+// probeAs is probe sending the signed identity token (the bare JWT) the way
+// a forwarded call does, when token is not empty: as Authorization: Bearer,
+// or as MCP-Gateway-Identity when the server's own static header is
+// Authorization or it is read with its own sign-in (an oauth server).
+func (s *Service) probeAs(ctx context.Context, sv dbgen.McpServer, trigger, token string) (TestResult, upstream.Discovery, string) {
 	t, err := s.target(ctx, sv)
 	if err != nil {
 		var e *upstream.Error
@@ -96,6 +106,12 @@ func (s *Service) probe(ctx context.Context, sv dbgen.McpServer, trigger string)
 		}
 		t.BearerToken, res.ReadAs = token, &person
 	}
+	if token != "" {
+		t.IdentityHeader, t.IdentityValue = identity.Header(t.HeaderName, token)
+		if t.BearerToken != "" {
+			t.IdentityHeader, t.IdentityValue = identity.HeaderIdentity, token
+		}
+	}
 	d, err := s.client.Discover(ctx, t)
 	res.Latency, res.ServerName, res.ServerVersion, res.ProtocolVersion = d.Latency, d.ServerName, d.ServerVersion, d.ProtocolVersion
 	res.Protocol = d.Protocol
@@ -105,8 +121,10 @@ func (s *Service) probe(ctx context.Context, sv dbgen.McpServer, trigger string)
 			e = &upstream.Error{Class: upstream.ClassUnavailable, Message: "The test failed."}
 		}
 		msg := upstream.SafeMessage(e.Message, t.HeaderValue)
-		if t.BearerToken != "" {
-			msg = upstream.SafeMessage(msg, t.BearerToken)
+		for _, secret := range []string{t.BearerToken, token} {
+			if secret != "" {
+				msg = upstream.SafeMessage(msg, secret)
+			}
 		}
 		res.Err = &upstream.Error{Class: e.Class, HTTPStatus: e.HTTPStatus, Message: msg}
 		return res, d, t.HeaderValue
@@ -157,7 +175,8 @@ func recordCheck(ctx context.Context, q *dbgen.Queries, serverID uuid.UUID, res 
 
 // Test reads a server's capabilities without saving them (team editors and
 // above; the server may be disabled) and stores the result as a manual
-// health check.
+// health check. Like a call it sends the editor's identity token when the
+// server's Send identity is on (testAs).
 func (s *Service) Test(ctx context.Context, a authz.Actor, ref string, id uuid.UUID) (TestResult, error) {
 	ta, err := access(ctx, s.q, a, ref)
 	if err != nil {
@@ -170,7 +189,7 @@ func (s *Service) Test(ctx context.Context, a authz.Actor, ref string, id uuid.U
 	if err != nil {
 		return TestResult{}, err
 	}
-	res, _, _ := s.probe(ctx, sv, TriggerManual)
+	res := s.testAs(ctx, a, sv)
 	if err := recordCheck(context.WithoutCancel(ctx), s.q, id, res, TriggerManual, by(a)); err != nil {
 		s.log.WarnContext(ctx, "could not store an MCP server test", "server", id, "err", err)
 	} else {

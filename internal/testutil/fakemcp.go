@@ -59,6 +59,11 @@ type FakeMCP struct {
 	// providerTokens counts HTTP requests that carried an
 	// MCP-Gateway-Provider-Token header, whatever they were for.
 	providerTokens int
+	// rejectAuth, when not 0, is the HTTP status every request that carries
+	// an Authorization header is answered with (RejectAuthorization);
+	// auths records the credentials of every HTTP request (RequestAuths).
+	rejectAuth int
+	auths      []RequestAuth
 
 	gatewayTools bool
 	// echoSecrets adds echo_secrets and image (payload capture tests).
@@ -114,6 +119,33 @@ type SeenRequest struct {
 	// it with an error.
 	Version, McpMethod string
 	Refused            bool
+}
+
+// RequestAuth is the identity-bearing headers of one HTTP request, whatever
+// it was for (initialize, discovery, a list, a call) and however it was
+// answered.
+type RequestAuth struct {
+	// Authorization and Identity are the Authorization and
+	// MCP-Gateway-Identity header values ("": absent).
+	Authorization, Identity string
+}
+
+// RequestAuths are the credentials of every HTTP request received so far,
+// in order (RejectAuthorization'd requests included).
+func (f *FakeMCP) RequestAuths() []RequestAuth {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]RequestAuth(nil), f.auths...)
+}
+
+// RejectAuthorization makes the fake answer every request that carries an
+// Authorization header with status (for example 401), at the HTTP level and
+// before any MCP handling, like a public server that refuses credentials it
+// doesn't use. 0 turns it off.
+func (f *FakeMCP) RejectAuthorization(status int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rejectAuth = status
 }
 
 // SetProtocol sets which era the fake speaks (before the first request).
@@ -353,7 +385,13 @@ func NewFakeMCPHandler() (*FakeMCP, http.Handler) {
 			f.providerTokens++
 		}
 		name, value := f.header, f.value
+		auth, reject := r.Header.Get("Authorization"), f.rejectAuth
+		f.auths = append(f.auths, RequestAuth{Authorization: auth, Identity: r.Header.Get("MCP-Gateway-Identity")})
 		f.mu.Unlock()
+		if reject != 0 && auth != "" {
+			http.Error(w, "credentials are not accepted here", reject)
+			return
+		}
 		if p := f.protection(); p != nil {
 			if r.URL.Path == "/.well-known/oauth-protected-resource/mcp" {
 				f.serveResourceMetadata(w, r, p)

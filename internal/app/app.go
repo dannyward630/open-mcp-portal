@@ -261,6 +261,8 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	as.Log = log
 	ids := identity.New(pool, box, cfg.AppURL, log)
 	ids.Prepublish = cfg.SigningKeyPrepublish
+	// A manual Test of an MCP server sends the editor's identity token.
+	reg.SetIdentity(ids)
 	// Provider endpoints are dialled behind the same address guard as MCP
 	// servers.
 	provs := providers.New(pool, box, client, cfg.AppURL, log)
