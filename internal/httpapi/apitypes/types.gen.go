@@ -864,6 +864,24 @@ func (e McpServerOAuthSetupConnectionStatus) Valid() bool {
 	}
 }
 
+// Defines values for McpServerProtocolEra.
+const (
+	Legacy McpServerProtocolEra = "legacy"
+	Modern McpServerProtocolEra = "modern"
+)
+
+// Valid indicates whether the value is a known member of the McpServerProtocolEra enum.
+func (e McpServerProtocolEra) Valid() bool {
+	switch e {
+	case Legacy:
+		return true
+	case Modern:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MemberAddResultStatus.
 const (
 	Added   MemberAddResultStatus = "added"
@@ -2747,13 +2765,16 @@ type McpServer struct {
 	Oauth *McpServerOAuth `json:"oauth,omitempty"`
 
 	// PendingChanges Capabilities of a published server whose definition changed since approval (hidden from the catalog until approved)
-	PendingChanges        int64        `json:"pendingChanges"`
-	PublishRequestNote    *string      `json:"publishRequestNote,omitempty"`
-	PublishRequestedAt    *time.Time   `json:"publishRequestedAt,omitempty"`
-	PublishReviewNote     *string      `json:"publishReviewNote,omitempty"`
-	PublishReviewedAt     *time.Time   `json:"publishReviewedAt,omitempty"`
-	PublishReviewedByName *string      `json:"publishReviewedByName,omitempty"`
-	PublishState          PublishState `json:"publishState"`
+	PendingChanges int64 `json:"pendingChanges"`
+
+	// Protocol The MCP protocol version the portal last negotiated with the upstream server (set by refresh, health checks and test); read-only. Null until the first successful exchange.
+	Protocol              *McpServerProtocol `json:"protocol,omitempty"`
+	PublishRequestNote    *string            `json:"publishRequestNote,omitempty"`
+	PublishRequestedAt    *time.Time         `json:"publishRequestedAt,omitempty"`
+	PublishReviewNote     *string            `json:"publishReviewNote,omitempty"`
+	PublishReviewedAt     *time.Time         `json:"publishReviewedAt,omitempty"`
+	PublishReviewedByName *string            `json:"publishReviewedByName,omitempty"`
+	PublishState          PublishState       `json:"publishState"`
 
 	// RefreshedAt When capabilities were last read (null; never)
 	RefreshedAt *time.Time `json:"refreshedAt,omitempty"`
@@ -2960,6 +2981,19 @@ type McpServerPage struct {
 	Items      []McpServer `json:"items"`
 	NextCursor *string     `json:"nextCursor,omitempty"`
 }
+
+// McpServerProtocol The MCP protocol version the portal last negotiated with the upstream server (docs/roadmap.md, v0.2 A)
+type McpServerProtocol struct {
+	// Era legacy: 2025-11-25 and earlier (initialize). modern: 2026-07-28 and later (stateless).
+	Era          McpServerProtocolEra `json:"era"`
+	NegotiatedAt time.Time            `json:"negotiatedAt"`
+
+	// Version Example: 2025-11-25
+	Version string `json:"version"`
+}
+
+// McpServerProtocolEra legacy: 2025-11-25 and earlier (initialize). modern: 2026-07-28 and later (stateless).
+type McpServerProtocolEra string
 
 // McpServerRef defines model for McpServerRef.
 type McpServerRef struct {
