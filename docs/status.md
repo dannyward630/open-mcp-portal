@@ -16,8 +16,9 @@ the fake MCP and OAuth servers): the overview, a test email, a webhook test with
 entry, an email and a webhook, a review with the digest, the decision notification, a platform token against the API, and F-3 end to end
 (consent naming the server, the grant ending when the server moves to another origin, allowing it again without a provider round trip).
 
-Not verified: Claude Code, VS Code and Cursor against the 2026-07-28 revision (the Claude CLI's sign-in had expired in the test
-environment); a real SMTP provider over TLS and a real Slack webhook; the Kubernetes egress rows on a real cluster; a real Google or
+Verified after the release (2026-10-18): Claude Code 2.1.280 was run against a gateway (API-key authentication): it spoke 2026-07-28 natively (`server/discover`, the lists, and `tools/call` with the required `Mcp-Method` and `Mcp-Name` headers), and it showed the person the consent link from the tool error (it declares form-mode elicitation only, so it takes the tool-error answer of decision 59). v0.2.0 was also deployed to a real Talos cluster (CloudNativePG, Traefik, Pangolin; health, `doctor` and the OAuth endpoints checked from outside).
+
+Not verified: Claude Code's OAuth sign-in on the new revision, a client that declares URL elicitation, VS Code and Cursor; a real SMTP provider over TLS and a real Slack webhook; the Kubernetes egress rows on a real cluster; a real Google or
 Microsoft provider. Still open from the threat model: the hardening ideas in section 9 (notably H-5, scopes per call and a per-provider
 server allow-list).
 

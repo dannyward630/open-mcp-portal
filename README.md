@@ -9,8 +9,8 @@ Go + PostgreSQL 17, with a React/Vite web UI embedded in one binary. Documentati
 Website: <https://omp.bitop.dev>.
 
 **Development software (v0.2.0).** Phases 1 to 7 and the v0.2 pilot work (MCP 2026-07-28, an admin overview, notifications, automation tokens) are done. Claude Code and pi have signed in over OAuth and called
-tools, and GitHub's hosted MCP server works with each person's own GitHub sign-in. Not tried yet: a real Google or
-Microsoft provider for delegated credentials (only a fake), VS Code and Cursor, and a Kubernetes cluster; it hasn't run
+tools (Claude Code also speaks the 2026-07-28 revision natively), and GitHub's hosted MCP server works with each person's own GitHub sign-in. v0.2.0 runs on one Talos cluster. Not tried yet: a real Google or
+Microsoft provider for delegated credentials (only a fake), VS Code and Cursor; it hasn't run
 in production. See the [v0.2.0 release notes](docs/releases/v0.2.0.md) and [status](docs/status.md) for what has been
 checked and what hasn't.
 
