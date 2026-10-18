@@ -408,7 +408,7 @@ func (c *Client) httpClient(t Target, ex *exchange) (client *http.Client, done f
 	return &http.Client{
 		Transport: &headerTransport{next: tr, header: t.HeaderName, value: t.HeaderValue, identity: t.IdentityHeader,
 			identityValue: t.IdentityValue, provider: t.Provider, providerToken: t.ProviderToken, bearer: t.BearerToken,
-			params: t.ParamHeaders, maxResponse: c.maxResponse(), ex: ex},
+			params: t.ParamHeaders, maxResponse: c.bodyCap(t), ex: ex},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return fmt.Errorf("%w: MCP servers may not redirect", ErrBlockedAddress)
 		},

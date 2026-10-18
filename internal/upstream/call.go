@@ -8,73 +8,47 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Forwarding a gateway's calls (docs/phase3-gateways.md, "Runtime"): one
-// exchange per call, through the same guard, timeout and response bound as
-// discovery. The gateway advertises no client capabilities, so a server
-// can't ask it for sampling, elicitation or roots.
+// The simple forms of Forward (forward.go): a call that declares no
+// capability and carries no progress or trace context. A server's
+// input_required answer is an error here: nothing can answer it.
+
+var errInputWithoutCapability = &Error{Class: ClassBadResponse, Message: "The server asked for input, which this call can't give."}
 
 // CallTool calls a tool on the server. args is the client's arguments
 // object (nil: none). A tool's own failure is a result with IsError set;
 // failures to get a result are *Error.
 func (c *Client) CallTool(ctx context.Context, t Target, name string, args json.RawMessage) (*mcp.CallToolResult, time.Duration, error) {
-	start := time.Now()
-	ctx, cancel := context.WithTimeout(ctx, t.Timeout)
-	defer cancel()
-	sess, err := c.open(ctx, t)
+	res, err := c.Forward(ctx, t, ForwardRequest{Method: MethodToolsCall, Name: name, Arguments: args})
 	if err != nil {
-		return nil, time.Since(start), err
+		return nil, 0, err
 	}
-	defer sess.close()
-	var arguments any = map[string]any{}
-	if len(args) > 0 && string(args) != "null" {
-		arguments = args
+	if res.Input != nil {
+		return nil, res.Latency, errInputWithoutCapability
 	}
-	res, err := sess.cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
-	if err != nil {
-		return nil, time.Since(start), c.classify(ctx, t, sess.ex, err)
-	}
-	if res.Content == nil {
-		res.Content = []mcp.Content{}
-	}
-	return res, time.Since(start), nil
+	return res.Tool, res.Latency, nil
 }
 
 // ReadResource reads a resource (by its URI on the server).
 func (c *Client) ReadResource(ctx context.Context, t Target, uri string) (*mcp.ReadResourceResult, time.Duration, error) {
-	start := time.Now()
-	ctx, cancel := context.WithTimeout(ctx, t.Timeout)
-	defer cancel()
-	sess, err := c.open(ctx, t)
+	res, err := c.Forward(ctx, t, ForwardRequest{Method: MethodResourcesRead, Name: uri})
 	if err != nil {
-		return nil, time.Since(start), err
+		return nil, 0, err
 	}
-	defer sess.close()
-	res, err := sess.cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
-	if err != nil {
-		return nil, time.Since(start), c.classify(ctx, t, sess.ex, err)
+	if res.Input != nil {
+		return nil, res.Latency, errInputWithoutCapability
 	}
-	if res.Contents == nil {
-		res.Contents = []*mcp.ResourceContents{}
-	}
-	return res, time.Since(start), nil
+	return res.Read, res.Latency, nil
 }
 
 // GetPrompt gets a prompt from the server with the client's arguments.
 func (c *Client) GetPrompt(ctx context.Context, t Target, name string, args map[string]string) (*mcp.GetPromptResult, time.Duration, error) {
-	start := time.Now()
-	ctx, cancel := context.WithTimeout(ctx, t.Timeout)
-	defer cancel()
-	sess, err := c.open(ctx, t)
+	raw, _ := json.Marshal(args)
+	res, err := c.Forward(ctx, t, ForwardRequest{Method: MethodPromptsGet, Name: name, Arguments: raw})
 	if err != nil {
-		return nil, time.Since(start), err
+		return nil, 0, err
 	}
-	defer sess.close()
-	res, err := sess.cs.GetPrompt(ctx, &mcp.GetPromptParams{Name: name, Arguments: args})
-	if err != nil {
-		return nil, time.Since(start), c.classify(ctx, t, sess.ex, err)
+	if res.Input != nil {
+		return nil, res.Latency, errInputWithoutCapability
 	}
-	if res.Messages == nil {
-		res.Messages = []*mcp.PromptMessage{}
-	}
-	return res, time.Since(start), nil
+	return res.Prompt, res.Latency, nil
 }

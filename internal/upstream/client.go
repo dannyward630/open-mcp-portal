@@ -54,6 +54,9 @@ type Client struct {
 	Log              *slog.Logger
 	// Lookup resolves host names (nil: the system resolver). Tests replace it.
 	Lookup func(ctx context.Context, host string) ([]netip.Addr, error)
+	// Eras remembers the protocol era learned for each server (era.go; nil:
+	// every call probes).
+	Eras *EraCache
 }
 
 func (c *Client) maxResponse() int64 {
@@ -100,6 +103,12 @@ type Target struct {
 	ParamHeaders map[string]string
 	// Timeout bounds the whole exchange (connect and every list page).
 	Timeout time.Duration
+	// ServerID names the registered server, for the era cache (empty: the
+	// URL alone).
+	ServerID string
+	// MaxBody overrides the cap on one HTTP response body (0: the client's
+	// MaxResponseBytes); streamed calls get more room for progress events.
+	MaxBody int64
 }
 
 // session is one connection to a server.
@@ -114,37 +123,100 @@ func (s *session) close() {
 	s.done()
 }
 
-// open connects to a server: server/discover (2026-07-28), or the
-// initialize handshake for older servers.
-func (c *Client) open(ctx context.Context, t Target) (*session, error) {
-	// The policy may have changed since the URL was saved.
-	if _, err := c.NormalizeURL(ctx, t.URL); err != nil {
-		return nil, notAllowed(err)
+// open connects to a server for discovery in the era it speaks (era.go):
+// server/discover (2026-07-28) or the initialize handshake for older servers.
+func (c *Client) open(ctx context.Context, t Target) (*session, Protocol, error) {
+	proto, cached, err := c.negotiate(ctx, t)
+	if err != nil {
+		return nil, Protocol{}, err
 	}
+	sess, stale, err := c.connect(ctx, t, proto, nil)
+	if err != nil && cached && stale {
+		c.ForgetEra(t)
+		if proto, _, err = c.negotiate(ctx, t); err != nil {
+			return nil, Protocol{}, err
+		}
+		sess, _, err = c.connect(ctx, t, proto, nil)
+	}
+	if err != nil {
+		return nil, Protocol{}, err
+	}
+	return sess, c.learned(t, sess.cs, proto), nil
+}
+
+// learned is the protocol a session actually negotiated, remembered.
+func (c *Client) learned(t Target, cs *mcp.ClientSession, was Protocol) Protocol {
+	p := was
+	if res := cs.InitializeResult(); res != nil && res.ProtocolVersion != "" {
+		p = Protocol{Era: EraLegacy, Version: res.ProtocolVersion}
+		if res.ProtocolVersion >= ModernVersion {
+			p.Era = EraModern
+		}
+	}
+	c.remember(t, p)
+	return p
+}
+
+// connect opens an SDK session pinned to an era: the SDK would otherwise try
+// discover and then fall back to initialize on any error, which is not the
+// rule in era.go. The portal declares no client capability (no roots,
+// sampling or elicitation) and refuses multi-round-trip input requests here:
+// sessions are for discovery and legacy servers. stale: it failed the way a
+// server of another era fails.
+func (c *Client) connect(ctx context.Context, t Target, proto Protocol, onProgress func(context.Context, *mcp.ProgressNotificationClientRequest)) (*session, bool, error) {
 	ex := &exchange{}
 	hc, done := c.httpClient(t, ex)
 	client := mcp.NewClient(&mcp.Implementation{Name: "open-mcp-portal", Title: "Open MCP Portal", Version: buildinfo.Version}, &mcp.ClientOptions{
-		Logger: slog.New(slog.DiscardHandler),
-		// No roots, sampling or elicitation: the gateway can't answer a
-		// remote server's questions.
-		Capabilities:   &mcp.ClientCapabilities{},
-		MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true},
+		Logger:                      slog.New(slog.DiscardHandler),
+		Capabilities:                &mcp.ClientCapabilities{},
+		MultiRoundTrip:              &mcp.MultiRoundTripOptions{Disabled: true},
+		ProgressNotificationHandler: onProgress,
 	})
 	tr := &mcp.StreamableClientTransport{Endpoint: t.URL, HTTPClient: hc, MaxRetries: -1, DisableStandaloneSSE: true,
-		MaxEventSize: int(c.maxResponse())}
-	cs, err := client.Connect(ctx, tr, nil)
-	if err != nil {
-		done()
-		return nil, c.classify(ctx, t, ex, err)
+		MaxEventSize: int(c.bodyCap(t))}
+	version := legacyOffer
+	if proto.Era == EraModern {
+		version = proto.Version
+		if version == "" {
+			version = ModernVersion
+		}
 	}
-	return &session{cs: cs, ex: ex, done: done}, nil
+	cs, err := client.Connect(ctx, tr, &mcp.ClientSessionOptions{ProtocolVersion: version})
+	if err != nil {
+		stale := false
+		if m := parseRPC([]byte(ex.lastDetail())); modernError(ex.lastStatus(), m) && proto.Era == EraLegacy {
+			stale = true
+		}
+		if st := ex.lastStatus(); proto.Era == EraLegacy && (st == http.StatusBadRequest || st == http.StatusNotFound || st == http.StatusMethodNotAllowed) {
+			stale = stale || methodNotFoundBody(ex.lastDetail())
+		}
+		done()
+		return nil, stale, c.classify(ctx, t, ex, err)
+	}
+	return &session{cs: cs, ex: ex, done: done}, false, nil
+}
+
+// methodNotFoundBody reports whether an error body is a JSON-RPC "method not
+// found" (a modern server answering initialize).
+func methodNotFoundBody(body string) bool {
+	m := parseRPC([]byte(body))
+	return m != nil && m.Error != nil && m.Error.Code == codeMethodNotFound
+}
+
+func (c *Client) bodyCap(t Target) int64 {
+	if t.MaxBody > 0 {
+		return t.MaxBody
+	}
+	return c.maxResponse()
 }
 
 // Discovery is what a server listed.
 type Discovery struct {
 	ServerName, ServerVersion, ProtocolVersion string
-	Capabilities                               []Capability
-	Latency                                    time.Duration
+	// Protocol is the era and version negotiated.
+	Protocol     Protocol
+	Capabilities []Capability
+	Latency      time.Duration
 }
 
 // Discover connects to a server and reads its tools, resources, resource
@@ -155,12 +227,12 @@ func (c *Client) Discover(ctx context.Context, t Target) (Discovery, error) {
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, t.Timeout)
 	defer cancel()
-	sess, err := c.open(ctx, t)
+	sess, proto, err := c.open(ctx, t)
 	if err != nil {
 		return Discovery{Latency: time.Since(start)}, err
 	}
 	defer sess.close()
-	d := Discovery{}
+	d := Discovery{Protocol: proto}
 	var caps *mcp.ServerCapabilities
 	if res := sess.cs.InitializeResult(); res != nil {
 		caps = res.Capabilities
@@ -396,6 +468,8 @@ func (c *Client) classify(ctx context.Context, t Target, ex *exchange, err error
 		return &Error{Class: ClassTooLarge, Message: fmt.Sprintf("The server's response was larger than %d bytes.", c.maxResponse())}
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return &Error{Class: ClassTimeout, Message: "The server didn't answer in time."}
+	case errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled):
+		return &Error{Class: ClassUnavailable, Message: "The call was cancelled."}
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		return &Error{Class: ClassAuth, HTTPStatus: status, Message: clipMessage(fmt.Sprintf("The server refused the credentials (HTTP %d).", status) + why),
 			Challenge: ex.lastChallenge()}
