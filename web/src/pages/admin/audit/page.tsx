@@ -10,7 +10,8 @@ import { FileClock } from "lucide-react";
 import { api, unwrap, type Schemas } from "@/api/client";
 import { changeSummary } from "@/components/audit/changes";
 import { AuditTeam } from "@/components/audit/record";
-import { actedVia, actionLabel, actorName, areaOptions, personFilter, systemPersonOption, targetTypeLabel, targetTypeLabels } from "@/components/audit/labels";
+import { TokenKindBadge } from "@/components/audit/actor";
+import { actedVia, actionLabel, actorName, areaOptions, personFilter, systemPersonOption, targetTypeLabel, targetTypeLabels, tokenPersonOption } from "@/components/audit/labels";
 import { AuditTarget } from "@/components/audit/target";
 import { ListPage, timeColumn, useListFilters } from "@/components/templates/list-page";
 import { useRecordParam } from "@/components/templates/record-page";
@@ -42,7 +43,7 @@ function useFacets(): Facet<Entry>[] {
         .sort((a, b) => a[1].localeCompare(b[1]))
         .map(([value, label]) => ({ value, label })),
     },
-    { id: "person", label: "Person", type: "select", placeholder: "Anyone", options: [systemPersonOption, ...people] },
+    { id: "person", label: "Person", type: "select", placeholder: "Anyone", options: [systemPersonOption, tokenPersonOption, ...people] },
     dateFacet<Entry>(),
   ];
 }
@@ -62,7 +63,13 @@ const columns: DataTableColumn<Entry>[] = [
     cell: (e) => (
       <span className={e.actor.kind === "system" ? s.muted : s.primary} title={e.actor.email ?? undefined}>
         {actorName(e.actor, e)}
-        {actedVia(e) && <span className={s.secondary}>{actedVia(e)}</span>}
+        {e.actor.kind === "automation_token" ? (
+          <span className={s.secondary}>
+            <TokenKindBadge actor={e.actor} />
+          </span>
+        ) : (
+          actedVia(e) && <span className={s.secondary}>{actedVia(e)}</span>
+        )}
       </span>
     ),
   },

@@ -12,7 +12,8 @@ import { Eye, FileClock } from "lucide-react";
 import { api, unwrap, type Schemas } from "../../../api/client";
 import { membersQuery } from "../../../api/queries";
 import { changeSummary } from "../../../components/audit/changes";
-import { actionLabel, actorName, areaOptions, auditKey, personFilter, systemPersonOption, viaLabel } from "../../../components/audit/labels";
+import { TokenKindBadge } from "../../../components/audit/actor";
+import { actionLabel, actorName, areaOptions, auditKey, personFilter, systemPersonOption, tokenPersonOption, tokenKindLabel, viaLabel } from "../../../components/audit/labels";
 import { auditSections } from "../../../components/audit/record";
 import { AuditTarget } from "../../../components/audit/target";
 import { ListPage, RelativeTime, useListFilters } from "../../../components/templates/list-page";
@@ -30,6 +31,7 @@ type Entry = Schemas["AuditEntry"];
 function who(e: Entry) {
   const { actor } = e;
   if (actor.kind === "api_key") return `API key${actor.apiKeyName ? `: ${actor.apiKeyName}` : ""}`;
+  if (actor.kind === "automation_token") return tokenKindLabel(actor);
   return actor.kind === "user" && actor.displayName ? actor.email : undefined;
 }
 
@@ -45,7 +47,7 @@ function useFacets(team: string): Facet<Entry>[] {
       label: "Person",
       type: "select",
       placeholder: "Anyone",
-      options: [systemPersonOption, ...(members.data ?? []).map((m) => ({ value: m.user.id, label: m.user.displayName || m.user.email }))],
+      options: [systemPersonOption, tokenPersonOption, ...(members.data ?? []).map((m) => ({ value: m.user.id, label: m.user.displayName || m.user.email }))],
     },
     { id: "range", label: "Date", type: "date-range" },
   ];
@@ -77,7 +79,7 @@ export function TeamAuditLog() {
           <RelativeTime value={e.occurredAt} />
         </span>
       ) },
-    { id: "who", header: "Who", accessor: (e) => actorName(e.actor, e), cell: (e) => <CellText primary={actorName(e.actor, e)} secondary={who(e)} /> },
+    { id: "who", header: "Who", accessor: (e) => actorName(e.actor, e), cell: (e) => <CellText primary={actorName(e.actor, e)} secondary={e.actor.kind === "automation_token" ? <TokenKindBadge actor={e.actor} /> : who(e)} /> },
     {
       id: "action",
       header: "Action",
