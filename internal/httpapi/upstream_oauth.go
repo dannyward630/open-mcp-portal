@@ -44,8 +44,13 @@ func (a *api) slowDown(w http.ResponseWriter, r *http.Request, bucket string, li
 }
 
 func (a *api) detectTeamMcpServerAuth(w http.ResponseWriter, r *http.Request) {
-	id, _ := auth.FromContext(r.Context())
-	if a.slowDown(w, r, "detect-auth:"+id.User.ID.String(), detectsPerMinute) {
+	// 10 a minute per person, and per automation token (never one shared
+	// bucket for every token).
+	who := a.actor(r).UserID.String()
+	if actor := a.actor(r); actor.IsToken() {
+		who = "token:" + actor.TokenID.String()
+	}
+	if a.slowDown(w, r, "detect-auth:"+who, detectsPerMinute) {
 		return
 	}
 	var in apitypes.DetectAuthRequest

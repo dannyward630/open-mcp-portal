@@ -9,8 +9,9 @@
 #   open-mcp-portal-egress-postgres narrow TCP 5432 to where Postgres runs
 #   open-mcp-portal-egress-dns      if cluster DNS is not kube-dns in
 #                                    kube-system
-# and add egress for MCP servers or an OIDC provider on ports other than
-# 443 (open-mcp-portal-egress-https allows TCP 443 only).
+# and add egress for MCP servers, an OIDC provider or webhook destinations on
+# ports other than 443 (open-mcp-portal-egress-https allows TCP 443 only), and
+# for the SMTP server when email is on (SMTP_HOST; TCP 587, 465 or 25).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

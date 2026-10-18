@@ -33,19 +33,22 @@ type ApiKeyGateway struct {
 }
 
 type AuditLog struct {
-	ID          int64
-	OccurredAt  time.Time
-	ActorKind   string
-	ActorUserID uuid.NullUUID
-	TeamID      uuid.NullUUID
-	Action      string
-	TargetType  string
-	TargetID    string
-	BeforeState json.RawMessage
-	AfterState  json.RawMessage
-	Metadata    json.RawMessage
-	RequestID   string
-	ClientIP    string
+	ID             int64
+	OccurredAt     time.Time
+	ActorKind      string
+	ActorUserID    uuid.NullUUID
+	TeamID         uuid.NullUUID
+	Action         string
+	TargetType     string
+	TargetID       string
+	BeforeState    json.RawMessage
+	AfterState     json.RawMessage
+	Metadata       json.RawMessage
+	RequestID      string
+	ClientIP       string
+	ActorTokenID   uuid.NullUUID
+	ActorTokenName *string
+	ActorTokenKind *string
 }
 
 type AuthProvider struct {
@@ -87,6 +90,24 @@ type AuthProvider struct {
 	IssParamSupported     bool
 	ClientSecretExpiresAt *time.Time
 	DiscoveredAt          *time.Time
+}
+
+type AutomationToken struct {
+	ID            uuid.UUID
+	Kind          string
+	TeamID        uuid.NullUUID
+	Name          string
+	Prefix        string
+	Digest        string
+	PepperID      []byte
+	Scopes        []string
+	CreatedBy     uuid.NullUUID
+	CreatedByName *string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	RevokedAt     *time.Time
+	RevokedBy     uuid.NullUUID
+	LastUsedAt    *time.Time
 }
 
 type CaptureSetting struct {
@@ -282,6 +303,94 @@ type NetworkSetting struct {
 	Revision  int64
 	UpdatedBy uuid.NullUUID
 	UpdatedAt time.Time
+}
+
+type NotificationDestination struct {
+	ID                   uuid.UUID
+	Scope                string
+	TeamID               uuid.NullUUID
+	Name                 string
+	Format               string
+	UrlCipher            []byte
+	UrlDisplay           string
+	SecretCipher         []byte
+	SecretPreviousCipher []byte
+	SecretPreviousUntil  *time.Time
+	SecretHint           string
+	SecretRotatedAt      *time.Time
+	Events               []string
+	TeamEvents           bool
+	Enabled              bool
+	DisabledReason       *string
+	ConsecutiveFailures  int32
+	LastSuccessAt        *time.Time
+	LastFailureAt        *time.Time
+	LastErrorClass       *string
+	Revision             int64
+	CreatedBy            uuid.NullUUID
+	CreatedByName        *string
+	CreatedAt            time.Time
+	UpdatedBy            uuid.NullUUID
+	UpdatedAt            time.Time
+}
+
+type NotificationEvent struct {
+	ID              int64
+	PublicID        uuid.UUID
+	Event           string
+	DedupKey        string
+	TeamID          uuid.NullUUID
+	SubjectType     string
+	SubjectID       string
+	RecipientUserID uuid.NullUUID
+	ActorUserID     uuid.NullUUID
+	Payload         json.RawMessage
+	OccurredAt      time.Time
+	FannedOutAt     *time.Time
+}
+
+type NotificationInbox struct {
+	ID        int64
+	UserID    uuid.UUID
+	EventID   int64
+	Event     string
+	TeamID    uuid.NullUUID
+	Title     string
+	Body      string
+	Link      json.RawMessage
+	CreatedAt time.Time
+	ReadAt    *time.Time
+}
+
+type NotificationOutbox struct {
+	ID            int64
+	EventID       int64
+	Channel       string
+	UserID        uuid.NullUUID
+	DestinationID uuid.NullUUID
+	State         string
+	Attempts      int32
+	NextAttemptAt time.Time
+	LastAttemptAt *time.Time
+	SentAt        *time.Time
+	HttpStatus    *int32
+	ErrorClass    *string
+	DedupKey      string
+	CreatedAt     time.Time
+}
+
+type NotificationPreference struct {
+	UserID    uuid.UUID
+	Event     string
+	Channel   string
+	Enabled   bool
+	UpdatedAt time.Time
+}
+
+type NotificationState struct {
+	ID        int16
+	LastRunAt *time.Time
+	KeyScanAt *time.Time
 }
 
 type OauthClient struct {
@@ -553,17 +662,18 @@ type UsageRollupState struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	OIDCIssuer   string
-	OIDCSubject  string
-	Email        string
-	DisplayName  string
-	PlatformRole string
-	Status       string
-	Claims       json.RawMessage
-	Revision     int64
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	LastLoginAt  *time.Time
-	Groups       []string
+	ID            uuid.UUID
+	OIDCIssuer    string
+	OIDCSubject   string
+	Email         string
+	DisplayName   string
+	PlatformRole  string
+	Status        string
+	Claims        json.RawMessage
+	Revision      int64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	LastLoginAt   *time.Time
+	Groups        []string
+	EmailVerified bool
 }

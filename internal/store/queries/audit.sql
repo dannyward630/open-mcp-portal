@@ -1,10 +1,12 @@
 -- name: InsertAudit :exec
 INSERT INTO audit_log (
     actor_kind, actor_user_id, team_id, action, target_type, target_id,
-    before_state, after_state, metadata, request_id, client_ip
+    before_state, after_state, metadata, request_id, client_ip,
+    actor_token_id, actor_token_name, actor_token_kind
 ) VALUES (
     @actor_kind, @actor_user_id, @team_id, @action, @target_type, @target_id,
-    @before_state, @after_state, @metadata, @request_id, @client_ip
+    @before_state, @after_state, @metadata, @request_id, @client_ip,
+    @actor_token_id, @actor_token_name, @actor_token_kind
 );
 
 -- name: ListAudit :many
@@ -18,7 +20,7 @@ INSERT INTO audit_log (
 -- actor_kind: 'system' for the system's entries.
 SELECT a.id, a.occurred_at, a.actor_kind, a.actor_user_id, a.team_id, a.action,
        a.target_type, a.target_id, a.before_state, a.after_state, a.metadata,
-       a.request_id, a.client_ip,
+       a.request_id, a.client_ip, a.actor_token_id, a.actor_token_name, a.actor_token_kind,
        COALESCE(u.email::text, '')::text AS actor_email,
        COALESCE(tm.name, '')::text AS team_name, COALESCE(tm.slug, '')::text AS team_slug,
        u.display_name AS actor_display_name,
@@ -59,6 +61,8 @@ CROSS JOIN LATERAL (
         WHEN 'oauth_client' THEN (SELECT oc.client_name FROM oauth_clients oc WHERE oc.id = ids.target_uuid)
         WHEN 'oauth_grant' THEN (SELECT og.client_name || ' · ' || g.name FROM oauth_grants og JOIN gateways g ON g.id = og.gateway_id
                                  WHERE og.id = ids.target_uuid)
+        WHEN 'automation_token' THEN (SELECT at.name FROM automation_tokens at WHERE at.id = ids.target_uuid)
+        WHEN 'notification_destination' THEN (SELECT nd.name FROM notification_destinations nd WHERE nd.id = ids.target_uuid)
         WHEN 'service_account' THEN (SELECT sa.name FROM service_accounts sa WHERE sa.id = ids.target_uuid)
         WHEN 'service_account_key' THEN (SELECT sa.name || ' · ' || k.name FROM service_account_keys k
                                          JOIN service_accounts sa ON sa.id = k.service_account_id WHERE k.id = ids.target_uuid)
@@ -69,7 +73,7 @@ CROSS JOIN LATERAL (
         WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' WHEN 'network' THEN 'Internal networks'
                                        WHEN 'oauth_clients' THEN 'Trusted clients' WHEN 'limits' THEN 'Rate limits'
                                        WHEN 'capture' THEN 'Payload capture' WHEN 'retention' THEN 'Retention'
-                                       WHEN 'keys' THEN 'Encryption keys' END)
+                                       WHEN 'keys' THEN 'Encryption keys' WHEN 'notifications' THEN 'Notifications' END)
         WHEN 'mcp_call' THEN (SELECT 'Call ' || mc.id::text || ' · ' || COALESCE(mc.exposed_name, mc.method) FROM mcp_calls mc
                               WHERE mc.id = (CASE WHEN a.target_id ~ '^[0-9]{1,18}$' THEN a.target_id::bigint END))
     END)::text AS label
@@ -86,3 +90,9 @@ WHERE (sqlc.narg(team_id)::uuid IS NULL OR a.team_id = sqlc.narg(team_id)::uuid)
   AND (sqlc.narg(occurred_to)::timestamptz IS NULL OR a.occurred_at < sqlc.narg(occurred_to)::timestamptz)
 ORDER BY a.id DESC
 LIMIT @page_size;
+
+-- name: CountTokenAuditEntries :one
+-- Audit entries one automation token wrote for one request (the request ID
+-- is on every entry), so a token's mutation that wrote none can be recorded.
+SELECT count(*) FROM audit_log
+WHERE actor_token_id = @token_id AND request_id = @request_id AND occurred_at > now() - interval '5 minutes';

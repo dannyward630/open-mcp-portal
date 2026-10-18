@@ -69,6 +69,8 @@ func seed(t *testing.T, pool *pgxpool.Pool, b *secrets.Box) map[string]string {
 	scalar(t, pool, `INSERT INTO provider_auth_states (state_digest, user_id, session_digest, provider_id, scopes, expires_at) VALUES ($1, $2, $1, $3, '{}', now() + interval '1 hour') RETURNING state_digest`, keys["provider_auth_states"], user, keys["auth_providers"])
 	scalar(t, pool, `INSERT INTO provider_connect_requests (id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id, gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, expires_at) VALUES ($1, '\x00', $2, $3, '{}', 'not_connected', $4, 'g', 'G', gen_random_uuid(), 'tool', 'x', now() + interval '1 hour') RETURNING id_digest`, keys["provider_connect_requests"], user, keys["auth_providers"], gw)
 	scalar(t, pool, `INSERT INTO mcp_call_payloads (call_id, occurred_at, by_gateway, by_server, arguments_cipher, result_cipher, arguments_bytes) VALUES ($1::bigint, now(), true, false, '\x00', '\x00', 1) RETURNING call_id::text`, keys["mcp_call_payloads"])
+	keys["notification_destinations"] = scalar(t, pool, `INSERT INTO notification_destinations (scope, name, format, url_cipher, url_display, secret_cipher, secret_previous_cipher, events)
+		VALUES ('platform', 'hook', 'json', '\x00', 'https://h.example.com/...', '\x00', '\x00', '{publish.requested}') RETURNING id::text`)
 	for _, c := range keyrotation.Columns {
 		ct, err := b.Seal([]byte("secret of "+c.Name()), c.AAD(keys[c.Table]))
 		if err != nil {
@@ -116,7 +118,7 @@ func TestRotateKeys(t *testing.T) {
 	cfg.DatabaseURL, cfg.AppURL, cfg.DevAuth = dbURL, "http://localhost:8088", true
 	cfg.EncryptionKey, cfg.EncryptionKeyPrevious, cfg.APIKeyPepper = newKey, oldKey, oldKey
 	rep := doctor.Run(ctx, cfg, doctor.Options{Timeout: 10 * time.Second})
-	if c := find(rep, "encryption"); c.Status != doctor.Info || !strings.Contains(c.Detail, "9 sealed value(s) still on ENCRYPTION_KEY_PREVIOUS") {
+	if c := find(rep, "encryption"); c.Status != doctor.Info || !strings.Contains(c.Detail, "12 sealed value(s) still on ENCRYPTION_KEY_PREVIOUS") {
 		t.Fatalf("doctor before = %+v", c)
 	}
 
@@ -150,7 +152,7 @@ func TestRotateKeys(t *testing.T) {
 			t.Errorf("%s after rotation: %q %v", c.Name(), plain, err)
 		}
 	}
-	if n := scalar(t, pool, `SELECT count(*)::text FROM audit_log WHERE action = 'platform.secrets_reencrypt'`); n != "9" {
+	if n := scalar(t, pool, `SELECT count(*)::text FROM audit_log WHERE action = 'platform.secrets_reencrypt'`); n != "12" {
 		t.Errorf("per-batch audit entries = %s", n)
 	}
 	if meta := scalar(t, pool, `SELECT metadata::text FROM audit_log WHERE action = 'platform.key_rotation'`); strings.Contains(meta, "secret of") {

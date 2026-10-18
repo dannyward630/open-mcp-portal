@@ -62,10 +62,10 @@ func auditFilters(w http.ResponseWriter, r *http.Request, p *dbgen.ListAuditPara
 	}
 	switch v := q.Get("actorKind"); v {
 	case "":
-	case "system":
+	case "system", "automation_token":
 		p.ActorKind = &v
 	default:
-		httpx.Error(w, http.StatusBadRequest, "invalid_actor_kind", "actorKind must be system")
+		httpx.Error(w, http.StatusBadRequest, "invalid_actor_kind", "actorKind must be system or automation_token")
 		return false
 	}
 	if v := q.Get("targetType"); v != "" {
@@ -186,6 +186,7 @@ func toAPIAudit(e dbgen.ListAuditRow, platform bool) apitypes.AuditEntry {
 		out.After = e.AfterState
 	}
 	_ = json.Unmarshal(e.Metadata, &out.Metadata)
+	// via describes how a person acted: null for system and token entries.
 	if e.ActorKind == "user" && e.ActorUserID.Valid {
 		// Every person acts through a browser session in this release.
 		out.Via = &apitypes.AuditVia{Kind: apitypes.AuditViaKindSession}
@@ -198,6 +199,14 @@ func toAPIAudit(e dbgen.ListAuditRow, platform bool) apitypes.AuditEntry {
 
 func toAPIAuditActor(e dbgen.ListAuditRow) apitypes.AuditActor {
 	actor := apitypes.AuditActor{Kind: apitypes.AuditActorKind(e.ActorKind), UserId: nullUUID(e.ActorUserID)}
+	if e.ActorKind == "automation_token" {
+		actor.AutomationTokenId = nullUUID(e.ActorTokenID)
+		actor.AutomationTokenName = e.ActorTokenName
+		if e.ActorTokenKind != nil {
+			k := apitypes.AuditActorAutomationTokenKind(*e.ActorTokenKind)
+			actor.AutomationTokenKind = &k
+		}
+	}
 	if e.ActorEmail != "" {
 		actor.Email = &e.ActorEmail
 	}

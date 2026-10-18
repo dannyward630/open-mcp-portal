@@ -18,6 +18,7 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
 	"github.com/ncecere/open-mcp-portal/internal/config"
 	"github.com/ncecere/open-mcp-portal/internal/keyrotation"
+	"github.com/ncecere/open-mcp-portal/internal/notify"
 	"github.com/ncecere/open-mcp-portal/internal/secrets"
 	"github.com/ncecere/open-mcp-portal/internal/store"
 	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
@@ -77,6 +78,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options) Report {
 	}
 	r := &runner{cfg: cfg, opts: opts}
 	r.configuration()
+	r.notifications(ctx)
 	if pool := r.postgres(ctx); pool != nil {
 		pool.Close()
 	}
@@ -316,4 +318,43 @@ func (rep Report) WriteText(w io.Writer) error {
 	fmt.Fprintf(&b, "\n%d checks: %d ok, %d info, %d failed. %s\n", len(rep.Checks), counts[OK], counts[Info], counts[Fail], verdict)
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// notifications reports email (group notifications, check email): off is
+// info; configured, a connection with EHLO, TLS and AUTH within 5 s (no
+// message is sent), never the username or password. Webhooks reach public
+// addresses only unless the operator allowed networks.
+func (r *runner) notifications(ctx context.Context) {
+	if r.opts.Mode == "migrate" {
+		return
+	}
+	smtp := r.cfg.SMTP
+	c := Check{Group: "notifications", Name: "email"}
+	if !smtp.Enabled() {
+		c.Status, c.Detail = Info, "email is off (SMTP_HOST is not set): notifications go to the in-app inbox and webhooks only"
+		r.add(c)
+	} else {
+		start := time.Now()
+		merr := notify.Check(ctx, smtp)
+		c.DurationMs = float64(time.Since(start).Microseconds()) / 1000
+		desc := fmt.Sprintf("%s:%d, %s", smtp.Host, smtp.EffectivePort(), smtp.Mode())
+		if smtp.Authenticates() {
+			desc += ", authenticated"
+		}
+		switch {
+		case merr != nil:
+			c.Status, c.Detail = Fail, "could not use "+desc+": "+merr.Class
+			c.Fix = "Check SMTP_HOST, SMTP_PORT, SMTP_TLS and the credentials; the server's certificate must verify (there is no insecure setting)"
+		case smtp.Mode() == config.SMTPPlain:
+			c.Status, c.Detail = Info, desc+" (unencrypted)"
+		default:
+			c.Status, c.Detail = OK, desc
+		}
+		r.add(c)
+	}
+	w := Check{Group: "notifications", Name: "webhooks", Status: OK, Detail: "webhook destinations reach public https addresses only"}
+	if n := len(r.cfg.NotifyWebhookAllowedNetworks); n > 0 {
+		w.Status, w.Detail = Info, fmt.Sprintf("webhook destinations may also reach %d internal network(s) or host(s) from NOTIFY_WEBHOOK_ALLOWED_NETWORKS", n)
+	}
+	r.add(w)
 }

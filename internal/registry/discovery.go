@@ -173,6 +173,8 @@ func (s *Service) Test(ctx context.Context, a authz.Actor, ref string, id uuid.U
 	res, _, _ := s.probe(ctx, sv, TriggerManual)
 	if err := recordCheck(context.WithoutCancel(ctx), s.q, id, res, TriggerManual, by(a)); err != nil {
 		s.log.WarnContext(ctx, "could not store an MCP server test", "server", id, "err", err)
+	} else {
+		s.notifier().ServerChecked(ctx, s.q, id)
 	}
 	return res, nil
 }
@@ -241,7 +243,11 @@ func (s *Service) refresh(ctx context.Context, a authz.Actor, sv dbgen.McpServer
 			if err := q.SetMCPServerRefreshError(ctx, dbgen.SetMCPServerRefreshErrorParams{ID: sv.ID, Message: &msg}); err != nil {
 				return err
 			}
-			return recordCheck(ctx, q, sv.ID, res, TriggerManual, by(a))
+			if err := recordCheck(ctx, q, sv.ID, res, TriggerManual, by(a)); err != nil {
+				return err
+			}
+			s.notifier().ServerChecked(ctx, q, sv.ID)
+			return nil
 		})
 		if err != nil {
 			return nil, nil, err
@@ -263,6 +269,8 @@ func (s *Service) refresh(ctx context.Context, a authz.Actor, sv dbgen.McpServer
 		if err := recordCheck(ctx, q, cur.ID, res, TriggerManual, by(a)); err != nil {
 			return err
 		}
+		s.notifier().ServerChecked(ctx, q, cur.ID)
+		s.notifier().CapabilitiesRefreshed(ctx, q, cur.ID)
 		e := a.Audit("mcp_server.refresh", "mcp_server", cur.ID.String())
 		e.TeamID = cur.TeamID
 		e.Metadata = map[string]any{"name": cur.Name, "listed": out.Listed, "added": out.Added, "changed": out.Changed, "gone": out.Gone}

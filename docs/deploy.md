@@ -74,6 +74,9 @@ file named by `OMP_CONFIG_FILE`. Each secret can also be read from a file named 
 | `BOOTSTRAP_ADMIN_SUBJECT` | first install | The OIDC `sub` made platform admin on first sign-in. It takes effect once. |
 | `TRUSTED_PROXIES` | recommended | Ingress controller CIDRs allowed to set `X-Forwarded-For`, used for logging and sign-in rate limits. |
 | `UPSTREAM_ALLOWED_NETWORKS` | optional | Internal networks and hosts MCP servers may use, besides public addresses. See [Internal MCP servers](#internal-mcp-servers). |
+| `SMTP_HOST`, `SMTP_FROM`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` | optional | Notification email; off without `SMTP_HOST`. See [Notifications and automation tokens](#notifications-and-automation-tokens). `SMTP_PASSWORD` is a secret (`SMTP_PASSWORD_FILE` works). |
+| `NOTIFICATION_INTERVAL` | optional | The notification dispatcher's tick (default `15s`, 5s to 10m). |
+| `NOTIFY_WEBHOOK_ALLOWED_NETWORKS` | optional | Internal networks and hosts **webhook destinations** may use (default empty: public https only). Separate from `UPSTREAM_ALLOWED_NETWORKS`. |
 | `OIDC_ALLOWED_EMAIL_DOMAINS`, `OIDC_GROUPS_CLAIM`, `INSTANCE_NAME`, `ORG_NAME`, `SUPPORT_URL`, … | optional | |
 
 Generate keys. `ENCRYPTION_KEY`, `ENCRYPTION_KEY_PREVIOUS` and `API_KEY_PEPPER` must each decode to exactly 32 bytes:
@@ -315,10 +318,42 @@ Plus the Go and process collectors. Useful alerts: `omp_payload_capture_errors_t
 `omp_loop_leader{loop="retention"} == 1` for an hour; `omp_mcp_servers{state="failing"} > 0`; a high rate of
 `omp_mcp_rate_limited_total`.
 
+## Notifications and automation tokens
+
+**Email** is off until `SMTP_HOST` is set. `SMTP_FROM` is required with it (`portal@example.org` or `Open MCP Portal
+<portal@example.org>`), `SMTP_USERNAME` and `SMTP_PASSWORD` are set together or not at all, and a half configuration (any
+`SMTP_*` without a host) is an error rather than "off". `SMTP_TLS` is `starttls` (the default, port 587: a server that
+doesn't offer STARTTLS fails, never a downgrade), `tls` (implicit, port 465) or `none` (port 25). Certificates are always
+verified: there is no insecure switch. `none` **with** credentials is refused unless `APP_URL` or `SMTP_HOST` is loopback;
+`none` without credentials is accepted (an in-cluster relay) and `doctor` says "unencrypted". `doctor` connects, greets,
+upgrades, authenticates and quits within 5 s without sending anything (group `notifications`, check `email`). Mail goes
+only to people's **verified** addresses (the identity provider's `email_verified`, recorded at each sign-in), one message
+per person, at most 30 per person per hour, plain text and a simple HTML alternative with no images or remote content.
+The Kubernetes egress policies must allow the SMTP port (the base allows 443 only; add it in your overlay).
+
+**Webhook destinations** are set by team owners and admins (team destinations) and platform admins. They reach **public
+https addresses only**: the URL is checked when saved and again, with the resolved addresses pinned, on every delivery;
+redirects are never followed; loopback, link-local and cloud-metadata addresses are never allowed, nor IPv6 forms of them
+(mapped, NAT64, compatible). They deliberately do **not** use the internal-network allowlist of MCP servers (Admin ›
+Internal networks, `UPSTREAM_ALLOWED_NETWORKS`): otherwise any team owner could make the portal POST into your network.
+If a destination must be internal (a self-hosted receiver), the operator lists it in `NOTIFY_WEBHOOK_ALLOWED_NETWORKS`
+(comma-separated CIDRs and hosts, `http:` before an entry also allows plain http; loopback and metadata can't be listed)
+and opens the egress port. Only the status and a short error class of a delivery are kept, never the response. The URLs
+and signing secrets are sealed with `ENCRYPTION_KEY` (`rotate-keys` re-encrypts them). See
+[notifications.md](notifications.md) for the signature and payloads.
+
+**Automation tokens** (`ompadm_…` platform-admin tokens, `omppub_…` team publisher tokens) authenticate `/v1/*` with
+`Authorization: Bearer`, never `/mcp`. They are digested with `API_KEY_PEPPER` like personal keys and rotate with
+`API_KEY_PEPPER_PREVIOUS` (re-digested on use). Create no token until **every replica runs this release**: the previous
+release can't list audit entries written by tokens. Revoked and expired tokens are deleted after 30 days. Metrics:
+`omp_automation_token_auth_total{result}`, `omp_notifications_emitted_total{event}`,
+`omp_notification_deliveries_total{channel,event,outcome}`, `omp_notification_emit_errors_total`.
+See [automation-tokens.md](automation-tokens.md).
+
 ## Key rotation
 
 **`ENCRYPTION_KEY`** seals MCP server header values, signing keys' private keys, auth provider client secrets,
-provider connection tokens, PKCE verifiers, consent request IDs and captured payloads.
+provider connection tokens, PKCE verifiers, consent request IDs, captured payloads and webhook destinations' URLs and signing secrets.
 
 1. **Set previous.** Put the current value in `ENCRYPTION_KEY_PREVIOUS` and a new one (`openssl rand -base64 32`) in
    `ENCRYPTION_KEY`, in the runtime secret.
@@ -333,7 +368,7 @@ provider connection tokens, PKCE verifiers, consent request IDs and captured pay
 5. **Verify.** `… doctor` reports `keys encryption: … ENCRYPTION_KEY_PREVIOUS can be removed`.
 6. **Remove `ENCRYPTION_KEY_PREVIOUS`** and roll again. Keep the old key with your backups made before the rotation.
 
-**`API_KEY_PEPPER`** keys the digests of API keys, service account keys and connected apps' tokens. Digests can't be
+**`API_KEY_PEPPER`** keys the digests of API keys, service account keys, automation tokens and connected apps' tokens. Digests can't be
 recomputed without the key, so rotation happens on use:
 
 1. Put the current value in `API_KEY_PEPPER_PREVIOUS` and a new one in `API_KEY_PEPPER`; roll the pods.

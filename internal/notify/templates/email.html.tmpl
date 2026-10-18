@@ -1,0 +1,9 @@
+<!doctype html>
+<html><body style="font-family: sans-serif; color: #222; line-height: 1.4">
+<h2 style="font-size: 18px; margin: 0 0 12px">{{.Title}}</h2>
+<p>{{.Body}}</p>
+{{if .URL}}<p><a href="{{.URL}}">Open it in {{.Instance}}</a></p>{{end}}
+<hr style="border: 0; border-top: 1px solid #ddd">
+<p style="color: #666; font-size: 12px">{{.Instance}} sent this because of your role in the portal.
+<a href="{{.SettingsURL}}">Choose what you get</a>.</p>
+</body></html>

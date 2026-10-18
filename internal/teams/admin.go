@@ -65,7 +65,7 @@ func (s *Service) Create(ctx context.Context, a authz.Actor, in CreateInput) (Su
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		t, err := q.InsertTeam(ctx, dbgen.InsertTeamParams{
 			Slug: in.Slug, Name: in.Name, Description: in.Description,
-			CreatedBy: uuid.NullUUID{UUID: a.UserID, Valid: true},
+			CreatedBy: uuid.NullUUID{UUID: a.UserID, Valid: a.UserID != uuid.Nil},
 		})
 		if apperr.IsUniqueViolation(err, "teams_slug_key") {
 			return apperr.Conflict("slug_taken", "A team with that slug already exists")

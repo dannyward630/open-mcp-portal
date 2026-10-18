@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -123,8 +124,26 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) error {
 // InTx runs fn in a transaction with queries bound to it.
 func InTx(ctx context.Context, pool *pgxpool.Pool, fn func(q *dbgen.Queries, tx pgx.Tx) error) error {
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		return fn(dbgen.New(tx), tx)
+		q := dbgen.New(tx)
+		txOf.Store(q, tx)
+		defer txOf.Delete(q)
+		return fn(q, tx)
 	})
+}
+
+// txOf maps the queries InTx hands out to their transaction.
+var txOf sync.Map
+
+// TxOf returns the transaction queries from InTx are bound to (ok is false
+// for queries on the pool, or on a transaction begun elsewhere). Code that
+// must not fail its caller's transaction (notification events) uses it to
+// work under a savepoint (tx.Begin).
+func TxOf(q *dbgen.Queries) (pgx.Tx, bool) {
+	tx, ok := txOf.Load(q)
+	if !ok {
+		return nil, false
+	}
+	return tx.(pgx.Tx), true
 }
 
 // NotFound maps pgx.ErrNoRows to ErrNotFound.

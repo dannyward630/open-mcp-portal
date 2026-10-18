@@ -225,6 +225,9 @@ func (a *api) updateTeamMcpServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if actor := a.actor(r); actor.IsToken() && !a.tokenMayUpdateServer(w, r, actor, id, in, keys) {
+		return
+	}
 	_, setRequirement := keys["requirement"]
 	v, err := a.Registry.Update(r.Context(), a.actor(r), r.PathValue("team"), id, registry.UpdateInput{
 		Name: in.Name, Description: in.Description, URL: in.Url, AuthHeaderName: in.AuthHeaderName, AuthValue: in.AuthValue,

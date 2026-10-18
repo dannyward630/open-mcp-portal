@@ -14,6 +14,7 @@ import (
 
 	"github.com/ncecere/open-mcp-portal/internal/apikeys"
 	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/automation"
 	"github.com/ncecere/open-mcp-portal/internal/calls"
 	"github.com/ncecere/open-mcp-portal/internal/capture"
 	"github.com/ncecere/open-mcp-portal/internal/config"
@@ -21,7 +22,9 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/httpx"
 	"github.com/ncecere/open-mcp-portal/internal/identity"
 	"github.com/ncecere/open-mcp-portal/internal/limits"
+	"github.com/ncecere/open-mcp-portal/internal/notify"
 	"github.com/ncecere/open-mcp-portal/internal/oauth"
+	"github.com/ncecere/open-mcp-portal/internal/overview"
 	"github.com/ncecere/open-mcp-portal/internal/platform"
 	"github.com/ncecere/open-mcp-portal/internal/providers"
 	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
@@ -52,6 +55,13 @@ type Deps struct {
 	// Providers is delegated credentials: auth providers, connections and
 	// consent links (internal/providers).
 	Providers *providers.Service
+	// Automation manages and authenticates automation tokens
+	// (docs/automation-tokens.md); Notify is the notification service
+	// (docs/notifications.md); Overview computes the admin overview and team
+	// attention (docs/admin-overview.md).
+	Automation *automation.Service
+	Notify     *notify.Service
+	Overview   *overview.Service
 	// MCP serves /mcp/{slug} (internal/mcpgw).
 	MCP http.Handler
 	// Limits, Capture, Retention and Usage are Phase 6's operations
@@ -109,14 +119,11 @@ func apiRoutes(d Deps) []route {
 	for _, group := range [][]route{a.authRoutes(), a.teamRoutes(), a.platformAdminRoutes(), a.mcpServerRoutes(), a.mcpAdminRoutes(),
 		a.gatewayRoutes(), a.gatewayAdminRoutes(), a.meGatewayRoutes(), a.mcpRoutes(), a.oauthRoutes(), a.oauthRESTRoutes(),
 		a.serviceAccountRoutes(), a.serviceAccountAdminRoutes(), a.providerRoutes(), a.operationsRoutes(), a.operationsAdminRoutes(),
-		a.upstreamOAuthRoutes()} {
+		a.upstreamOAuthRoutes(), a.v02Routes()} {
 		routes = append(routes, group...)
 	}
 	return routes
 }
-
-// session requires a browser session.
-func (a *api) session(h http.HandlerFunc) http.Handler { return a.Auth.RequireSession(h) }
 
 // admin requires a session, then a platform admin or auditor. Write
 // operations additionally require platform_admin inside the service.

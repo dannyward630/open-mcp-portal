@@ -426,6 +426,9 @@ func (s *Service) markReconsent(ctx context.Context, q *dbgen.Queries, p dbgen.A
 	if err := q.MarkProviderConnectionReconsent(ctx, dbgen.MarkProviderConnectionReconsentParams{ID: c.ID, ErrorClass: &reason}); err != nil {
 		return err
 	}
+	if s.Notify != nil {
+		s.Notify.ConnectionReconsent(ctx, q, c.ID, reason)
+	}
 	name := p.Name
 	if u, err := q.GetUser(ctx, c.UserID); err == nil {
 		name = displayName(u) + " · " + p.Name

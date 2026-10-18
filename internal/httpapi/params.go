@@ -14,8 +14,12 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/httpx"
 )
 
-// actor returns the authorization principal for a session request.
+// actor returns the authorization principal of a request: the person whose
+// browser session it carries, or the automation token it authenticated with.
 func (a *api) actor(r *http.Request) authz.Actor {
+	if t, ok := authz.ActorFromContext(r.Context()); ok {
+		return t // an automation token (tokenauth.go), with its request ID and address
+	}
 	reqID, ip := httpx.RequestID(r.Context()), httpx.ClientIP(r, a.Config.TrustedProxies)
 	id, _ := auth.FromContext(r.Context())
 	return id.Actor(reqID, ip)

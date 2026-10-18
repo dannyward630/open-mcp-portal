@@ -14,6 +14,7 @@ import (
 
 	"github.com/ncecere/open-mcp-portal/internal/apikeys"
 	"github.com/ncecere/open-mcp-portal/internal/auth"
+	"github.com/ncecere/open-mcp-portal/internal/automation"
 	"github.com/ncecere/open-mcp-portal/internal/buildinfo"
 	"github.com/ncecere/open-mcp-portal/internal/calls"
 	"github.com/ncecere/open-mcp-portal/internal/capture"
@@ -24,8 +25,10 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/keyrotation"
 	"github.com/ncecere/open-mcp-portal/internal/limits"
 	"github.com/ncecere/open-mcp-portal/internal/mcpgw"
+	"github.com/ncecere/open-mcp-portal/internal/notify"
 	"github.com/ncecere/open-mcp-portal/internal/oauth"
 	"github.com/ncecere/open-mcp-portal/internal/observability"
+	"github.com/ncecere/open-mcp-portal/internal/overview"
 	"github.com/ncecere/open-mcp-portal/internal/platform"
 	"github.com/ncecere/open-mcp-portal/internal/providers"
 	"github.com/ncecere/open-mcp-portal/internal/ratelimit"
@@ -99,7 +102,8 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	srv := newHTTPServer(ctx, cfg.ListenAddr, httpapi.NewAPIHandler(deps))
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	defer stopLoops()
-	go cleanupLoop(loopCtx, deps.Auth, deps.Providers, log)
+	go cleanupLoop(loopCtx, deps.Auth, deps.Providers, deps.Automation, log)
+	go deps.Notify.Loop(loopCtx)
 	go deps.Registry.HealthLoop(loopCtx, cfg.HealthCheckInterval, log)
 	go deps.Identity.RotationLoop(loopCtx, log)
 	go deps.Retention.Loop(loopCtx)
@@ -265,9 +269,29 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 	// which reads capabilities after a setup sign-in.
 	reg.SetOAuth(registry.OAuthSettings{AppURL: cfg.AppURL, InstanceName: cfg.Instance.Name, Hooks: provs})
 	provs.Registry = reg
+	// Automation tokens (docs/automation-tokens.md) and notifications
+	// (docs/notifications.md). Webhook URLs get their own address guard,
+	// never the MCP servers' internal-network allowlist.
+	autoSvc := automation.New(pool, pepper)
+	if pep.Previous != nil {
+		autoSvc.SetPreviousPepper(pep.Previous)
+	}
+	autoSvc.Observe = func(result string) { observability.AutomationTokenAuth.WithLabelValues(result).Inc() }
+	notifier := notify.New(pool, box, notify.NewWebhookClient(cfg.NotifyWebhookAllowedNetworks, log), notify.Config{
+		SMTP: cfg.SMTP, AppURL: cfg.AppURL, InstanceName: cfg.Instance.Name, Interval: cfg.NotificationInterval, Version: buildinfo.Version}, log)
+	notifier.Observe = func(channel, event, outcome string) {
+		observability.NotificationDeliveries.WithLabelValues(channel, event, outcome).Inc()
+	}
+	notifier.ObserveLeader = func(leader bool) { observability.SetLeader("notifications", leader) }
+	reg.SetNotifier(notifier)
+	provs.Notify = notifier
 	callSvc := calls.New(pool)
 	ret := retention.New(pool, retention.Config{Interval: cfg.RetentionInterval, BatchSize: int32(cfg.RetentionBatchSize)}, log)
-	ret.Hooks = []retention.Hook{provs.Cleanup, rates.Cleanup}
+	ret.Hooks = []retention.Hook{provs.Cleanup, rates.Cleanup, func(ctx context.Context) (int64, error) {
+		return notifier.Purge(ctx, int32(cfg.RetentionBatchSize), func(kind string, n int64) {
+			observability.RetentionDeleted.WithLabelValues(kind).Add(float64(n))
+		})
+	}}
 	ret.Observe = observeRetention
 	capt := capture.New(pool, box, callSvc, ret, log)
 	capt.Observe = capture.Observer{
@@ -306,6 +330,9 @@ func NewDeps(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.D
 		OAuth:           as,
 		ServiceAccounts: sas,
 		Providers:       provs,
+		Automation:      autoSvc,
+		Notify:          notifier,
+		Overview:        overview.New(pool),
 		MCP: &mcpgw.Handler{Gateways: gws, Keys: keys, OAuth: as, ServiceAccounts: sas, Identity: ids, Registry: reg, Providers: provs, Secrets: box,
 			Limits: lims, RateStore: rates, Capture: capt, Pool: pool, AppURL: cfg.AppURL, Log: log},
 	}, nil
@@ -355,7 +382,7 @@ func secretBox(cfg config.Config) (*secrets.Box, error) {
 // cleanupLoop deletes expired sessions and sign-in states, and expired
 // authorization states and consent links of delegated credentials. Deletes
 // are idempotent, so every replica may run it; no leader election is needed.
-func cleanupLoop(ctx context.Context, a *auth.Service, p *providers.Service, log *slog.Logger) {
+func cleanupLoop(ctx context.Context, a *auth.Service, p *providers.Service, tokens *automation.Service, log *slog.Logger) {
 	t := time.NewTicker(cleanupInterval)
 	defer t.Stop()
 	for {
@@ -370,6 +397,11 @@ func cleanupLoop(ctx context.Context, a *auth.Service, p *providers.Service, log
 			log.Warn("connect request cleanup failed", "err", err)
 		} else if n > 0 {
 			log.Debug("expired connect requests and states deleted", "count", n)
+		}
+		if n, err := tokens.Cleanup(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("automation token clean-up failed", "err", err)
+		} else if n > 0 {
+			log.Debug("old automation tokens deleted", "count", n)
 		}
 		select {
 		case <-ctx.Done():

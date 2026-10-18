@@ -13,28 +13,52 @@ import (
 	"github.com/google/uuid"
 )
 
+const countTokenAuditEntries = `-- name: CountTokenAuditEntries :one
+SELECT count(*) FROM audit_log
+WHERE actor_token_id = $1 AND request_id = $2 AND occurred_at > now() - interval '5 minutes'
+`
+
+type CountTokenAuditEntriesParams struct {
+	TokenID   uuid.NullUUID
+	RequestID string
+}
+
+// Audit entries one automation token wrote for one request (the request ID
+// is on every entry), so a token's mutation that wrote none can be recorded.
+func (q *Queries) CountTokenAuditEntries(ctx context.Context, arg CountTokenAuditEntriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTokenAuditEntries, arg.TokenID, arg.RequestID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertAudit = `-- name: InsertAudit :exec
 INSERT INTO audit_log (
     actor_kind, actor_user_id, team_id, action, target_type, target_id,
-    before_state, after_state, metadata, request_id, client_ip
+    before_state, after_state, metadata, request_id, client_ip,
+    actor_token_id, actor_token_name, actor_token_kind
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
-    $7, $8, $9, $10, $11
+    $7, $8, $9, $10, $11,
+    $12, $13, $14
 )
 `
 
 type InsertAuditParams struct {
-	ActorKind   string
-	ActorUserID uuid.NullUUID
-	TeamID      uuid.NullUUID
-	Action      string
-	TargetType  string
-	TargetID    string
-	BeforeState json.RawMessage
-	AfterState  json.RawMessage
-	Metadata    json.RawMessage
-	RequestID   string
-	ClientIP    string
+	ActorKind      string
+	ActorUserID    uuid.NullUUID
+	TeamID         uuid.NullUUID
+	Action         string
+	TargetType     string
+	TargetID       string
+	BeforeState    json.RawMessage
+	AfterState     json.RawMessage
+	Metadata       json.RawMessage
+	RequestID      string
+	ClientIP       string
+	ActorTokenID   uuid.NullUUID
+	ActorTokenName *string
+	ActorTokenKind *string
 }
 
 func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error {
@@ -50,6 +74,9 @@ func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error 
 		arg.Metadata,
 		arg.RequestID,
 		arg.ClientIP,
+		arg.ActorTokenID,
+		arg.ActorTokenName,
+		arg.ActorTokenKind,
 	)
 	return err
 }
@@ -57,7 +84,7 @@ func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error 
 const listAudit = `-- name: ListAudit :many
 SELECT a.id, a.occurred_at, a.actor_kind, a.actor_user_id, a.team_id, a.action,
        a.target_type, a.target_id, a.before_state, a.after_state, a.metadata,
-       a.request_id, a.client_ip,
+       a.request_id, a.client_ip, a.actor_token_id, a.actor_token_name, a.actor_token_kind,
        COALESCE(u.email::text, '')::text AS actor_email,
        COALESCE(tm.name, '')::text AS team_name, COALESCE(tm.slug, '')::text AS team_slug,
        u.display_name AS actor_display_name,
@@ -98,6 +125,8 @@ CROSS JOIN LATERAL (
         WHEN 'oauth_client' THEN (SELECT oc.client_name FROM oauth_clients oc WHERE oc.id = ids.target_uuid)
         WHEN 'oauth_grant' THEN (SELECT og.client_name || ' · ' || g.name FROM oauth_grants og JOIN gateways g ON g.id = og.gateway_id
                                  WHERE og.id = ids.target_uuid)
+        WHEN 'automation_token' THEN (SELECT at.name FROM automation_tokens at WHERE at.id = ids.target_uuid)
+        WHEN 'notification_destination' THEN (SELECT nd.name FROM notification_destinations nd WHERE nd.id = ids.target_uuid)
         WHEN 'service_account' THEN (SELECT sa.name FROM service_accounts sa WHERE sa.id = ids.target_uuid)
         WHEN 'service_account_key' THEN (SELECT sa.name || ' · ' || k.name FROM service_account_keys k
                                          JOIN service_accounts sa ON sa.id = k.service_account_id WHERE k.id = ids.target_uuid)
@@ -108,7 +137,7 @@ CROSS JOIN LATERAL (
         WHEN 'platform_settings' THEN (CASE a.target_id WHEN 'publishing' THEN 'Publishing settings' WHEN 'network' THEN 'Internal networks'
                                        WHEN 'oauth_clients' THEN 'Trusted clients' WHEN 'limits' THEN 'Rate limits'
                                        WHEN 'capture' THEN 'Payload capture' WHEN 'retention' THEN 'Retention'
-                                       WHEN 'keys' THEN 'Encryption keys' END)
+                                       WHEN 'keys' THEN 'Encryption keys' WHEN 'notifications' THEN 'Notifications' END)
         WHEN 'mcp_call' THEN (SELECT 'Call ' || mc.id::text || ' · ' || COALESCE(mc.exposed_name, mc.method) FROM mcp_calls mc
                               WHERE mc.id = (CASE WHEN a.target_id ~ '^[0-9]{1,18}$' THEN a.target_id::bigint END))
     END)::text AS label
@@ -155,6 +184,9 @@ type ListAuditRow struct {
 	Metadata         json.RawMessage
 	RequestID        string
 	ClientIP         string
+	ActorTokenID     uuid.NullUUID
+	ActorTokenName   *string
+	ActorTokenKind   *string
 	ActorEmail       string
 	TeamName         string
 	TeamSlug         string
@@ -206,6 +238,9 @@ func (q *Queries) ListAudit(ctx context.Context, arg ListAuditParams) ([]ListAud
 			&i.Metadata,
 			&i.RequestID,
 			&i.ClientIP,
+			&i.ActorTokenID,
+			&i.ActorTokenName,
+			&i.ActorTokenKind,
 			&i.ActorEmail,
 			&i.TeamName,
 			&i.TeamSlug,

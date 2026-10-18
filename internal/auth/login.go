@@ -56,6 +56,9 @@ func (s *Service) completeLogin(ctx context.Context, w http.ResponseWriter, r *h
 		if err != nil {
 			return err
 		}
+		if err := q.SetUserEmailVerified(ctx, dbgen.SetUserEmailVerifiedParams{ID: user.ID, Verified: li.EmailVerified}); err != nil {
+			return err // notification email goes to verified addresses only
+		}
 		if user.Status != StatusActive {
 			suspended = true
 			return audit.Record(ctx, q, audit.Entry{

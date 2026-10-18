@@ -71,6 +71,19 @@ type Config struct {
 	// (0: never; one replica at a time).
 	HealthCheckInterval time.Duration
 
+	// SMTP is the operator's mail server for notification email (off
+	// without SMTP_HOST); NotificationInterval is the dispatcher's tick
+	// (docs/notifications.md).
+	SMTP                 SMTP
+	NotificationInterval time.Duration
+	// NotifyWebhookAllowedNetworks are the only internal networks and hosts
+	// webhook destinations may use (NOTIFY_WEBHOOK_ALLOWED_NETWORKS, set by
+	// the operator, default empty). Webhook URLs never use the MCP servers'
+	// allowlist (UPSTREAM_ALLOWED_NETWORKS and Admin > Internal networks):
+	// otherwise any team owner could make the portal POST into the internal
+	// network. Without entries, webhooks go to public https addresses only.
+	NotifyWebhookAllowedNetworks []netpolicy.Entry
+
 	// SigningKeyPrepublish is how long a new identity signing key is
 	// published in the JWKS before it starts signing.
 	SigningKeyPrepublish time.Duration
@@ -145,6 +158,7 @@ func Defaults() Config {
 		},
 		SessionTTL:             12 * time.Hour,
 		HealthCheckInterval:    5 * time.Minute,
+		NotificationInterval:   15 * time.Second,
 		SigningKeyPrepublish:   24 * time.Hour,
 		MetricsMaxObjects:      200,
 		RetentionInterval:      15 * time.Minute,

@@ -1,10 +1,17 @@
 package capture
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"github.com/ncecere/open-mcp-portal/internal/apperr"
+	"github.com/ncecere/open-mcp-portal/internal/authz"
+	"github.com/ncecere/open-mcp-portal/internal/calls"
 )
 
 func TestBuiltInRules(t *testing.T) {
@@ -13,6 +20,7 @@ func TestBuiltInRules(t *testing.T) {
 		"jwt":    "token eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJl here",
 		"gateway_credentials": "key omp_" + strings.Repeat("A", 43) + " and omp_sa_" + strings.Repeat("b", 43) + " ompat_" + strings.Repeat("c", 43) +
 			" omprt_" + strings.Repeat("d", 43) + " ompac_" + strings.Repeat("e", 43) +
+			" ompadm_" + strings.Repeat("k", 43) + " omppub_" + strings.Repeat("l", 43) + " ompwhs_" + strings.Repeat("m", 43) +
 			// Keys and tokens from before the rename to Open MCP Portal.
 			" omcp_" + strings.Repeat("F", 43) + " omcp_sa_" + strings.Repeat("g", 43) + " omat_" + strings.Repeat("h", 43) +
 			" omrt_" + strings.Repeat("i", 43) + " omac_" + strings.Repeat("j", 43),
@@ -28,7 +36,7 @@ func TestBuiltInRules(t *testing.T) {
 		"bearer": {"abc.DEF-123_xyz~"},
 		"jwt":    {"eyJhbGciOiJFUzI1NiJ9"},
 		"gateway_credentials": {"AAAAAAAAAAAAAAAA", "bbbbbbbbbbbbbbbb", "cccccccccccccccc", "dddddddddddddddd", "eeeeeeeeeeeeeeee",
-			"FFFFFFFFFFFFFFFF", "gggggggggggggggg", "hhhhhhhhhhhhhhhh", "iiiiiiiiiiiiiiii", "jjjjjjjjjjjjjjjj"},
+			"kkkkkkkkkkkkkkkk", "llllllllllllllll", "mmmmmmmmmmmmmmmm", "FFFFFFFFFFFFFFFF", "gggggggggggggggg", "hhhhhhhhhhhhhhhh", "iiiiiiiiiiiiiiii", "jjjjjjjjjjjjjjjj"},
 		"github":          {"aaaaaaaaaaaaaaaaaaaa", "BBBBBBBBBBBBBBBBBBBB"},
 		"gitlab":          {"glpat-xxxx"},
 		"slack":           {"abcdefghij"},
@@ -138,5 +146,13 @@ func TestJSONInsideStrings(t *testing.T) {
 	p := NewRedactor(nil).Redact([]byte(`{"text":"args={\"password\":\"hunter2\"}","inner":"{\"token\":\"abc\",\"n\":1}"}`))
 	if strings.Contains(p.Content, "abc") || p.Rules[RuleSensitiveKeys] != 1 {
 		t.Fatalf("%+v", p)
+	}
+}
+
+func TestOpenRefusesAutomationTokens(t *testing.T) {
+	s := &Service{}
+	_, err := s.open(context.Background(), authz.Actor{Kind: authz.KindAutomationToken, PlatformRole: authz.PlatformAdmin}, calls.Row{}, uuid.Nil, "admin")
+	if e, ok := apperr.As(err); !ok || e.Code != "token_not_allowed" {
+		t.Errorf("err = %v", err)
 	}
 }

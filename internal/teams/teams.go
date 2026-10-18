@@ -243,7 +243,7 @@ func addOrInvite(ctx context.Context, q *dbgen.Queries, a authz.Actor, t dbgen.T
 		return AddResult{}, err
 	}
 	m, err := q.InsertMember(ctx, dbgen.InsertMemberParams{
-		TeamID: t.ID, UserID: u.ID, Role: role, AddedBy: uuid.NullUUID{UUID: a.UserID, Valid: true},
+		TeamID: t.ID, UserID: u.ID, Role: role, AddedBy: uuid.NullUUID{UUID: a.UserID, Valid: a.UserID != uuid.Nil},
 	})
 	if err != nil {
 		return AddResult{}, err
@@ -261,7 +261,7 @@ func addOrInvite(ctx context.Context, q *dbgen.Queries, a authz.Actor, t dbgen.T
 func invite(ctx context.Context, q *dbgen.Queries, a authz.Actor, t dbgen.Team, email, role string) (AddResult, error) {
 	inv, err := q.UpsertInvite(ctx, dbgen.UpsertInviteParams{
 		TeamID: t.ID, Email: email, Role: role,
-		InvitedBy: uuid.NullUUID{UUID: a.UserID, Valid: true}, ExpiresAt: time.Now().Add(InviteTTL),
+		InvitedBy: uuid.NullUUID{UUID: a.UserID, Valid: a.UserID != uuid.Nil}, ExpiresAt: time.Now().Add(InviteTTL),
 	})
 	if err != nil {
 		return AddResult{}, err

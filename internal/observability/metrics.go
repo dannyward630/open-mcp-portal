@@ -109,9 +109,9 @@ var (
 )
 
 func appCollectors() []prometheus.Collector {
-	return []prometheus.Collector{BuildInfo, MCPRequests, MCPRequestDuration, MCPCallDuration, MCPRateLimited, PayloadCaptures,
+	return append([]prometheus.Collector{BuildInfo, MCPRequests, MCPRequestDuration, MCPCallDuration, MCPRateLimited, PayloadCaptures,
 		PayloadRedactions, PayloadCaptureErrors, ProviderTokenRefresh, ServerHealthChecks, HTTPRequests, HTTPRequestDuration,
-		RetentionDeleted, RetentionLastSuccess, UsageRollupLastSuccess, LoopLeader}
+		RetentionDeleted, RetentionLastSuccess, UsageRollupLastSuccess, LoopLeader}, v02Collectors()...)
 }
 
 // Metrics owns a registry with the Go and process collectors, the
