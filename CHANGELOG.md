@@ -6,6 +6,15 @@ Notable changes to Open MCP Portal, one entry per release. Design notes for each
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, minor releases may include
 breaking changes; the entry says how to adapt.
 
+## Unreleased
+
+Changes on `main` since v0.2.0. None changes behaviour.
+
+- Dependencies: Go `kin-openapi` 0.149.0 to 0.151.0, `go-jose` 4.1.5 to 4.1.6, `goose` 3.28.0 to 3.29.0; the web group (React 19.3.1, TanStack Query and Router, lucide-react, Vitest). `govulncheck` and `npm audit` report nothing.
+- Documentation: a public server that refuses any `Authorization` header (found with DeepWiki's `https://mcp.deepwiki.com/mcp`) fails on its first call while **Send identity token** is on, because the token travels as `Authorization: Bearer`; documented in [registry.md](docs/registry.md) and the docs site's troubleshooting page. Claude Code 2.1.280 was run against the 2026-07-28 revision, over an API key and over OAuth on a real deployment ([status.md](docs/status.md)).
+- The example Kubernetes overlay pins v0.2.0's digest.
+- Repository: `web/node_modules`, a local symlink committed by mistake in v0.2.0, is no longer tracked, and `.gitignore` ignores it whatever its type.
+
 ## [0.2.0] - 2026-10-18
 
 Support for the MCP 2026-07-28 revision, pilot readiness (admin overview, notifications, automation tokens) and fixes from

@@ -7,6 +7,6 @@ coverage.*
 .DS_Store
 # go build output left in the command directory
 /cmd/open-mcp-portal/open-mcp-portal
-/web/node_modules/
+/web/node_modules
 /web/dist/*
 !/web/dist/.gitkeep
