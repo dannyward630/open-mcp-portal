@@ -60,7 +60,7 @@ func newTestAppDeps(t *testing.T, mutate func(*config.Config), log *slog.Logger,
 	cfg := config.Defaults()
 	cfg.AppURL, cfg.DevAuth = srv.URL, true
 	cfg.DatabaseURL = "unused"
-	cfg.EncryptionKey, cfg.APIKeyPepper = testEncryptionKey, testEncryptionKey
+	cfg.EncryptionKey, cfg.APIKeyPepper = testEncryptionKey, testPepper
 	cfg.RequestsPerMinute, cfg.LoginAttemptsPerMinute = 100_000, 100_000
 	if mutate != nil {
 		mutate(&cfg)

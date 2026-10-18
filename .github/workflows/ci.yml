@@ -26,6 +26,19 @@ jobs:
       - name: Workflows
         run: make actionlint
 
+  vulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Fails on a known vulnerability in a package or symbol the code reaches (the Go toolchain
+      # from go.mod included). The tool version is pinned, like the actions.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
   generated:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -88,6 +101,9 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci --ignore-scripts
+      # The build and test tools are installed in CI and the image build too, so they are audited as well.
+      - name: Audit dependencies (high and critical advisories fail)
+        run: npm audit --audit-level=high
       - name: Type-check
         run: npm run typecheck
       - name: Unit and accessibility tests (Vitest)

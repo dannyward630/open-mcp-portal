@@ -49,7 +49,7 @@ func TestSafetyChecks(t *testing.T) {
 	base := func() Config {
 		c := Defaults()
 		c.DatabaseURL = "postgres://x"
-		c.EncryptionKey, c.APIKeyPepper = testKey, testKey
+		c.EncryptionKey, c.APIKeyPepper = testKey, testPepper
 		c.AppURL = "https://mcp.example.com"
 		c.OIDC.Issuer, c.OIDC.ClientID, c.OIDC.ClientSecret = "https://idp.example.com", "id", "secret"
 		return c

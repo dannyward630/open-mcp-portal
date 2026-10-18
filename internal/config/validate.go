@@ -66,6 +66,11 @@ func (c Config) validateSecrets() []error {
 	} else if _, err := secrets.ParseKey(c.APIKeyPepper); err != nil {
 		errs = append(errs, fmt.Errorf("API_KEY_PEPPER: %w (generate one with `openssl rand -base64 32`)", err))
 	}
+	if sameKey(c.EncryptionKey, c.APIKeyPepper) {
+		// One leaked or rotated value would then break both uses: the key that seals stored secrets and the pepper
+		// of every API key and OAuth token digest (docs/threat-model.md, H-7).
+		errs = append(errs, errors.New("ENCRYPTION_KEY and API_KEY_PEPPER must be different values (generate each with `openssl rand -base64 32`)"))
+	}
 	if c.APIKeyPepperPrevious != "" {
 		prev, err := secrets.ParseKey(c.APIKeyPepperPrevious)
 		cur, curErr := secrets.ParseKey(c.APIKeyPepper)
@@ -83,6 +88,20 @@ func (c Config) validateSecrets() []error {
 		errs = append(errs, errors.New("HEALTH_CHECK_INTERVAL must be 0 (off) or at least 30s"))
 	}
 	return errs
+}
+
+// sameKey reports whether two configured keys are the same value: the same
+// text, or the same bytes in another encoding. Empty values are never the same.
+func sameKey(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b {
+		return true
+	}
+	ka, errA := secrets.ParseKey(a)
+	kb, errB := secrets.ParseKey(b)
+	return errA == nil && errB == nil && string(ka) == string(kb)
 }
 
 func (in Instance) validate() []error {
