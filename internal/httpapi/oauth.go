@@ -312,7 +312,12 @@ func (a *api) oauthRevoke(w http.ResponseWriter, r *http.Request) {
 }
 
 // oauthRegister is Dynamic Client Registration (RFC 7591) for clients that
-// can't use a metadata document: public clients only.
+// can't use a metadata document: public clients only. MCP 2026-07-28
+// deprecates it in favor of Client ID Metadata Documents (which the
+// authorization server metadata advertises) but keeps it for clients that
+// need it; the specification defines no metadata field to mark it
+// deprecated, so none is sent. application_type (web or native) is accepted
+// and echoed.
 func (a *api) oauthRegister(w http.ResponseWriter, r *http.Request) {
 	var in oauth.ClientMetadata
 	r.Body = http.MaxBytesReader(w, r.Body, maxOAuthBody)
@@ -329,6 +334,9 @@ func (a *api) oauthRegister(w http.ResponseWriter, r *http.Request) {
 		"client_id": reg.ID, "client_id_issued_at": reg.IssuedAt, "client_name": reg.Name, "redirect_uris": reg.RedirectURIs,
 		"token_endpoint_auth_method": "none", "grant_types": []string{"authorization_code", "refresh_token"},
 		"response_types": []string{"code"},
+	}
+	if reg.ApplicationType != "" {
+		out["application_type"] = reg.ApplicationType
 	}
 	if reg.URI != "" {
 		out["client_uri"] = reg.URI
