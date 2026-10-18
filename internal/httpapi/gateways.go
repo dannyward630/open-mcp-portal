@@ -15,7 +15,6 @@ import (
 	"github.com/ncecere/open-mcp-portal/internal/gateways"
 	"github.com/ncecere/open-mcp-portal/internal/httpapi/apitypes"
 	"github.com/ncecere/open-mcp-portal/internal/httpx"
-	"github.com/ncecere/open-mcp-portal/internal/providers"
 	"github.com/ncecere/open-mcp-portal/internal/store/dbgen"
 )
 
@@ -509,7 +508,7 @@ func (a *api) getMyGateway(w http.ResponseWriter, r *http.Request) {
 	if failed(w, r, err) {
 		return
 	}
-	granted, err := a.Providers.ActiveScopes(r.Context(), id.User.ID)
+	ready, err := a.Providers.ReadyFor(r.Context(), id.User.ID)
 	if failed(w, r, err) {
 		return
 	}
@@ -517,8 +516,9 @@ func (a *api) getMyGateway(w http.ResponseWriter, r *http.Request) {
 	for i, o := range offers {
 		out.Capabilities[i] = toAPIGatewayCapability(o.Selected)
 		if req := o.Requires; req != nil {
-			scopes, ok := granted[req.Provider.ID]
-			connected := ok && req.Provider.Enabled && providers.Covers(scopes, req.Scopes)
+			// Connected: a call would carry the token now (the person also
+			// allowed this capability's server, at its current address).
+			connected := ready(req, o.Server.ID, o.Server.URL)
 			out.Capabilities[i].Requires = toAPIRequirement(req, &connected)
 		}
 	}

@@ -71,7 +71,10 @@ type matrixEnv struct {
 	oauthClient string
 	// provider is an enabled auth provider (a public client: no secret).
 	provider string
-	n        int
+	// requiringServer is a server of team A that requires provider (a
+	// consent link is for one server).
+	requiringServer string
+	n               int
 }
 
 func (e *matrixEnv) next() int { e.n++; return e.n }
@@ -285,6 +288,8 @@ func newMatrixEnvWith(t *testing.T, mutate func(*testConfig)) *matrixEnv {
 	e.spareUser = e.newUser("spare@example.com", "none")
 	e.spareTeam = e.newTeam("spare", "Spare Team").slug
 	e.provider = e.newProvider()
+	e.requiringServer = e.newServer(e.a, "private")
+	e.exec(`UPDATE mcp_servers SET auth_provider_id = $1, auth_scopes = '{repo}' WHERE id = $2 RETURNING 'x'`, e.provider, e.requiringServer)
 	return e
 }
 
@@ -308,11 +313,19 @@ func (e *matrixEnv) newConnectRequest(userID string) string {
 	id := fmt.Sprintf("%043d", e.next())
 	sum := sha256.Sum256([]byte(id))
 	e.exec(`INSERT INTO provider_connect_requests (id_digest, id_cipher, user_id, provider_id, required_scopes, reason, gateway_id,
-		gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, expires_at)
-		VALUES ($1, '\x00', $2, $3, '{repo}', 'not_connected', $4, 'gw', 'Gateway', gen_random_uuid(), 'tool', 'srv__tool',
-		        now() + interval '10 minutes') RETURNING id_digest`,
-		base64.RawURLEncoding.EncodeToString(sum[:]), userID, e.provider, e.platformGateway)
+		gateway_slug, gateway_name, capability_id, capability_kind, exposed_name, expires_at, server_id, server_origin)
+		VALUES ($1, '\x00', $2, $3, '{repo}', 'server_not_allowed', $4, 'gw', 'Gateway', gen_random_uuid(), 'tool', 'srv__tool',
+		        now() + interval '10 minutes', $5, $6) RETURNING id_digest`,
+		base64.RawURLEncoding.EncodeToString(sum[:]), userID, e.provider, e.platformGateway, e.requiringServer, registry.OriginOf(e.fakeURL))
 	return id
+}
+
+// newActiveConnection makes sure a person has an active connection to the
+// provider with scope repo (a consent link can be confirmed against it).
+func (e *matrixEnv) newActiveConnection(userID string) {
+	e.exec(`INSERT INTO provider_connections (user_id, provider_id, status, scopes, access_token_cipher)
+		VALUES ($1, $2, 'active', '{repo}', '\x00') ON CONFLICT (user_id, provider_id) DO UPDATE SET status = 'active' RETURNING id::text`,
+		userID, e.provider)
 }
 
 // mctx is what a request builder sees.
@@ -460,6 +473,15 @@ func (c *mctx) connectRequest() string {
 		owner = c.e.userIDs[c.who]
 	}
 	return c.e.newConnectRequest(owner)
+}
+
+// confirmableRequest is connectRequest for the caller who is connected with
+// the request's scopes.
+func (c *mctx) confirmableRequest() string {
+	if c.allowed {
+		c.e.newActiveConnection(c.e.userIDs[c.who])
+	}
+	return c.connectRequest()
 }
 
 // serverCapability is a server and one of its capabilities: fresh ones (of

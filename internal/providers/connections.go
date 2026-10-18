@@ -133,22 +133,6 @@ func (s *Service) AdminListConnections(ctx context.Context, a authz.Actor, userI
 	return s.list(ctx, userID)
 }
 
-// ActiveScopes are the granted scopes of a person's active connections, by
-// provider.
-func (s *Service) ActiveScopes(ctx context.Context, userID uuid.UUID) (map[uuid.UUID][]string, error) {
-	rows, err := s.q.ListProviderConnectionsForUser(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	out := map[uuid.UUID][]string{}
-	for _, r := range rows {
-		if r.ProviderConnection.Status == StatusActive {
-			out[r.ProviderConnection.ProviderID] = nonNil(r.ProviderConnection.Scopes)
-		}
-	}
-	return out, nil
-}
-
 func deref(s *string) string {
 	if s == nil {
 		return ""

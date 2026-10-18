@@ -3498,7 +3498,11 @@ paths:
         of the connection''s granted scopes (when active), scopes (or the provider''s default scopes when both scopes
         and requestId are absent) and the connect request''s required scopes. 404 provider_not_found (unknown or
         turned off). 404 connect_request_not_found (unknown, or another person''s); 410 connect_request_expired
-        (expired or used); 409 provider_mismatch (the request is for another provider). 400 invalid_scope; 400
+        (expired or used, or made before servers had to be allowed); 410 connect_request_server_changed (the server
+        the link was made for has another address or required account now); 409 provider_mismatch (the request is for
+        another provider). For a platform provider the callback also allows the server the request was made for, at the
+        address it was made for, once the provider granted the request''s scopes (confirmConnectRequest does the same
+        without a round trip when the account already covers them). 400 invalid_scope; 400
         invalid_return_to (returnTo must be a path on this site). 429 slow_down (20 a minute per person). providerId
         may name a server-bound provider (kind mcp_server) when the caller can use one of that server''s
         capabilities through a gateway now; otherwise 404 provider_not_found. Server editors use
@@ -3546,13 +3550,54 @@ paths:
       summary: Disconnect one of the caller's accounts; its tokens are erased at once
       description: Where the provider has a revocation endpoint the portal also revokes the tokens there (best effort,
         recorded as providerRevoked in the audit metadata). Calls that need the provider ask for consent again.
-        Audited as provider_connection.revoke (reason user).
+        Audited as provider_connection.revoke (reason user). The connection's allowed servers (ProviderConnection.
+        allowedServers) go with it, so reconnecting asks again for each server.
       responses:
         '200':
           $ref: '#/components/responses/OkReply'
         '401':
           $ref: '#/components/responses/ErrorReply'
         '404':
+          $ref: '#/components/responses/ErrorReply'
+  /v1/connect/requests/{requestId}/confirm:
+    parameters:
+    - $ref: '#/components/parameters/ConnectRequestIdParam'
+    post:
+      tags:
+      - connections
+      operationId: confirmConnectRequest
+      summary: Allow the server a consent link was made for to use the person's connected account, without going to the provider
+      description: 'Browser session only (403 session_required with an API key). For a link whose reason is
+        server_not_allowed: the person is connected, the account''s scopes already cover the link, and only the
+        server''s consent is missing. Records the grant for the server and address the link was made for (audited as
+        provider_connection.server_allow) and uses the link up; nothing is sent to the provider. A link can allow only
+        the server it names. 409 connect_required (not connected, needs reconnecting, or the account lacks the link''s
+        scopes: continue to the provider with startMyConnection); 409 not_platform_provider (an MCP server''s own
+        sign-in has nothing to allow); 404 connect_request_not_found (unknown, or another person''s); 410
+        connect_request_expired (expired or used, or made before the grants existed); 410
+        connect_request_server_changed (the server''s address or required account changed since the link was made);
+        404 provider_not_found (turned off).'
+      responses:
+        '200':
+          description: The server is allowed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ConnectConfirmed'
+        '401':
+          $ref: '#/components/responses/ErrorReply'
+        '403':
+          $ref: '#/components/responses/ErrorReply'
+        '404':
+          $ref: '#/components/responses/ErrorReply'
+        '409':
+          $ref: '#/components/responses/ErrorReply'
+        '410':
           $ref: '#/components/responses/ErrorReply'
   /v1/connect/requests/{requestId}:
     parameters:
@@ -3563,7 +3608,9 @@ paths:
       operationId: getConnectRequest
       summary: What a consent link is for, so the web app can confirm before leaving for the provider
       description: Signed in, and only the person the link was made for; anyone else gets 404 connect_request_not_found,
-        the same as an unknown ID. 410 connect_request_expired once it expired (10 minutes) or was used.
+        the same as an unknown ID. 410 connect_request_expired once it expired (10 minutes) or was used, or when it was
+        made before servers had to be allowed; 410 connect_request_server_changed when the server's address or its
+        required account changed after the link was made (the link is for one server at one address).
       responses:
         '200':
           description: The request
@@ -7625,7 +7672,9 @@ components:
           type: string
           description: 'Why a call was denied or failed, for example no_access, role, unknown, key_scope (the API
             key is limited to other gateways), gateway_disabled or an unavailability reason. For capabilities that
-            require an account; needs_authorization with not_connected, missing_scopes or needs_reconsent; denied with
+            require an account; needs_authorization with not_connected, missing_scopes, needs_reconsent or
+            server_not_allowed (connected, but the person hasn''t allowed this server, at its current address, to use
+            the account); denied with
             service_account or provider_disabled; upstream_error with provider_unavailable.'
         providerSlug:
           type: string
@@ -8587,6 +8636,7 @@ components:
       - lastUsedAt
       - expiresAt
       - refreshable
+      - allowedServers
       properties:
         id:
           type: string
@@ -8625,6 +8675,74 @@ components:
         refreshable:
           type: boolean
           description: The portal holds a refresh token
+        allowedServers:
+          type: array
+          description: 'The MCP servers this account may be used by: the person allowed each one (for the scopes listed,
+            at the address listed) when they confirmed a consent link. A platform provider''s token is sent only to
+            these. Disconnecting removes them all. Empty for an MCP server''s own sign-in (its connection is for that
+            server alone). A server whose address moves to another host, or that requires another provider, is removed
+            and must be allowed again.'
+          items:
+            $ref: '#/components/schemas/ProviderServerGrant'
+    ConnectServer:
+      type: object
+      description: An MCP server and its team, as a person is asked to allow it
+      required:
+      - id
+      - slug
+      - name
+      - teamSlug
+      - teamName
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        teamSlug:
+          type: string
+        teamName:
+          type: string
+    ProviderServerGrant:
+      type: object
+      description: A person's consent for one MCP server to use a connected account
+      required:
+      - server
+      - origin
+      - scopes
+      - consentedAt
+      properties:
+        server:
+          $ref: '#/components/schemas/ConnectServer'
+        origin:
+          type: string
+          description: The scheme, host and port of the server's URL when the person allowed it; the token is sent
+            only while the server's URL has this origin
+          example: https://tools.example.com
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: What the person allowed this server to use
+        consentedAt:
+          type: string
+          format: date-time
+    ConnectConfirmed:
+      type: object
+      required:
+      - provider
+      - server
+      - scopes
+      properties:
+        provider:
+          $ref: '#/components/schemas/ProviderRef'
+        server:
+          $ref: '#/components/schemas/ConnectServer'
+        scopes:
+          allOf:
+          - $ref: '#/components/schemas/ScopeList'
+          description: Everything the server is now allowed to use of the account
     ConnectStart:
       type: object
       required:
@@ -8690,6 +8808,7 @@ components:
       - accountLabel
       - gateway
       - capability
+      - server
       - createdAt
       - expiresAt
       properties:
@@ -8697,12 +8816,20 @@ components:
           type: string
         provider:
           $ref: '#/components/schemas/ProviderRef'
+        server:
+          allOf:
+          - $ref: '#/components/schemas/ConnectServer'
+          nullable: true
+          description: The MCP server the link was made for, which the person is asked to allow to use the account (a
+            consent link is for one server at one address). Null for an MCP server's own sign-in (provider.kind
+            mcp_server)
         reason:
           type: string
           enum:
           - not_connected
           - missing_scopes
           - needs_reconsent
+          - server_not_allowed
         requiredScopes:
           allOf:
           - $ref: '#/components/schemas/ScopeList'

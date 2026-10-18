@@ -385,6 +385,9 @@ var matrixPolicies = map[string]policy{
 	}},
 	"revokeMyConnection": {own: signedIn, build: func(c *mctx) request { return del("/v1/me/connections/" + c.connection(true)) }},
 	"getConnectRequest":  {own: signedIn, build: func(c *mctx) request { return get("/v1/connect/requests/" + c.connectRequest()) }},
+	"confirmConnectRequest": {own: signedIn, build: func(c *mctx) request {
+		return post("/v1/connect/requests/"+c.confirmableRequest()+"/confirm", nil)
+	}},
 	// Operations (Phase 6): rate limits and retention (platform admins
 	// write; members read their team's; platform staff read any), call
 	// detail (as the call list), payloads (owners and admins of the team

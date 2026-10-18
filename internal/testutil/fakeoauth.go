@@ -99,6 +99,7 @@ type FakeOAuth struct {
 	resources     []string
 	tokens        int
 	refreshs      int
+	authorizes    int
 }
 
 type fakeCode struct {
@@ -371,6 +372,13 @@ func (f *FakeOAuth) TokenRequests() int {
 	return f.tokens
 }
 
+// AuthorizeRequests counts requests that reached the authorization endpoint.
+func (f *FakeOAuth) AuthorizeRequests() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.authorizes
+}
+
 func (f *FakeOAuth) RefreshRequests() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -408,6 +416,7 @@ func (f *FakeOAuth) authorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	redirect, state := q.Get("redirect_uri"), q.Get("state")
 	f.mu.Lock()
+	f.authorizes++
 	known := f.knownClient(q.Get("client_id"))
 	f.mu.Unlock()
 	if q.Get("response_type") != "code" || !known || redirect == "" || state == "" {
