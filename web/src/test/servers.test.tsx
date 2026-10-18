@@ -153,6 +153,18 @@ describe("MCP server record", () => {
     expect(calls.filter((c) => c.method === "POST").map((c) => c.url)).toEqual([`${base}/${serverId}/test`, `${base}/${serverId}/refresh`]);
   });
 
+  it("says when the server refuses the identity token the test sent", async () => {
+    const u = userEvent.setup();
+    const message =
+      "The server accepts the portal's requests without its identity token but refused them with it. Turn off Send identity token for this server, or have the server accept the token.";
+    mockApi(routes("editor", mcpServer(), { [`POST ${base}/${serverId}/test`]: (): Schemas["McpTestResult"] => ({ ok: false, latencyMs: 31, errorClass: "auth", httpStatus: 401, message }) }));
+    const { container } = renderApp(record);
+    await u.click(await screen.findByRole("button", { name: "Test connection" }));
+    expect(await screen.findByText(/Credentials refused \(HTTP 401\)\./)).toBeInTheDocument();
+    expect(screen.getByText(/refused them with it\. Turn off Send identity token for this server/)).toBeInTheDocument();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
   it("shows a failed refresh's reason", async () => {
     const u = userEvent.setup();
     mockApi(

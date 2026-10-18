@@ -36,7 +36,7 @@ type Props = {
 };
 
 export const identityHelp =
-  "Every call carries a token the portal signs with the caller's name, email and teams, so the server knows who's calling. Turn it off for servers run outside the company, such as GitHub's hosted MCP server, so that personal data isn't sent to a third party.";
+  "Every call carries a signed token (Authorization: Bearer …) with the caller's name, email and teams, so the server knows who's calling; Test connection sends one for you too. Turn it off for servers run outside the company, such as GitHub's hosted MCP server, so that personal data isn't sent to a third party. Some public servers refuse any Authorization header, so it should be off for them: a server like that fails on its first call while this is on.";
 
 export function AuthModeFields({ team, url, urlError, value, onChange, detected, onDetected, onUseUrl, server, secret, setSecret, errors, disabled, headerFields, notes }: Props) {
   const canOAuth = oauthUsable(detected) || server?.authMode === "oauth";
