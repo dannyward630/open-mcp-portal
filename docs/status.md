@@ -45,7 +45,7 @@ server allow-list).
   - the release workflow (`.github/workflows/image.yml`: native amd64 and arm64 builds, scan, cosign signing, GitHub
     Release) on GitHub's runners: it runs for the first time on the `v0.1.0` tag. `scripts/github-release.sh` was
     dry-run with a stand-in SBOM; `actionlint` and `shellcheck` pass.
-- **Release v0.1.0 (2026-10-17).** `v*` tags run `image.yml`: multi-arch image `ghcr.io/ncecere/open-mcp-portal`
+- **Release v0.1.0 (2026-10-17), then v0.2.0 (2026-10-18).** `v*` tags run `image.yml`: multi-arch image `ghcr.io/ncecere/open-mcp-portal`
   (tags `vX.Y.Z`, `latest` for final releases) with SBOM and provenance, cosign keyless signature, and a GitHub Release
   from `docs/releases/vX.Y.Z.md`. The Kustomize base uses the `v0.1.0` tag; overlays pin the digest. `CONTRIBUTING.md`
   has the release steps. `compose.demo.yaml` still builds locally.
