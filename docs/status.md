@@ -245,6 +245,8 @@ An old `open-mcp-gateway` dev database moves with `scripts/migrate-dev-db.sh`.
 
 ## Next steps
 
+The plan after v0.1.0 is [roadmap.md](roadmap.md): v0.2 is MCP 2026-07-28 support and the team pilot. The list below is what v0.1.0 left open.
+
 1. A real Google or Microsoft auth provider for delegated credentials (`make example-mail` against real Gmail), and an
    end-to-end test that a provider token echoed by a server is redacted from a captured payload.
 2. Check the v0.1.0 release on GitHub: `ci.yml` on `main`, then `image.yml` on the tag (digest, signature with
@@ -255,7 +257,7 @@ An old `open-mcp-gateway` dev database moves with `scripts/migrate-dev-db.sh`.
    page), the Phase 6 QA fixes (call page as auditor and as an editor, custom usage dates, pattern dialog), and the
    Phase 5 and 7 screens.
 5. Other real clients: VS Code and Cursor over OAuth against a reachable deployment.
-6. Known product gaps for later releases (see the release notes): gateway-hosted stdio servers, a streaming (SSE) relay
+6. Known product gaps for later releases (see the release notes; the plan is in [roadmap.md](roadmap.md), and stdio hosting is decided against, decision 47): a streaming (SSE) relay
    and server-pushed notifications, sampling/elicitation passthrough, resource subscriptions, background token
    refresh, a Helm chart.
 
