@@ -81,6 +81,10 @@ func (c Config) SafetyErrors(mode string) []error {
 		errs = append(errs, errors.New("API_KEY_PEPPER is the public example value from .env.example, so stored API key digests "+
 			"could be checked offline. Generate a new one with `openssl rand -base64 32` (changing it invalidates existing API keys)"))
 	}
+	if c.SMTP.unencryptedWithCredentials() {
+		errs = append(errs, errors.New("SMTP_TLS=none with SMTP_USERNAME would send the password in plain text: use starttls or tls, "+
+			"or drop the credentials for an in-cluster relay (an SMTP_HOST on loopback is exempt)"))
+	}
 	if c.DevAuth {
 		errs = append(errs, errors.New("DEV_AUTH requires a loopback APP_URL: it lets anyone sign in as a development persona. "+
 			"Set DEV_AUTH=false and configure OIDC_ISSUER; never enable it on a reachable host"))

@@ -327,7 +327,7 @@ func widened(before, after map[uuid.UUID]*Requirement) bool {
 // approval_required (reason url_changed or requirement_changed). Under
 // self_publish the team approves its own changes, so the server stays
 // published. Audited as mcp_server.publish_request.
-func resubmit(ctx context.Context, q *dbgen.Queries, a authz.Actor, team dbgen.Team, sv dbgen.McpServer, reason, note string) error {
+func (s *Service) resubmit(ctx context.Context, q *dbgen.Queries, a authz.Actor, team dbgen.Team, sv dbgen.McpServer, reason, note string) error {
 	if sv.PublishState != StatePublished {
 		return nil
 	}
@@ -343,6 +343,7 @@ func resubmit(ctx context.Context, q *dbgen.Queries, a authz.Actor, team dbgen.T
 	}); err != nil {
 		return err
 	}
+	s.notifier().PublishRequested(ctx, q, sv.ID, reason, a)
 	e := a.Audit("mcp_server.publish_request", "mcp_server", sv.ID.String())
 	e.TeamID = team.ID
 	e.Before, e.After = map[string]any{"publishState": StatePublished}, map[string]any{"publishState": StatePending}
@@ -438,7 +439,7 @@ func (s *Service) SetCapabilityRequirement(ctx context.Context, a authz.Actor, r
 			return err
 		}
 		if Widens(before, after) {
-			if err := resubmit(ctx, q, a, ta.team, bumped, "requirement_changed", noteRequirementChanged); err != nil {
+			if err := s.resubmit(ctx, q, a, ta.team, bumped, "requirement_changed", noteRequirementChanged); err != nil {
 				return err
 			}
 			if bumped, err = q.GetMCPServer(ctx, sv.ID); err != nil {

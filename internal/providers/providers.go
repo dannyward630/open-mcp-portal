@@ -96,6 +96,8 @@ type Service struct {
 	// Registry reads an oauth server's capabilities after its setup
 	// sign-in (nil: not read).
 	Registry *registry.Service
+	// Notify hears of connections that turn needs_reconsent (nil: nobody).
+	Notify Notifier
 }
 
 // New returns the service. up supplies the address guard (the development

@@ -144,6 +144,9 @@ func (s *Service) Publish(ctx context.Context, a authz.Actor, ref string, id uui
 		if err != nil {
 			return err
 		}
+		if next == StatePending {
+			s.notifier().PublishRequested(ctx, q, id, "new", a)
+		}
 		var approved int64
 		if approveAll {
 			if approved, err = q.ApproveListedMCPCapabilities(ctx, dbgen.ApproveListedMCPCapabilitiesParams{ServerID: id, ApprovedBy: by(a)}); err != nil {
@@ -236,6 +239,7 @@ func (s *Service) Review(ctx context.Context, a authz.Actor, id uuid.UUID, decis
 		}); err != nil {
 			return err
 		}
+		s.notifier().PublishDecided(ctx, q, id, next == StatePublished, a)
 		var approved int64
 		if approveAll {
 			if approved, err = q.ApproveListedMCPCapabilities(ctx, dbgen.ApproveListedMCPCapabilitiesParams{ServerID: id, ApprovedBy: by(a)}); err != nil {

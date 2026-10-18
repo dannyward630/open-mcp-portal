@@ -61,6 +61,8 @@ func (s *Service) RunHealthChecks(ctx context.Context, interval time.Duration) (
 			if err := recordCheck(ctx, s.q, sv.ID, res, TriggerScheduled, uuid.NullUUID{}); err != nil {
 				// The server may have been deleted meanwhile.
 				s.log.DebugContext(ctx, "could not store a scheduled MCP health check", "server", sv.ID, "err", err)
+			} else {
+				s.notifier().ServerChecked(ctx, s.q, sv.ID)
 			}
 			result := "failing"
 			if res.OK {

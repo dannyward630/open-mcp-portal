@@ -72,6 +72,8 @@ type Service struct {
 	log    *slog.Logger
 	// oauth configures upstream OAuth (SetOAuth).
 	oauth OAuthSettings
+	// notify is told what people may want to hear about (SetNotifier).
+	notify Notifier
 }
 
 // New returns a Service. client reaches the servers (its AllowPrivate is the
@@ -116,6 +118,7 @@ func access(ctx context.Context, q *dbgen.Queries, a authz.Actor, ref string) (t
 	if err != nil {
 		return teamAccess{}, err
 	}
+	role = a.TeamRole(t.ID, role) // a publisher token acts in its own team only
 	if role == "" && !a.CanReadPlatform() {
 		return teamAccess{}, errTeamNotFound
 	}
@@ -716,11 +719,11 @@ func (s *Service) Update(ctx context.Context, a authz.Actor, ref string, id uuid
 		}
 		switch {
 		case row.URL != cur.URL:
-			err = resubmit(ctx, q, a, ta.team, cur, "url_changed", "The server's URL changed; review it again.")
+			err = s.resubmit(ctx, q, a, ta.team, cur, "url_changed", "The server's URL changed; review it again.")
 		case authChanged:
-			err = resubmit(ctx, q, a, ta.team, cur, "upstream_auth_changed", noteUpstreamAuthChanged)
+			err = s.resubmit(ctx, q, a, ta.team, cur, "upstream_auth_changed", noteUpstreamAuthChanged)
 		case widened(before, after):
-			err = resubmit(ctx, q, a, ta.team, cur, "requirement_changed", noteRequirementChanged)
+			err = s.resubmit(ctx, q, a, ta.team, cur, "requirement_changed", noteRequirementChanged)
 		}
 		if err != nil {
 			return err

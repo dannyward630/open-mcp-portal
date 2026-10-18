@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ncecere/open-mcp-portal/internal/capture"
+	"github.com/ncecere/open-mcp-portal/internal/notify"
 	"github.com/ncecere/open-mcp-portal/internal/providers"
 	"github.com/ncecere/open-mcp-portal/internal/registry"
 )
@@ -86,6 +87,10 @@ var Columns = []Column{
 	// providers.requestAAD
 	{Table: "provider_connect_requests", Column: "id_cipher", Key: "id_digest", KeyType: "text",
 		AAD: func(k string) []byte { return []byte("provider_connect_request:" + k) }},
+	// Webhook destinations (internal/notify): the URL and the signing secrets.
+	{Table: "notification_destinations", Column: "url_cipher", Key: "id", KeyType: "uuid", AAD: uuidAAD(notify.URLAAD)},
+	{Table: "notification_destinations", Column: "secret_cipher", Key: "id", KeyType: "uuid", AAD: uuidAAD(notify.SecretAAD)},
+	{Table: "notification_destinations", Column: "secret_previous_cipher", Key: "id", KeyType: "uuid", AAD: uuidAAD(notify.PreviousSecretAAD)},
 	{Table: "mcp_call_payloads", Column: "arguments_cipher", Key: "call_id", KeyType: "bigint", AAD: callAAD(capture.PartArguments)},
 	{Table: "mcp_call_payloads", Column: "result_cipher", Key: "call_id", KeyType: "bigint", AAD: callAAD(capture.PartResult)},
 }
