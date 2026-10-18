@@ -128,7 +128,7 @@ describe("Team settings › Notifications", () => {
     await u.type(within(dialog).getByRole("textbox", { name: "Name" }), "Internal");
     await u.type(within(dialog).getByRole("textbox", { name: /URL/ }), "https://10.0.0.5/hook");
     await u.click(within(dialog).getByRole("button", { name: "Add destination" }));
-    expect(await within(dialog).findByText(/Ask a platform admin to allow it under Admin › Internal networks/)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/the operator can allow a network with NOTIFY_WEBHOOK_ALLOWED_NETWORKS/)).toBeInTheDocument();
   });
 
   it("changes a destination without asking for the URL again, and sends a new one only when typed", async () => {

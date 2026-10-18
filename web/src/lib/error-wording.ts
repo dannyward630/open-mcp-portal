@@ -38,8 +38,8 @@ export const urlReasonWording: Record<string, string> = {
   too_long: "The URL is too long (at most 1,000 characters).",
   userinfo: "Remove the user name and password from the URL.",
   fragment: "Remove the # part from the URL.",
-  scheme: "Use an https URL (http works only for hosts in Admin › Internal networks that allow plain http).",
-  private_address: "That address is on an internal network. Ask a platform admin to allow it under Admin › Internal networks.",
+  scheme: "Use an https URL. Plain http works only for an address the operator has allowed for webhooks (NOTIFY_WEBHOOK_ALLOWED_NETWORKS).",
+  private_address: "That address is on an internal network. Webhooks reach public addresses only; the operator can allow a network with NOTIFY_WEBHOOK_ALLOWED_NETWORKS.",
   blocked_address: "That address is never allowed (loopback, link-local or cloud metadata).",
 };
 

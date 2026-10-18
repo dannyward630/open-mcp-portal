@@ -6,7 +6,7 @@ export const formatLabels: Record<Schemas["NotificationFormat"], string> = { jso
 
 /** A failed send's class, in words (NotificationErrorClass). */
 export const errorClassLabels: Record<Schemas["NotificationErrorClass"], string> = {
-  not_allowed: "The address isn't allowed (blocked, not in the internal networks, or it redirected)",
+  not_allowed: "The address isn't allowed (blocked, not on the operator's webhook network list, or it redirected)",
   connect: "Couldn't connect",
   tls: "Certificate or TLS problem",
   timeout: "Timed out",

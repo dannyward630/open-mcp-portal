@@ -91,7 +91,7 @@ export function DestinationForm({ scope, destination, onClose, onCreated }: Prop
         description={
           editing
             ? `Currently ${destination?.urlDisplay}. The URL is stored encrypted and never shown again: leave this empty to keep it, or enter a new one to replace it.`
-            : "https, or http for a host in Admin › Internal networks that allows it. It is stored encrypted and never shown again; only its host is."
+            : "https to a public address. It is stored encrypted and never shown again; only its host is."
         }
       >
         <Input type="url" autoComplete="off" spellCheck={false} placeholder="https://hooks.example.com/…" value={url} onChange={(e) => setUrl(e.target.value)} />
