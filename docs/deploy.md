@@ -112,6 +112,9 @@ address but the policy drops it, the server's health shows `unavailable` (a time
 - `DEV_AUTH=true`.
 - `APP_URL` is `http://`.
 
+`serve` (on any address) also refuses an `ENCRYPTION_KEY` equal to the `API_KEY_PEPPER`: one value for both would tie
+the sealed secrets to the digests of every key and token. Generate each with `openssl rand -base64 32`.
+
 `serve` also requires a sign-in method. Without `DEV_AUTH`, that means OIDC. OIDC discovery runs on the first sign-in,
 not at startup, so a misconfigured issuer shows up at sign-in and in the logs. `migrate` needs only `DATABASE_URL`, and it
 applies the safety checks only when `APP_URL` is set. `open-mcp-portal doctor` prints all of this and also checks

@@ -34,6 +34,34 @@ const (
 	StateRejected  = "rejected"
 )
 
+// F-2: an approval names what the approver saw.
+var (
+	errDigestRequired      = apperr.Invalid("expected_digest_required", "expectedDigest is required to approve: send the reviewDigest of the server as you reviewed it")
+	errFingerprintRequired = apperr.Invalid("expected_fingerprint_required", "expectedFingerprint is required to approve: send the fingerprint of the capability as you reviewed it")
+)
+
+// changedSinceReview is a 409: what the approver reviewed isn't what is
+// stored now. details has the current digest or fingerprint, so the client
+// can reload; nothing was approved.
+func changedSinceReview(details map[string]any) error {
+	e := apperr.Conflict("changed_since_review", "This changed since you opened it. Reload and review it again.")
+	e.Details = details
+	return e
+}
+
+// checkDigest refuses an approval of a server whose reviewed digest isn't
+// the current one (the caller holds the server's row lock).
+func checkDigest(ctx context.Context, q *dbgen.Queries, sv dbgen.McpServer, expected string) error {
+	cur, err := serverDigest(ctx, q, sv)
+	if err != nil {
+		return err
+	}
+	if cur != expected {
+		return changedSinceReview(map[string]any{"currentDigest": cur})
+	}
+	return nil
+}
+
 // Review decisions.
 const (
 	DecisionApprove = "approve"
@@ -104,9 +132,13 @@ func platformDefault(ctx context.Context, q *dbgen.Queries) (string, error) {
 }
 
 // Publish publishes a server (team owners and admins). 409 not_refreshed
-// when it was never read, 409 disabled when it is turned off. Audited as
-// mcp_server.publish_request (pending) or mcp_server.publish (self_publish).
-func (s *Service) Publish(ctx context.Context, a authz.Actor, ref string, id uuid.UUID, note *string) (ServerView, error) {
+// when it was never read, 409 disabled when it is turned off. When
+// expectedDigest is given (the reviewDigest the publisher saw) and the
+// server's is another now, 409 changed_since_review and nothing happens: under
+// self_publish the capabilities approved by publishing are the ones that were
+// seen. Audited as mcp_server.publish_request (pending) or mcp_server.publish
+// (self_publish).
+func (s *Service) Publish(ctx context.Context, a authz.Actor, ref string, id uuid.UUID, note *string, expectedDigest *string) (ServerView, error) {
 	note, err := checkNote(note)
 	if err != nil {
 		return ServerView{}, err
@@ -137,6 +169,11 @@ func (s *Service) Publish(ctx context.Context, a authz.Actor, ref string, id uui
 			return apperr.Conflict("disabled", "Turn the server on before publishing it")
 		case cur.RefreshedAt == nil:
 			return apperr.Conflict("not_refreshed", "Read the server's capabilities (Refresh) before publishing it")
+		}
+		if expectedDigest != nil && *expectedDigest != "" {
+			if err := checkDigest(ctx, q, cur, *expectedDigest); err != nil {
+				return err
+			}
 		}
 		row, err := q.SetMCPServerPublishState(ctx, dbgen.SetMCPServerPublishStateParams{
 			ID: id, PublishState: next, Requested: true, Actor: by(a), Note: note,
@@ -208,11 +245,18 @@ func (s *Service) Unpublish(ctx context.Context, a authz.Actor, ref string, id u
 	return s.view(ctx, s.q, id)
 }
 
-// Review approves or rejects a server (platform admins). Audited as
-// mcp_server.publish (approve) or mcp_server.reject.
-func (s *Service) Review(ctx context.Context, a authz.Actor, id uuid.UUID, decision string, note *string) (ServerView, error) {
+// Review approves or rejects a server (platform admins). An approval needs
+// expectedDigest, the reviewDigest of the server as the admin read it (400
+// expected_digest_required); when the server's is another now (a refresh, a
+// new URL ...), 409 changed_since_review and nothing is approved. Rejecting
+// needs no digest. Audited as mcp_server.publish (approve) or
+// mcp_server.reject.
+func (s *Service) Review(ctx context.Context, a authz.Actor, id uuid.UUID, decision string, note *string, expectedDigest string) (ServerView, error) {
 	if !a.IsPlatformAdmin() {
 		return ServerView{}, errAdminOnly
+	}
+	if decision == DecisionApprove && expectedDigest == "" {
+		return ServerView{}, errDigestRequired
 	}
 	note, err := checkNote(note)
 	if err != nil {
@@ -226,6 +270,11 @@ func (s *Service) Review(ctx context.Context, a authz.Actor, id uuid.UUID, decis
 		next, approveAll, err := ReviewTransition(cur.PublishState, decision)
 		if err != nil {
 			return err
+		}
+		if approveAll {
+			if err := checkDigest(ctx, q, cur, expectedDigest); err != nil {
+				return err
+			}
 		}
 		if next == StatePublished && cur.RefreshedAt == nil {
 			return apperr.Conflict("not_refreshed",
@@ -250,6 +299,9 @@ func (s *Service) Review(ctx context.Context, a authz.Actor, id uuid.UUID, decis
 		e.TeamID = cur.TeamID
 		e.Before, e.After = map[string]any{"publishState": cur.PublishState}, map[string]any{"publishState": next}
 		e.Metadata = map[string]any{"name": cur.Name, "decision": decision, "approvedCapabilities": approved, "note": deref(note)}
+		if approveAll {
+			e.Metadata["reviewDigest"] = expectedDigest
+		}
 		return audit.Record(ctx, q, e)
 	})
 	if err != nil {
@@ -260,7 +312,10 @@ func (s *Service) Review(ctx context.Context, a authz.Actor, id uuid.UUID, decis
 
 // ApproveTeamCapability approves a published server's unapproved
 // capability (team owners and admins, only under self_publish).
-func (s *Service) ApproveTeamCapability(ctx context.Context, a authz.Actor, ref string, serverID, capID uuid.UUID) (CapabilityView, error) {
+// expectedFingerprint is the capability's fingerprint as the approver saw it
+// (400 expected_fingerprint_required; 409 changed_since_review when it is
+// another now).
+func (s *Service) ApproveTeamCapability(ctx context.Context, a authz.Actor, ref string, serverID, capID uuid.UUID, expectedFingerprint string) (CapabilityView, error) {
 	var out CapabilityView
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
 		ta, err := access(ctx, q, a, ref)
@@ -275,21 +330,27 @@ func (s *Service) ApproveTeamCapability(ctx context.Context, a authz.Actor, ref 
 		if err := ta.writable(func(role string) error { return authz.CheckCapabilityApproval(role, policy) }); err != nil {
 			return err
 		}
+		if expectedFingerprint == "" {
+			return errFingerprintRequired
+		}
 		sv, err := teamServer(ctx, q, ta.team.ID, serverID, true)
 		if err != nil {
 			return err
 		}
-		out, err = approve(ctx, q, a, sv, capID, policy)
+		out, err = approve(ctx, q, a, sv, capID, policy, expectedFingerprint)
 		return err
 	})
 	return out, err
 }
 
 // ApproveCapability approves any published server's unapproved capability
-// (platform admins).
-func (s *Service) ApproveCapability(ctx context.Context, a authz.Actor, serverID, capID uuid.UUID) (CapabilityView, error) {
+// (platform admins), bound to expectedFingerprint as ApproveTeamCapability.
+func (s *Service) ApproveCapability(ctx context.Context, a authz.Actor, serverID, capID uuid.UUID, expectedFingerprint string) (CapabilityView, error) {
 	if !a.IsPlatformAdmin() {
 		return CapabilityView{}, errAdminOnly
+	}
+	if expectedFingerprint == "" {
+		return CapabilityView{}, errFingerprintRequired
 	}
 	var out CapabilityView
 	err := store.InTx(ctx, s.pool, func(q *dbgen.Queries, _ pgx.Tx) error {
@@ -297,15 +358,15 @@ func (s *Service) ApproveCapability(ctx context.Context, a authz.Actor, serverID
 		if err != nil {
 			return err
 		}
-		out, err = approve(ctx, q, a, sv, capID, "platform_admin")
+		out, err = approve(ctx, q, a, sv, capID, "platform_admin", expectedFingerprint)
 		return err
 	})
 	return out, err
 }
 
-// approve approves one capability of a locked server. Audited as
-// mcp_capability.approve.
-func approve(ctx context.Context, q *dbgen.Queries, a authz.Actor, sv dbgen.McpServer, capID uuid.UUID, via string) (CapabilityView, error) {
+// approve approves one capability of a locked server, if its current
+// fingerprint is the one the approver saw. Audited as mcp_capability.approve.
+func approve(ctx context.Context, q *dbgen.Queries, a authz.Actor, sv dbgen.McpServer, capID uuid.UUID, via, expectedFingerprint string) (CapabilityView, error) {
 	cur, err := q.LockMCPCapability(ctx, dbgen.LockMCPCapabilityParams{ID: capID, ServerID: sv.ID})
 	if errors.Is(store.NotFound(err), store.ErrNotFound) {
 		return CapabilityView{}, errNoCapability
@@ -318,6 +379,8 @@ func approve(ctx context.Context, q *dbgen.Queries, a authz.Actor, sv dbgen.McpS
 	case sv.PublishState != StatePublished:
 		return CapabilityView{}, apperr.Conflict("not_published",
 			"Only a published server's capabilities are approved one by one; publishing approves them all")
+	case cur.Fingerprint != expectedFingerprint:
+		return CapabilityView{}, changedSinceReview(map[string]any{"currentFingerprint": cur.Fingerprint})
 	case IsApproved(cur):
 		return CapabilityView{}, apperr.Conflict("not_changed", "This capability has no unapproved change")
 	}

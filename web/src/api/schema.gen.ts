@@ -515,6 +515,8 @@ export interface paths {
          * @description requirement: omit to keep, null to remove (capability overrides with mode scopes go back to inherit; so do they when the provider changes). A newly chosen provider must be enabled (422 provider_not_found); a turned-off one can be kept. 400 invalid_scope (details.scope). Under approval_required, a published server goes back to pending when its URL changes or its requirement widens what any capability receives (a provider where there was none, another provider, or a scope not in effect before), audited as mcp_server.publish_request with reason url_changed or requirement_changed. Removing or narrowing a requirement never needs review.
          *
          *     authMode and oauth (docs/phase7-upstream-oauth.md): omit to keep. Fields omitted inside oauth keep their stored values; clientSecret is replace-only. Errors as for create. Switching to oauth, choosing another authorization server, or adding a scope not asked for before sends a published server back to review under approval_required (mcp_server.publish_request, reason upstream_auth_changed). Leaving oauth, a URL change, another authorization server or another client ID erases the tokens of every connection to the server (needs_reconsent; leaving oauth deletes them, revoked where possible). Audited as mcp_server.auth_update (before/after, clientIdChanged, clientSecretChanged, connectionsReset; never a secret).
+         *
+         *     A URL with another origin (scheme, host or port; case, a trailing slash and the path don't count) never keeps the stored static header value, which nobody but its author can read: 422 auth_value_required (details.field authValue) unless the same request sends a new authValue, removes the header (authHeaderName "") or sets authMode none. Nothing changes and nothing is sent to the new host. In oauth mode another origin also erases every connection's tokens and sends the server back to the setup sign-in (as above). The audit entry names oldOrigin and newOrigin.
          */
         patch: operations["updateTeamMcpServer"];
         trace?: never;
@@ -627,7 +629,7 @@ export interface paths {
         get?: never;
         /**
          * Approve a published server's changed capability (team owners and admins, only under self_publish)
-         * @description 403 approval_required when the team's effective policy is approval_required (a platform admin approves instead). 409 not_changed when the capability has no unapproved change; 409 capability_gone.
+         * @description 403 approval_required when the team's effective policy is approval_required (a platform admin approves instead). 409 not_changed when the capability has no unapproved change; 409 capability_gone. The approval is bound to what the approver saw (expectedFingerprint is the capability's fingerprint as listed); 400 expected_fingerprint_required without it; 409 changed_since_review (details.currentFingerprint) when the capability's definition is another now (a refresh since), approving nothing.
          */
         put: operations["approveTeamMcpCapability"];
         post?: never;
@@ -698,7 +700,7 @@ export interface paths {
         put?: never;
         /**
          * Publish to the company catalog (team owners and admins)
-         * @description Under approval_required the server becomes pending until a platform admin reviews it; under self_publish it is published at once and its current capabilities are approved. 409 not_refreshed when the server has never been read; 409 already_published; 409 disabled.
+         * @description Under approval_required the server becomes pending until a platform admin reviews it; under self_publish it is published at once and its current capabilities are approved. 409 not_refreshed when the server has never been read; 409 already_published; 409 disabled. expectedDigest (optional) is the server's reviewDigest as the publisher saw it. When it is given and another now, 409 changed_since_review (details.currentDigest) and nothing is published or approved.
          */
         post: operations["publishTeamMcpServer"];
         delete?: never;
@@ -871,7 +873,7 @@ export interface paths {
         put?: never;
         /**
          * Approve or reject a pending server, or remove a published one from the catalog (platform admins)
-         * @description approve (pending only) publishes it and approves its current capabilities. reject on a pending server sets rejected; on a published server it removes it from the catalog (rejected). 409 invalid_state.
+         * @description approve (pending only) publishes it and approves its current capabilities. reject on a pending server sets rejected; on a published server it removes it from the catalog (rejected). 409 invalid_state. An approval is bound to what the admin reviewed. expectedDigest is the server's reviewDigest as the admin read it. 400 expected_digest_required for approve without it; 409 changed_since_review (details.currentDigest) when the server's digest is another now (a refresh, a new URL, another auth mode or requirement), approving nothing. reject needs no digest.
          */
         post: operations["adminReviewMcpServer"];
         delete?: never;
@@ -893,7 +895,7 @@ export interface paths {
         get?: never;
         /**
          * Approve a published server's changed capability (platform admins)
-         * @description 409 not_changed when the capability has no unapproved change; 409 capability_gone.
+         * @description 409 not_changed when the capability has no unapproved change; 409 capability_gone. Bound to what the approver saw, as approveTeamMcpCapability (400 expected_fingerprint_required; 409 changed_since_review with details.currentFingerprint).
          */
         put: operations["adminApproveMcpCapability"];
         post?: never;
@@ -2123,6 +2125,563 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Headline counts and what needs attention across the platform (platform admins and auditors)
+         * @description Computed when asked (no cache, Cache-Control: no-store) from the registry, gateways, keys, connections, notification outbox and the hourly usage rollups; the figures lag the call log by the rollup's few minutes (last24h.rolledUpTo). attention lists up to 20 items per kind, most severe first (severity, then at); totals has the exact number per kind and truncated says whether any kind was cut. Published servers only for server_failing, capabilities_changed and upstream_signin_lapsed: a team's private servers are the team's business (getTeamAttention). Items carry a link the web app routes on. 403 for everyone but platform admins and auditors. docs/admin-overview.md.
+         */
+        get: operations["adminGetOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What needs the team's attention: failing servers, changed capabilities, pending reviews, expiring keys (team members; platform staff read any team)
+         * @description Every member sees what they can already open: failing servers (enabled, any publish state), capabilities_changed, upstream_signin_lapsed and review_pending (servers waiting for a platform review). Only the team's owners and admins (and platform staff) also see service_account_keys_expiring, automation_tokens_expiring (within 14 days) and notification_failures, because those lists are theirs. An archived team answers 200 with no items (its servers are unavailable). 404 team_not_found for people outside the team, like every team route. Connections that need re-consent are personal (Account > Connections) and service accounts can't use them, so there is no such item here.
+         */
+        get: operations["getTeamAttention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's in-app notifications, newest first
+         * @description Kept 90 days, read or not. unread=true lists only unread ones. unreadCount is the caller's total unread count whatever the filter. Notifications only exist for events the caller received while in-app was on for that event (getMyNotificationPreferences).
+         */
+        get: operations["listMyNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many notifications the caller hasn't read (the bell)
+         * @description Cheap enough to poll every minute.
+         */
+        get: operations["getMyUnreadNotificationCount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark every unread notification of the caller as read
+         * @description Idempotent. marked is how many changed.
+         */
+        post: operations["markAllMyNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/{notificationId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: components["parameters"]["NotificationIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark one of the caller's notifications as read
+         * @description Idempotent. 404 notification_not_found for another person's notification or one already deleted.
+         */
+        post: operations["markMyNotificationRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notification-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's notification preferences, one row per event they can receive
+         * @description Only events the caller can receive are listed: team events for the roles they hold, publish.requested for platform admins, key.expiring and connection.needs_reconsent for everyone. Defaults: in-app on, email on (custom=false). email only takes effect when emailAvailable (the operator configured SMTP).
+         */
+        get: operations["getMyNotificationPreferences"];
+        /**
+         * Change the caller's preferences for some events
+         * @description Events not listed keep their value. 400 invalid_event for an unknown event; 422 not_receivable (details.events) for an event the caller can't receive. Not audited (personal settings).
+         */
+        put: operations["updateMyNotificationPreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/notification-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The team's webhook destinations (team owners and admins; platform staff read any team)
+         * @description A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}).
+         */
+        get: operations["listTeamNotificationDestinations"];
+        put?: never;
+        /**
+         * Add a webhook destination (team owners and admins, browser session only)
+         * @description A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}). 400 invalid_name, invalid_format. 409 name_taken (names are unique within the scope), too_many_destinations (at most 10 per team and 10 for the platform), team_archived. 422 url_not_allowed (details.reason: invalid, too_long, userinfo, fragment, scheme, private_address, blocked_address; the same address policy and internal-network allowlist as MCP servers, checked again on every delivery), invalid_events (details.events lists what this destination can't receive; at least one event is required). Events a team destination can receive: server.unhealthy, server.recovered, capability.changed, publish.decided, upstream_signin.lapsed, key.expiring (service-account keys and publisher tokens).
+         */
+        post: operations["createTeamNotificationDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/notification-destinations/{destinationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One destination
+         * @description A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}).
+         */
+        get: operations["getTeamNotificationDestination"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a destination and its delivery log (team owners and admins, browser session only)
+         * @description Deliveries still waiting for it are dropped.
+         */
+        delete: operations["deleteTeamNotificationDestination"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a destination (team owners and admins, browser session only)
+         * @description Format can't change (create another destination). Sending url replaces the sealed URL (checked as on creation); leaving it out keeps it. Turning enabled back on after an automatic stop (disabledReason failures) clears the failure count. 409 name_taken, team_archived. 412 and 428 for If-Match. 422 as on creation.
+         */
+        patch: operations["updateTeamNotificationDestination"];
+        trace?: never;
+    };
+    "/v1/teams/{team}/notification-destinations/{destinationId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test message now (team owners and admins, browser session only)
+         * @description Sends a payload of type test (or the same text to a slack destination) straight away, through the same address checks and signing as real deliveries, and reports the outcome in the 200 body (ok false with errorClass, not an HTTP error). Not stored in the delivery log. 429 rate_limited after 10 tests per destination per hour. 409 team_archived.
+         */
+        post: operations["testTeamNotificationDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/notification-destinations/{destinationId}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a new signing secret (team owners and admins, browser session only)
+         * @description Returns the new secret once. For graceHours (default 24, 0 to 72) every delivery carries a signature for the new secret and one for the old, so receivers can switch without dropping messages; 0 ends the old secret now. 409 not_signed for a slack destination, team_archived. Audited; the secret never is.
+         */
+        post: operations["rotateTeamNotificationDestinationSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/notification-destinations/{destinationId}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The destination's last 50 deliveries (team owners and admins; platform staff read any team)
+         * @description Newest first, from the delivery queue (kept 14 days): state, attempts, last HTTP status and error class. Never the payload, the URL or response bodies.
+         */
+        get: operations["listTeamNotificationDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/notification-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The platform's webhook destinations (platform admins and auditors)
+         * @description A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}).
+         */
+        get: operations["adminListNotificationDestinations"];
+        put?: never;
+        /**
+         * Add a webhook destination (platform admins, browser session only)
+         * @description A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}). 400 invalid_name, invalid_format. 409 name_taken (names are unique within the scope), too_many_destinations (at most 10 per team and 10 for the platform), team_archived. 422 url_not_allowed (details.reason: invalid, too_long, userinfo, fragment, scheme, private_address, blocked_address; the same address policy and internal-network allowlist as MCP servers, checked again on every delivery), invalid_events (details.events lists what this destination can't receive; at least one event is required). A platform destination receives publish.requested and key.expiring for platform tokens; with teamEvents true it also receives the other non-personal events of every team (422 invalid_events when events lists one of those and teamEvents is false).
+         */
+        post: operations["adminCreateNotificationDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/notification-destinations/{destinationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One destination
+         * @description A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}).
+         */
+        get: operations["adminGetNotificationDestination"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a destination and its delivery log (platform admins, browser session only)
+         * @description Deliveries still waiting for it are dropped.
+         */
+        delete: operations["adminDeleteNotificationDestination"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a destination (platform admins, browser session only)
+         * @description Format can't change (create another destination). Sending url replaces the sealed URL (checked as on creation); leaving it out keeps it. Turning enabled back on after an automatic stop (disabledReason failures) clears the failure count. 409 name_taken, team_archived. 412 and 428 for If-Match. 422 as on creation.
+         */
+        patch: operations["adminUpdateNotificationDestination"];
+        trace?: never;
+    };
+    "/v1/admin/notification-destinations/{destinationId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test message now (platform admins, browser session only)
+         * @description Sends a payload of type test (or the same text to a slack destination) straight away, through the same address checks and signing as real deliveries, and reports the outcome in the 200 body (ok false with errorClass, not an HTTP error). Not stored in the delivery log. 429 rate_limited after 10 tests per destination per hour. 409 team_archived.
+         */
+        post: operations["adminTestNotificationDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/notification-destinations/{destinationId}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a new signing secret (platform admins, browser session only)
+         * @description Returns the new secret once. For graceHours (default 24, 0 to 72) every delivery carries a signature for the new secret and one for the old, so receivers can switch without dropping messages; 0 ends the old secret now. 409 not_signed for a slack destination, team_archived. Audited; the secret never is.
+         */
+        post: operations["adminRotateNotificationDestinationSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/notification-destinations/{destinationId}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The destination's last 50 deliveries (platform admins and auditors)
+         * @description Newest first, from the delivery queue (kept 14 days): state, attempts, last HTTP status and error class. Never the payload, the URL or response bodies.
+         */
+        get: operations["adminListNotificationDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Email and delivery status (platform admins and auditors)
+         * @description Email is configured by the operator with SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM and SMTP_TLS and is off without SMTP_HOST. Shown: whether it is on, the From address, host, port, TLS mode and whether it authenticates, never the username or password. Also the delivery queue's state.
+         */
+        get: operations["adminGetNotificationSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/settings/notifications/test-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test email to the caller's own address (platform admins)
+         * @description Always to the caller's own address (never an address from the request), through the configured SMTP server, and reports the outcome in the 200 body (ok false with errorClass: not_allowed, connect, tls, auth, rejected, address, timeout). 409 email_not_configured when SMTP_HOST is unset. 429 rate_limited after 5 tests per hour per admin. Audited as settings.notifications_test_email.
+         */
+        post: operations["adminTestEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Describe the automation token used for this request (for CI debugging)
+         * @description Returns the token's kind, name, scopes, team and expiry (never the secret). Takes any valid automation token whatever its scopes. 401 invalid_token for a request without one (a browser session doesn't count), or with an unknown, expired or revoked one, or an MCP credential (omp_, omp_sa_, ompat_). docs/automation-tokens.md.
+         */
+        get: operations["getToken"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/automation-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Platform-admin tokens, including revoked and expired ones from the last 30 days (platform admins and auditors)
+         * @description Newest first. Never the secret. blockedReason creator_not_platform_admin marks a token that is refused because the person who made it is no longer an active platform admin.
+         */
+        get: operations["adminListAutomationTokens"];
+        put?: never;
+        /**
+         * Create a platform-admin token (platform admins, browser session only); the secret is shown once
+         * @description Prefix ompadm_. Scopes platform:read and/or platform:write (write includes read). expiresInDays 1-365, default 90: tokens always expire. 400 invalid_name, invalid_scopes, invalid_expiry. 409 too_many_tokens (at most 20 active platform tokens). Tokens authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed here in a browser session only: a token that calls this operation gets 403 session_required.
+         */
+        post: operations["adminCreateAutomationToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/automation-tokens/{tokenId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tokenId: components["parameters"]["AutomationTokenIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a platform-admin token (platform admins, browser session only); takes effect on the next request
+         * @description Revoking a revoked or expired token is a no-op. 404 token_not_found for a team token or an unknown ID. Tokens authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed here in a browser session only: a token that calls this operation gets 403 session_required.
+         */
+        delete: operations["adminRevokeAutomationToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/automation-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The team's publisher tokens, including revoked and expired ones from the last 30 days (team owners and admins; platform staff read any team)
+         * @description Newest first. Never the secret. Members and editors get 403.
+         */
+        get: operations["listTeamAutomationTokens"];
+        put?: never;
+        /**
+         * Create a team publisher token (team owners and admins, browser session only); the secret is shown once
+         * @description Prefix omppub_. Owned by the team: it keeps working when its creator leaves. Scopes servers:read and/or servers:write (write includes read), limited to this team's MCP servers. expiresInDays 1-365, default 90. 400 invalid_name, invalid_scopes, invalid_expiry. 409 too_many_tokens (at most 20 active per team), team_archived. Platform roles get 403 through team routes. Tokens authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed here in a browser session only: a token that calls this operation gets 403 session_required.
+         */
+        post: operations["createTeamAutomationToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team}/automation-tokens/{tokenId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                tokenId: components["parameters"]["AutomationTokenIdParam"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a team token (team owners and admins, browser session only); takes effect on the next request
+         * @description Revoking a revoked or expired token is a no-op. 404 token_not_found for another team's token. Tokens authenticate with Authorization: Bearer on /v1/* only (never /mcp) and are managed here in a browser session only: a token that calls this operation gets 403 session_required.
+         */
+        delete: operations["revokeTeamAutomationToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2130,13 +2689,22 @@ export interface components {
         /** @description Who made the change, resolved when the log is read */
         AuditActor: {
             /** @enum {string} */
-            kind: "user" | "api_key" | "system";
+            kind: "user" | "api_key" | "system" | "automation_token";
             /** Format: uuid */
             userId?: string;
             displayName?: string;
             email?: string;
             /** @description The API key used (api_key actors) */
             apiKeyName?: string;
+            /**
+             * Format: uuid
+             * @description The automation token (automation_token actors; no userId)
+             */
+            automationTokenId?: string;
+            /** @description The token's name as recorded when it acted */
+            automationTokenName?: string;
+            /** @enum {string} */
+            automationTokenKind?: "platform_admin" | "team_publisher";
         };
         AuditEntry: {
             /** Format: int64 */
@@ -2144,7 +2712,7 @@ export interface components {
             /** Format: date-time */
             occurredAt: string;
             /** @enum {string} */
-            actorKind: "user" | "api_key" | "system";
+            actorKind: "user" | "api_key" | "system" | "automation_token";
             /** Format: uuid */
             actorUserId?: string | null;
             /** Format: uuid */
@@ -2517,6 +3085,10 @@ export interface components {
             oauth?: components["schemas"]["McpServerOAuth"] | null;
             /** @description Send the identity token (decision 45). true (the default) keeps decision 7: every forwarded call carries the signed identity JWT (Authorization: Bearer, or MCP-Gateway-Identity when the server has a static Authorization header or is in oauth mode). false: the JWT is not sent to this server at all (no header), recommended for servers run outside the company such as GitHub's hosted MCP server, so names, emails and teams are not sent to a third party. Absent from servers before Phase 7 (true) */
             sendIdentity?: boolean;
+            /** @description The MCP protocol version the portal last negotiated with the upstream server (set by refresh, health checks and test); read-only. Null until the first successful exchange. */
+            protocol?: components["schemas"]["McpServerProtocol"] | null;
+            /** @description SHA-256 (hex) over the server's URL, auth mode and requirement and over every listed capability's kind, name and fingerprint, sorted. It changes when any of them does (a refresh, a new URL ...). Send it back as expectedDigest when reviewing (adminReviewMcpServer) or publishing, so what is approved is what was read */
+            readonly reviewDigest?: string;
             revision: components["schemas"]["Revision"];
             /** Format: date-time */
             createdAt: string;
@@ -2675,12 +3247,20 @@ export interface components {
         McpPublishRequest: {
             /** @description For the reviewer */
             note?: string;
+            /** @description The server's reviewDigest as the publisher saw it. Optional; when given and no longer current, 409 changed_since_review */
+            expectedDigest?: string;
         };
         McpPublishReview: {
             /** @enum {string} */
             decision: "approve" | "reject";
             /** @description Shown to the team */
             note?: string;
+            /** @description The server's reviewDigest as the admin read it. Required for approve (400 expected_digest_required), not needed for reject; 409 changed_since_review when it is no longer current */
+            expectedDigest?: string;
+        };
+        McpCapabilityApproval: {
+            /** @description The capability's fingerprint as the approver saw it; 409 changed_since_review when the capability has another definition now */
+            expectedFingerprint: string;
         };
         PublishingSettings: {
             defaultPolicy: components["schemas"]["PublishPolicy"];
@@ -4200,6 +4780,563 @@ export interface components {
             /** @description More rows than limit (totals still cover everything) */
             truncated: boolean;
         };
+        /** @description A team, as named in overviews, notifications and tokens */
+        TeamRef: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+        };
+        /** @description Where the web app goes for an item (docs/admin-overview.md, Link targets). server: the server page (team page for members, Admin > Servers for platform staff); servers: the team's server list; review_queue: Admin > Publishing; gateways: Admin > Gateways; service_account / service_accounts: the team's service accounts; automation_tokens: Admin > Automation tokens; team_automation_tokens: the team's Settings > Automation tokens; auth_providers: Admin > Auth providers; usage: Admin > Usage; notification_settings: Admin > Notifications; team_notification_settings: the team's Settings > Notifications; account_connections: Account > Connections; account_api_keys: Account > API keys. */
+        LinkTarget: {
+            /** @enum {string} */
+            type: "server" | "servers" | "review_queue" | "gateways" | "service_account" | "service_accounts" | "automation_tokens" | "team_automation_tokens" | "auth_providers" | "usage" | "notification_settings" | "team_notification_settings" | "account_connections" | "account_api_keys";
+            /** @description The object's ID for singular types (server, service_account) */
+            id?: string;
+            /** @description The team's slug, for team pages and for the team's server or service account */
+            teamSlug?: string;
+        };
+        /**
+         * @description server_failing: one item per enabled server whose latest health check failed (at = failing since). upstream_signin_lapsed: one per oauth-mode server whose setup sign-in needs re-consent (at = since). review_pending: one item, count = servers waiting for a platform review, at = the oldest request. capabilities_changed: one per published server with changed or unapproved capabilities (count = how many, held back from the catalog). personal_keys_expiring: count of personal API keys expiring within 14 days (platform overview only; no link: they belong to individuals). service_account_keys_expiring: one per team, count = keys expiring within 14 days (at = the earliest expiry). automation_tokens_expiring: one for platform tokens and one per team, count within 14 days. connections_reconsent: count of people's connections that need re-consent (setup sign-ins of servers are upstream_signin_lapsed instead). gateways_disabled: count of switched-off gateways of active teams. rate_limited: calls refused by a rate limit in the last 24 hours. notification_failures: failing webhook destinations (stopped automatically, or 3 or more failures in a row) plus one if email had a failed delivery in the last 24 hours.
+         * @enum {string}
+         */
+        AttentionKind: "server_failing" | "upstream_signin_lapsed" | "review_pending" | "capabilities_changed" | "personal_keys_expiring" | "service_account_keys_expiring" | "automation_tokens_expiring" | "connections_reconsent" | "gateways_disabled" | "rate_limited" | "notification_failures";
+        /** @enum {string} */
+        AttentionSeverity: "critical" | "warning" | "info";
+        /** @description The server (or gateway) an item is about */
+        AttentionSubject: {
+            id: string;
+            name: string;
+            slug?: string;
+        };
+        AttentionItem: {
+            kind: components["schemas"]["AttentionKind"];
+            severity: components["schemas"]["AttentionSeverity"];
+            /** @description One line in English, for scripts and logs; the web app builds its own wording from the fields */
+            summary: string;
+            /**
+             * Format: int64
+             * @description How many, for kinds that count
+             */
+            count?: number;
+            /**
+             * Format: date-time
+             * @description The time that matters for the kind (see AttentionKind): failing since, the oldest request, the earliest expiry. Null when none.
+             */
+            at?: string | null;
+            subject?: components["schemas"]["AttentionSubject"] | null;
+            team?: components["schemas"]["TeamRef"] | null;
+            /** @description Where to go; null when there is nowhere useful (personal keys) */
+            link?: components["schemas"]["LinkTarget"] | null;
+        };
+        OverviewCounts: {
+            /**
+             * Format: int64
+             * @description Active people
+             */
+            users: number;
+            /**
+             * Format: int64
+             * @description Active teams
+             */
+            teams: number;
+            /** Format: int64 */
+            servers: number;
+            /** Format: int64 */
+            publishedServers: number;
+            /**
+             * Format: int64
+             * @description Gateways of active teams, and platform gateways
+             */
+            gateways: number;
+            /** Format: int64 */
+            serviceAccounts: number;
+            /**
+             * Format: int64
+             * @description Active automation tokens (both kinds)
+             */
+            automationTokens: number;
+        };
+        /** @description The last 24 hourly rollup buckets (the current hour included), from the usage rollups */
+        OverviewActivity: {
+            /** Format: int64 */
+            calls: number;
+            /**
+             * Format: int64
+             * @description Every outcome but ok, as Admin > Usage counts them (denied, rate_limited and needs_authorization included), so the figures agree
+             */
+            errors: number;
+            /**
+             * Format: double
+             * @description errors / calls from 0 to 1; null without calls
+             */
+            errorRate: number | null;
+            /** Format: int64 */
+            rateLimited: number;
+            /**
+             * Format: date-time
+             * @description Calls up to this time are included (rollups run every 5 minutes)
+             */
+            rolledUpTo: string | null;
+        };
+        /** @description The platform overview (Admin > Overview) */
+        AdminOverview: {
+            /** Format: date-time */
+            generatedAt: string;
+            counts: components["schemas"]["OverviewCounts"];
+            last24h: components["schemas"]["OverviewActivity"];
+            /** @description At most 20 items per kind, most severe first */
+            attention: components["schemas"]["AttentionItem"][];
+            /** @description Exact number per AttentionKind (servers for per-server kinds, otherwise the sum of count); kinds with nothing are left out. Larger than the items listed when truncated. */
+            totals: {
+                [key: string]: number;
+            };
+            truncated: boolean;
+        };
+        /** @description The team overview's attention card */
+        TeamAttention: {
+            /** Format: date-time */
+            generatedAt: string;
+            attention: components["schemas"]["AttentionItem"][];
+            /** @description Exact number per AttentionKind (servers for per-server kinds, otherwise the sum of count); kinds with nothing are left out. Larger than the items listed when truncated. */
+            totals: {
+                [key: string]: number;
+            };
+            truncated: boolean;
+        };
+        /**
+         * @description server.unhealthy: 3 failed checks in a row, once per incident, a reminder every 24 hours while it lasts. server.recovered. capability.changed: a published server's definition changed or grew and is held back. publish.requested: a server entered review (platform admins). publish.decided: approved or rejected (team owners and admins). connection.needs_reconsent: a person's connection to a provider or server lapsed (that person only). upstream_signin.lapsed: an oauth server's setup sign-in lapsed (editors and above). key.expiring: a key or token expires in 7 days. Webhooks can't subscribe to connection.needs_reconsent or to personal keys.
+         * @enum {string}
+         */
+        NotificationEventType: "server.unhealthy" | "server.recovered" | "capability.changed" | "publish.requested" | "publish.decided" | "connection.needs_reconsent" | "upstream_signin.lapsed" | "key.expiring";
+        NotificationItem: {
+            /** Format: int64 */
+            id: number;
+            event: components["schemas"]["NotificationEventType"];
+            title: string;
+            body: string;
+            team: components["schemas"]["TeamRef"] | null;
+            link: components["schemas"]["LinkTarget"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            readAt: string | null;
+        };
+        NotificationPage: {
+            items: components["schemas"]["NotificationItem"][];
+            nextCursor?: string | null;
+            /** Format: int64 */
+            unreadCount: number;
+        };
+        NotificationUnreadCount: {
+            /** Format: int64 */
+            count: number;
+        };
+        NotificationMarked: {
+            /** Format: int64 */
+            marked: number;
+        };
+        NotificationPreference: {
+            event: components["schemas"]["NotificationEventType"];
+            inApp: boolean;
+            email: boolean;
+            /** @description false while both values are the defaults */
+            custom: boolean;
+        };
+        NotificationPreferences: {
+            /** @description The operator configured SMTP; without it email choices are kept but nothing is sent */
+            emailAvailable: boolean;
+            /** @description Where email goes: the address on the person's profile */
+            emailAddress: string;
+            items: components["schemas"]["NotificationPreference"][];
+        };
+        NotificationPreferenceChange: {
+            event: components["schemas"]["NotificationEventType"];
+            inApp?: boolean;
+            email?: boolean;
+        };
+        NotificationPreferencesUpdate: {
+            items: components["schemas"]["NotificationPreferenceChange"][];
+        };
+        /**
+         * @description json: a signed JSON envelope (docs/notifications.md). slack: {"text": ...}, unsigned, for Slack-compatible incoming webhooks.
+         * @enum {string}
+         */
+        NotificationFormat: "json" | "slack";
+        /**
+         * @description not_allowed: the address isn't allowed (blocked or not in the internal-network allowlist, or a redirect). connect: unreachable. tls: certificate or handshake problem (or STARTTLS missing). timeout. auth: SMTP login refused. rejected: the destination answered 4xx (SMTP 5xx). server_error: it answered 5xx. address: the recipient address was refused. expired: still undelivered after 24 hours. internal.
+         * @enum {string}
+         */
+        NotificationErrorClass: "not_allowed" | "connect" | "tls" | "timeout" | "auth" | "rejected" | "server_error" | "address" | "expired" | "internal";
+        NotificationDestinationHealth: {
+            /** @enum {string} */
+            state: "unknown" | "ok" | "failing";
+            /** Format: int32 */
+            consecutiveFailures: number;
+            /** Format: date-time */
+            lastSuccessAt?: string | null;
+            /** Format: date-time */
+            lastFailureAt?: string | null;
+            lastErrorClass?: components["schemas"]["NotificationErrorClass"] | null;
+        };
+        /** @description A webhook destination. The URL is sealed with ENCRYPTION_KEY and never returned (a Slack incoming-webhook URL is itself a credential): urlDisplay shows scheme and host only. Format json is signed; the signing secret is shown once on creation and on rotation. Format slack is unsigned ({"text": ...}). */
+        NotificationDestination: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            scope: "team" | "platform";
+            team?: components["schemas"]["TeamRef"] | null;
+            name: string;
+            format: components["schemas"]["NotificationFormat"];
+            /**
+             * @description Scheme and host only; the rest of the URL is never shown
+             * @example https://hooks.slack.com/...
+             */
+            urlDisplay: string;
+            events: components["schemas"]["NotificationEventType"][];
+            /** @description Platform destinations: also receive the non-personal events of every team. Always false for team destinations. */
+            teamEvents: boolean;
+            enabled: boolean;
+            /**
+             * @description failures: stopped automatically after 20 failed attempts in a row
+             * @enum {string|null}
+             */
+            disabledReason?: "failures" | null;
+            hasSecret: boolean;
+            /** @description Last 4 characters of the signing secret, or empty */
+            secretHint: string;
+            /** Format: date-time */
+            secretRotatedAt?: string | null;
+            /**
+             * Format: date-time
+             * @description While set and in the future, deliveries carry a signature for the previous secret too
+             */
+            previousSecretExpiresAt?: string | null;
+            health: components["schemas"]["NotificationDestinationHealth"];
+            revision: components["schemas"]["Revision"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            createdByName?: string | null;
+        };
+        NotificationDestinationCreate: {
+            name: string;
+            format: components["schemas"]["NotificationFormat"];
+            /** @description https, or http for a host in the internal-network allowlist. No user info or fragment; a query is allowed (it is sealed and never shown). */
+            url: string;
+            events: components["schemas"]["NotificationEventType"][];
+            /** @default false */
+            teamEvents: boolean;
+            /** @default true */
+            enabled: boolean;
+        };
+        NotificationDestinationUpdate: {
+            name?: string;
+            url?: string;
+            events?: components["schemas"]["NotificationEventType"][];
+            teamEvents?: boolean;
+            enabled?: boolean;
+        };
+        NotificationDestinationCreated: {
+            destination: components["schemas"]["NotificationDestination"];
+            /** @description The signing secret (ompwhs_ and 43 characters), shown only now; null for slack */
+            secret?: string | null;
+        };
+        NotificationSecretRotate: {
+            /**
+             * Format: int32
+             * @description How long the old secret keeps signing too (0: stop now)
+             * @default 24
+             */
+            graceHours: number;
+        };
+        NotificationDestinationSecret: {
+            destination: components["schemas"]["NotificationDestination"];
+            /** @description The new signing secret, shown only now */
+            secret: string;
+        };
+        NotificationTestResult: {
+            ok: boolean;
+            errorClass?: components["schemas"]["NotificationErrorClass"] | null;
+            /** Format: int32 */
+            httpStatus?: number | null;
+            /** Format: int32 */
+            durationMs: number;
+            /** @description A short explanation safe to show; never the destination's response body */
+            message: string;
+        };
+        NotificationDelivery: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: uuid
+             * @description The id of the event, as in the payload and X-OMP-Event-Id
+             */
+            eventId: string;
+            event: components["schemas"]["NotificationEventType"];
+            /**
+             * @description skipped: the destination was off or deleted, or the event no longer matched
+             * @enum {string}
+             */
+            state: "pending" | "sent" | "failed" | "skipped";
+            /** Format: int32 */
+            attempts: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastAttemptAt?: string | null;
+            /** Format: date-time */
+            nextAttemptAt?: string | null;
+            /** Format: date-time */
+            sentAt?: string | null;
+            /** Format: int32 */
+            httpStatus?: number | null;
+            errorClass?: components["schemas"]["NotificationErrorClass"] | null;
+        };
+        NotificationEmailStatus: {
+            /** @description SMTP_HOST is set */
+            configured: boolean;
+            from?: string | null;
+            host?: string | null;
+            /** Format: int32 */
+            port?: number | null;
+            /** @enum {string|null} */
+            tls?: "starttls" | "tls" | "none" | null;
+            /** @description SMTP_USERNAME is set (the username and password are never shown) */
+            authenticated: boolean;
+            /** Format: int64 */
+            sentLast24h: number;
+            /** Format: int64 */
+            failedLast24h: number;
+        };
+        NotificationSettings: {
+            email: components["schemas"]["NotificationEmailStatus"];
+            webhooks: {
+                /** Format: int64 */
+                teamDestinations: number;
+                /** Format: int64 */
+                platformDestinations: number;
+                /**
+                 * Format: int64
+                 * @description Destinations stopped automatically after repeated failures
+                 */
+                stopped: number;
+            };
+            queue: {
+                /** Format: int64 */
+                pending: number;
+                /** Format: int64 */
+                failedLast24h: number;
+                /** Format: date-time */
+                oldestPendingAt?: string | null;
+                /** Format: date-time */
+                lastRunAt?: string | null;
+                /** Format: int32 */
+                intervalSeconds: number;
+            };
+        };
+        /** @description The server an event is about */
+        NotificationServerRef: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+        };
+        ServerUnhealthyData: {
+            server: components["schemas"]["NotificationServerRef"];
+            /**
+             * Format: date-time
+             * @description When the failing status began
+             */
+            since: string;
+            /** Format: int32 */
+            consecutiveFailures: number;
+            /** @description McpErrorClass of the latest check */
+            errorClass?: string;
+            /** Format: int32 */
+            httpStatus?: number | null;
+            /** @description true for the daily reminders */
+            reminder: boolean;
+            /**
+             * Format: int32
+             * @description Whole hours since, on reminders
+             */
+            failingHours?: number;
+        };
+        ServerRecoveredData: {
+            server: components["schemas"]["NotificationServerRef"];
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            recoveredAt: string;
+            /** Format: int64 */
+            downtimeSeconds: number;
+        };
+        CapabilityChangedData: {
+            server: components["schemas"]["NotificationServerRef"];
+            /** Format: int32 */
+            changedCount: number;
+            /** Format: int32 */
+            newCount: number;
+            /** @description Always true: held back from the catalog until approved */
+            held: boolean;
+            capabilities: {
+                /** @enum {string} */
+                kind: "tool" | "resource" | "resource_template" | "prompt";
+                name: string;
+                /** @enum {string} */
+                change: "changed" | "new";
+            }[];
+            /** Format: int32 */
+            moreCount: number;
+        };
+        PublishRequestedData: {
+            server: components["schemas"]["NotificationServerRef"];
+            /** @enum {string} */
+            reason: "new" | "url_changed" | "upstream_auth_changed" | "requirement_changed";
+            note?: string;
+            requestedBy: {
+                /** @enum {string} */
+                kind: "user" | "automation_token";
+                name: string;
+            };
+        };
+        PublishDecidedData: {
+            server: components["schemas"]["NotificationServerRef"];
+            /** @enum {string} */
+            decision: "approved" | "rejected";
+            note?: string;
+            decidedBy: {
+                name: string;
+            };
+        };
+        ConnectionNeedsReconsentData: {
+            provider: {
+                slug: string;
+                name: string;
+            };
+            server?: components["schemas"]["NotificationServerRef"] | null;
+            /** @enum {string} */
+            reason: "refresh_failed" | "upstream_rejected";
+        };
+        UpstreamSigninLapsedData: {
+            server: components["schemas"]["NotificationServerRef"];
+            /** Format: date-time */
+            since: string;
+            /** @description The person whose sign-in capabilities were read as */
+            readAsName?: string;
+        };
+        KeyExpiringData: {
+            /** @enum {string} */
+            keyKind: "personal" | "service_account" | "publisher_token" | "platform_token";
+            /** @description The key's or token's name (never its prefix or secret) */
+            name: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: int32 */
+            daysLeft: number;
+            serviceAccount?: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+        };
+        NotificationTestData: {
+            message: string;
+        };
+        /** @description The body of a json webhook, at most 8 KiB. Signed: X-OMP-Signature is v1=<hex HMAC-SHA256 of timestamp + "." + body>, with the timestamp in X-OMP-Timestamp (Unix seconds); during a secret rotation the header carries two v1= values. Never contains secrets, header values, call arguments or results, or e-mail addresses. */
+        NotificationPayload: {
+            /**
+             * Format: uuid
+             * @description The event's id; also the X-OMP-Event-Id header. Receivers de-duplicate on it (delivery is at least once).
+             */
+            id: string;
+            /** @enum {string} */
+            type: "server.unhealthy" | "server.recovered" | "capability.changed" | "publish.requested" | "publish.decided" | "connection.needs_reconsent" | "upstream_signin.lapsed" | "key.expiring" | "test";
+            /** @enum {integer} */
+            version: 1;
+            /** Format: date-time */
+            occurredAt: string;
+            instance: {
+                name: string;
+                /** @description APP_URL */
+                url: string;
+            };
+            team: components["schemas"]["TeamRef"] | null;
+            /** @description A link to the item in the web app (never contains a secret) */
+            url: string;
+            /** @description The shape follows type */
+            data: components["schemas"]["ServerUnhealthyData"] | components["schemas"]["ServerRecoveredData"] | components["schemas"]["CapabilityChangedData"] | components["schemas"]["PublishRequestedData"] | components["schemas"]["PublishDecidedData"] | components["schemas"]["ConnectionNeedsReconsentData"] | components["schemas"]["UpstreamSigninLapsedData"] | components["schemas"]["KeyExpiringData"] | components["schemas"]["NotificationTestData"];
+        };
+        /** @enum {string} */
+        AutomationTokenKind: "platform_admin" | "team_publisher";
+        /**
+         * @description platform:read: the platform-admin API's read operations. platform:write: its provisioning operations (never token management, roles, reviews or settings that widen trust). servers:read and servers:write: a team's MCP servers (write never deletes, approves capabilities or changes gateways or members). A write scope includes its read scope. docs/automation-tokens.md lists the operations.
+         * @enum {string}
+         */
+        AutomationTokenScope: "platform:read" | "platform:write" | "servers:read" | "servers:write";
+        /** @description An automation token's metadata. The secret is never returned after creation. */
+        AutomationToken: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["AutomationTokenKind"];
+            name: string;
+            /** @description The first characters of the token, to recognise it (ompadm_xxxxxxxx, omppub_xxxxxxxx) */
+            prefix: string;
+            scopes: components["schemas"]["AutomationTokenScope"][];
+            /** @enum {string} */
+            status: "active" | "expired" | "revoked";
+            /** @description The owning team of a publisher token; null for platform tokens */
+            team: components["schemas"]["TeamRef"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Who made it, as recorded then (null for the system) */
+            createdByName?: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description Updated at most once a minute
+             */
+            lastUsedAt?: string | null;
+            /** Format: date-time */
+            revokedAt?: string | null;
+            /**
+             * @description A platform token is refused while its creator isn't an active platform admin
+             * @enum {string|null}
+             */
+            blockedReason?: "creator_not_platform_admin" | null;
+        };
+        AutomationTokenCreate: {
+            /** @example CI publisher */
+            name: string;
+            /** @description Only the scopes of the token's kind (platform:* for platform tokens, servers:* for team tokens); 400 invalid_scopes otherwise */
+            scopes: components["schemas"]["AutomationTokenScope"][];
+            /**
+             * Format: int32
+             * @description Tokens always expire
+             * @default 90
+             */
+            expiresInDays: number;
+        };
+        AutomationTokenCreated: {
+            token: components["schemas"]["AutomationToken"];
+            /** @description The full token, shown only now. Send it as Authorization: Bearer to /v1/*. Never to /mcp. */
+            secret: string;
+        };
+        /** @description The MCP protocol version the portal last negotiated with the upstream server (docs/roadmap.md, v0.2 A) */
+        McpServerProtocol: {
+            /**
+             * @description legacy: 2025-11-25 and earlier (initialize). modern: 2026-07-28 and later (stateless).
+             * @enum {string}
+             */
+            era: "legacy" | "modern";
+            /** @example 2025-11-25 */
+            version: string;
+            /** Format: date-time */
+            negotiatedAt: string;
+        };
     };
     responses: {
         /** @description A page of audit entries, newest first */
@@ -4365,8 +5502,8 @@ export interface components {
     parameters: {
         /** @description An exact action (team.member_add), or a prefix ending in a dot (team.) for every action in that group. */
         AuditActionParam: string;
-        /** @description Only entries by the system */
-        AuditActorKindParam: "system";
+        /** @description Only entries by the system (system) or by automation tokens (automation_token) */
+        AuditActorKindParam: "system" | "automation_token";
         /** @description Only entries by this person (including their API keys) */
         AuditActorParam: string;
         /** @description Action groups (prefixes ending in a dot, comma-separated) to leave out: auth. hides sign-ins and sign-outs. */
@@ -4423,6 +5560,9 @@ export interface components {
         UsageMethodParam: "tools/list" | "tools/call" | "prompts/list" | "prompts/get" | "resources/list" | "resources/templates/list" | "resources/read";
         /** @description With a non-time groupBy, add per-day buckets (UsageRow.series) to each row */
         UsageSeriesParam: boolean;
+        NotificationIdParam: number;
+        NotificationDestinationIdParam: string;
+        AutomationTokenIdParam: string;
     };
     requestBodies: never;
     headers: {
@@ -4809,7 +5949,7 @@ export interface operations {
                 excludeAction?: components["parameters"]["AuditExcludeActionParam"];
                 /** @description Only entries by this person (including their API keys) */
                 actorUserId?: components["parameters"]["AuditActorParam"];
-                /** @description Only entries by the system */
+                /** @description Only entries by the system (system) or by automation tokens (automation_token) */
                 actorKind?: components["parameters"]["AuditActorKindParam"];
                 targetType?: components["parameters"]["AuditTargetTypeParam"];
                 /** @description Entries at or after this time */
@@ -5127,7 +6267,7 @@ export interface operations {
                 excludeAction?: components["parameters"]["AuditExcludeActionParam"];
                 /** @description Only entries by this person (including their API keys) */
                 actorUserId?: components["parameters"]["AuditActorParam"];
-                /** @description Only entries by the system */
+                /** @description Only entries by the system (system) or by automation tokens (automation_token) */
                 actorKind?: components["parameters"]["AuditActorKindParam"];
                 targetType?: components["parameters"]["AuditTargetTypeParam"];
                 /** @description Entries at or after this time */
@@ -5494,7 +6634,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCapabilityApproval"];
+            };
+        };
         responses: {
             /** @description Approved capability */
             200: {
@@ -5507,6 +6651,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
             409: components["responses"]["ErrorReply"];
@@ -5885,7 +7030,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCapabilityApproval"];
+            };
+        };
         responses: {
             /** @description Approved capability */
             200: {
@@ -5898,6 +7047,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
             404: components["responses"]["ErrorReply"];
             409: components["responses"]["ErrorReply"];
@@ -8073,6 +9223,883 @@ export interface operations {
             200: components["responses"]["UsageReportReply"];
             400: components["responses"]["ErrorReply"];
             403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Overview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminOverview"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamAttention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attention items for the team */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TeamAttention"];
+                    };
+                };
+            };
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    listMyNotifications: {
+        parameters: {
+            query?: {
+                /** @description Only unread notifications */
+                unread?: boolean;
+                /** @description nextCursor from the previous page */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of notifications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationPage"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    getMyUnreadNotificationCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unread count */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationUnreadCount"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    markAllMyNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationMarked"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    markMyNotificationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: components["parameters"]["NotificationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            401: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    getMyNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Preferences */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationPreferences"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+        };
+    };
+    updateMyNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferencesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated preferences */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationPreferences"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            401: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+        };
+    };
+    listTeamNotificationDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Destinations ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestination"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    createTeamNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationDestinationCreate"];
+            };
+        };
+        responses: {
+            /** @description Created; secret is shown only now (null for slack) */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestinationCreated"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+        };
+    };
+    getTeamNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Destination */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestination"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    deleteTeamNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    updateTeamNotificationDestination: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestination"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    testTeamNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The outcome of the test */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationTestResult"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            429: components["responses"]["ErrorReply"];
+        };
+    };
+    rotateTeamNotificationDestinationSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NotificationSecretRotate"];
+            };
+        };
+        responses: {
+            /** @description Rotated; secret is shown only now */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestinationSecret"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    listTeamNotificationDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 50 deliveries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDelivery"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListNotificationDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Destinations ordered by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestination"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminCreateNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationDestinationCreate"];
+            };
+        };
+        responses: {
+            /** @description Created; secret is shown only now (null for slack) */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestinationCreated"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Destination */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestination"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminDeleteNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminUpdateNotificationDestination: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The resource's revision, as returned in ETag (for example "3"). Missing returns 428; stale returns 412. */
+                "If-Match": components["parameters"]["IfMatchHeader"];
+            };
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestination"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            412: components["responses"]["ErrorReply"];
+            422: components["responses"]["ErrorReply"];
+            428: components["responses"]["ErrorReply"];
+        };
+    };
+    adminTestNotificationDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The outcome of the test */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationTestResult"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            429: components["responses"]["ErrorReply"];
+        };
+    };
+    adminRotateNotificationDestinationSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NotificationSecretRotate"];
+            };
+        };
+        responses: {
+            /** @description Rotated; secret is shown only now */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDestinationSecret"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListNotificationDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                destinationId: components["parameters"]["NotificationDestinationIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 50 deliveries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationDelivery"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    adminGetNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationSettings"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminTestEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The outcome of the test */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["NotificationTestResult"];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+            429: components["responses"]["ErrorReply"];
+        };
+    };
+    getToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AutomationToken"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorReply"];
+            429: components["responses"]["ErrorReply"];
+        };
+    };
+    adminListAutomationTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AutomationToken"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+        };
+    };
+    adminCreateAutomationToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Created; the secret is shown only now */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AutomationTokenCreated"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    adminRevokeAutomationToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tokenId: components["parameters"]["AutomationTokenIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    listTeamAutomationTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AutomationToken"][];
+                    };
+                };
+            };
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+        };
+    };
+    createTeamAutomationToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Created; the secret is shown only now */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AutomationTokenCreated"];
+                    };
+                };
+            };
+            400: components["responses"]["ErrorReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
+            409: components["responses"]["ErrorReply"];
+        };
+    };
+    revokeTeamAutomationToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team slug or ID */
+                team: components["parameters"]["TeamParam"];
+                tokenId: components["parameters"]["AutomationTokenIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkReply"];
+            403: components["responses"]["ErrorReply"];
+            404: components["responses"]["ErrorReply"];
         };
     };
 }

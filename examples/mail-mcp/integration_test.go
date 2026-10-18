@@ -30,6 +30,7 @@ import (
 
 const (
 	integrationEncryptionKey = "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+	integrationPepper        = "cGVwcGVyLXBlcHBlci1wZXBwZXItcGVwcGVyLTAxMjM="
 	gmailReadonly            = "https://www.googleapis.com/auth/gmail.readonly"
 )
 
@@ -112,7 +113,7 @@ func TestGatewayDelegatedGmailEndToEnd(t *testing.T) {
 	t.Cleanup(gwSrv.Close)
 	cfg := config.Defaults()
 	cfg.AppURL, cfg.DevAuth, cfg.DatabaseURL = gwSrv.URL, true, "unused"
-	cfg.EncryptionKey, cfg.APIKeyPepper = integrationEncryptionKey, integrationEncryptionKey
+	cfg.EncryptionKey, cfg.APIKeyPepper = integrationEncryptionKey, integrationPepper
 	cfg.RequestsPerMinute, cfg.LoginAttemptsPerMinute = 100_000, 100_000
 	if err := cfg.Validate("serve"); err != nil {
 		t.Fatal(err)

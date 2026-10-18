@@ -95,7 +95,10 @@ def main():
     if server["publishState"] in ("private", "rejected"):
         server = admin.must("POST", f"/v1/teams/demo/mcp-servers/{server['id']}/publish", {"note": "dev seed"})
     if server["publishState"] == "pending":
-        server = admin.must("POST", f"/v1/admin/mcp-servers/{server['id']}/review", {"decision": "approve"})
+        # An approval names what was reviewed: read the server's digest first.
+        digest = admin.must("GET", f"/v1/admin/mcp-servers/{server['id']}")["reviewDigest"]
+        server = admin.must("POST", f"/v1/admin/mcp-servers/{server['id']}/review",
+                            {"decision": "approve", "expectedDigest": digest})
         print("published demo-tools to the catalog")
 
     # Team gateway with every tool and prompt of the server.

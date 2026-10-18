@@ -103,13 +103,16 @@ func TestInvalidValuesReported(t *testing.T) {
 	}
 }
 
-const testKey = "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+const (
+	testKey    = "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+	testPepper = "cGVwcGVyLXBlcHBlci1wZXBwZXItcGVwcGVyLTAxMjM="
+)
 
 func TestValidate(t *testing.T) {
 	base := func() Config {
 		c := Defaults()
 		c.DatabaseURL = "postgres://x"
-		c.EncryptionKey, c.APIKeyPepper = testKey, testKey
+		c.EncryptionKey, c.APIKeyPepper = testKey, testPepper
 		return c
 	}
 	cases := []struct {
@@ -145,6 +148,17 @@ func TestValidate(t *testing.T) {
 			c.AppURL, c.DevAuth, c.EncryptionKeyPrevious = "http://localhost:8088", true, "c2hvcnQ="
 		}, "serve", "ENCRYPTION_KEY_PREVIOUS"},
 		{"migrate needs no encryption key", func(c *Config) { c.EncryptionKey = "" }, "migrate", ""},
+		// H-7: one value for both would tie the sealed secrets to the key and token digests.
+		{"encryption key equal to the pepper", func(c *Config) { c.AppURL, c.DevAuth, c.APIKeyPepper = "http://localhost:8088", true, c.EncryptionKey },
+			"serve", "ENCRYPTION_KEY and API_KEY_PEPPER must be different values"},
+		{"the same bytes in another encoding", func(c *Config) {
+			// std base64 of the key with its padding removed decodes to the same 32 bytes.
+			c.AppURL, c.DevAuth, c.APIKeyPepper = "http://localhost:8088", true, strings.TrimRight(c.EncryptionKey, "=")
+		}, "serve", "ENCRYPTION_KEY and API_KEY_PEPPER must be different values"},
+		{"previous values may match during a rotation", func(c *Config) {
+			c.AppURL, c.DevAuth, c.EncryptionKeyPrevious, c.APIKeyPepperPrevious = "http://localhost:8088", true, testPepper, testKey
+		}, "serve", ""},
+		{"distinct key and pepper", func(c *Config) { c.AppURL, c.DevAuth = "http://localhost:8088", true }, "serve", ""},
 		{"health interval too short", func(c *Config) {
 			c.AppURL, c.DevAuth, c.HealthCheckInterval = "http://localhost:8088", true, time.Second
 		}, "serve", "HEALTH_CHECK_INTERVAL"},
@@ -211,7 +225,7 @@ func TestInstanceSettings(t *testing.T) {
 func TestValidateInstance(t *testing.T) {
 	base := Defaults()
 	base.DatabaseURL, base.AppURL, base.DevAuth, base.EncryptionKey = "postgres://x", "http://localhost:8088", true, testKey
-	base.APIKeyPepper = testKey
+	base.APIKeyPepper = testPepper
 	cases := []struct {
 		name    string
 		mutate  func(*Instance)

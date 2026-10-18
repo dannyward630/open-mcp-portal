@@ -23,6 +23,18 @@ func TestSafeNext(t *testing.T) {
 		"relative":                         "/",
 		"/x\r\nSet-Cookie: a":              "/",
 		"/" + strings.Repeat("a", maxNext): "/",
+		// F-4: browsers drop tab and newline when parsing a URL, so "/\t/evil.example" is "//evil.example".
+		"/\t/evil.example":    "/",
+		"/\v/evil.example":    "/",
+		"/\x00/evil.example":  "/",
+		"/%09/evil.example":   "/",
+		"/%2509/evil.example": "/",
+		"/%5c/evil.example":   "/",
+		"/%2F/evil.example":   "/",
+		"/%5Cevil.example":    "/",
+		"/a?b=c\td":           "/",
+		// A sign-in that resumes an OAuth authorization request keeps its encoded query.
+		"/oauth/authorize?redirect_uri=https%3A%2F%2Fclient.example%2Fcb&state=a%2Fb": "/oauth/authorize?redirect_uri=https%3A%2F%2Fclient.example%2Fcb&state=a%2Fb",
 	}
 	for in, want := range cases {
 		if got := safeNext(in); got != want {

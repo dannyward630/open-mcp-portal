@@ -48,7 +48,7 @@ func devConfig(dbURL string) config.Config {
 	c := config.Defaults()
 	c.DatabaseURL, c.AppURL, c.DevAuth = dbURL, "http://localhost:8088", true
 	c.EncryptionKey = "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
-	c.APIKeyPepper = c.EncryptionKey
+	c.APIKeyPepper = "cGVwcGVyLXBlcHBlci1wZXBwZXItcGVwcGVyLTAxMjM="
 	return c
 }
 

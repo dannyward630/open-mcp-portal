@@ -43,7 +43,7 @@ func replica(t *testing.T, pool *pgxpool.Pool, mutate func(*config.Config)) *tes
 	t.Cleanup(srv.Close)
 	cfg := config.Defaults()
 	cfg.AppURL, cfg.DevAuth, cfg.DatabaseURL = srv.URL, true, "unused"
-	cfg.EncryptionKey, cfg.APIKeyPepper = testEncryptionKey, testEncryptionKey
+	cfg.EncryptionKey, cfg.APIKeyPepper = testEncryptionKey, testPepper
 	cfg.RequestsPerMinute, cfg.LoginAttemptsPerMinute = 100_000, 100_000
 	if mutate != nil {
 		mutate(&cfg)
@@ -628,12 +628,12 @@ func TestPepperRotation(t *testing.T) {
 	raw := make([]byte, 32)
 	_, _ = rand.Read(raw)
 	access := "ompat_" + base64.RawURLEncoding.EncodeToString(raw)
-	rolled := replica(t, pool, func(c *config.Config) { c.APIKeyPepper, c.APIKeyPepperPrevious = otherPepper, testEncryptionKey })
+	rolled := replica(t, pool, func(c *config.Config) { c.APIKeyPepper, c.APIKeyPepperPrevious = otherPepper, testPepper })
 	grant := e.scalar(`INSERT INTO oauth_grants (user_id, gateway_id, client_id, client_kind, client_name, resource)
 		SELECT u.id, g.id, 'ompcl_rot', 'registered', 'Rot client', $1 FROM users u, gateways g WHERE u.email = 'blair@localhost' AND g.slug = 'support'
 		RETURNING id::text`, rolled.URL+"/mcp/support")
 	e.scalar(`INSERT INTO oauth_tokens (grant_id, kind, token_hash, resource, expires_at) VALUES ($1, 'access', $2, $3, now() + interval '1 hour')
-		RETURNING id::text`, grant, hmacHex(testEncryptionKey, "oauth:", access), rolled.URL+"/mcp/support")
+		RETURNING id::text`, grant, hmacHex(testPepper, "oauth:", access), rolled.URL+"/mcp/support")
 
 	// The rolled deployment accepts old keys and re-digests them.
 	for name, key := range map[string]string{"api key": e.key.Secret, "service account key": saKey.Secret, "oauth token": access} {
@@ -733,7 +733,7 @@ func mustDeps(t *testing.T, pool *pgxpool.Pool) httpapi.Deps {
 	t.Helper()
 	cfg := config.Defaults()
 	cfg.AppURL, cfg.DevAuth, cfg.DatabaseURL = "http://localhost:1", true, "unused"
-	cfg.EncryptionKey, cfg.APIKeyPepper = testEncryptionKey, testEncryptionKey
+	cfg.EncryptionKey, cfg.APIKeyPepper = testEncryptionKey, testPepper
 	deps, err := app.NewDeps(cfg, pool, testutil.Logger())
 	if err != nil {
 		t.Fatal(err)

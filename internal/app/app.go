@@ -96,15 +96,7 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	if !deps.WebBuilt {
 		log.Warn("web UI not built; run `make web` before building")
 	}
-	srv := &http.Server{
-		Addr:              cfg.ListenAddr,
-		Handler:           httpapi.NewAPIHandler(deps),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		// No WriteTimeout: MCP responses will stream (later phases).
-		// Handlers bound their own work with contexts.
-		BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) },
-	}
+	srv := newHTTPServer(ctx, cfg.ListenAddr, httpapi.NewAPIHandler(deps))
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	defer stopLoops()
 	go cleanupLoop(loopCtx, deps.Auth, deps.Providers, log)
@@ -120,7 +112,7 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 		go metricsObjectsLoop(loopCtx, pool, log)
 		mux := http.NewServeMux()
 		mux.Handle("GET /metrics", metrics.Handler())
-		msrv := &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second,
+		msrv := &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: readHeaderTimeout, IdleTimeout: idleTimeout,
 			BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) }}
 		servers = append(servers, msrv)
 		go func() {
@@ -135,6 +127,30 @@ func Run(ctx context.Context, mode string, cfg config.Config, log *slog.Logger) 
 	}
 	stopLoops()
 	return shutdown(cfg, log, health, servers...)
+}
+
+// Timeouts of the main listener. Slow request headers are cut after
+// readHeaderTimeout and idle keep-alive connections after idleTimeout. There
+// is deliberately no ReadTimeout or WriteTimeout: they bound the whole
+// exchange, which would cut MCP responses that stream (SSE) and calls that
+// run up to a server's timeout (120 s). Handlers bound their own work with
+// contexts; bodies are capped at 1 MiB (httpx.Decode).
+const (
+	readHeaderTimeout = 10 * time.Second
+	idleTimeout       = 120 * time.Second
+)
+
+// newHTTPServer is the main listener: see the timeouts above. Requests keep
+// running through a shutdown signal (BaseContext without cancellation) so a
+// drain can finish them.
+func newHTTPServer(ctx context.Context, addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: readHeaderTimeout,
+		IdleTimeout:       idleTimeout,
+		BaseContext:       func(net.Listener) context.Context { return context.WithoutCancel(ctx) },
+	}
 }
 
 // stampPeppers records which pepper made key and token digests from before

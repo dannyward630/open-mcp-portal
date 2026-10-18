@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { Schemas } from "../api/client";
 import { capabilities, capability, healthCheck, mcpServer, page, serverId, team, teamPublishing, teamSummary } from "./fixtures";
-import { type Handler, mockApi, renderApp, shellRoutes } from "./harness";
+import { type Handler, mockApi, Reply, renderApp, shellRoutes } from "./harness";
 
 const pending = mcpServer({ publishState: "pending", publishRequestedAt: "2026-10-15T10:00:00Z", publishRequestNote: "For on-call engineers." });
 
@@ -51,7 +51,39 @@ describe("Admin → MCP servers", () => {
     const dialog = await screen.findByRole("dialog", { name: "Approve Service status for the catalog?" });
     expect(dialog).toHaveTextContent("For on-call engineers.");
     await u.click(within(dialog).getByRole("button", { name: "Approve and publish" }));
-    await waitFor(() => expect(calls.find((c) => c.url.endsWith("/review"))?.body).toEqual({ decision: "approve" }));
+    await waitFor(() => expect(calls.find((c) => c.url.endsWith("/review"))?.body).toEqual({ decision: "approve", expectedDigest: "d".repeat(64) }));
+  });
+
+  // F-2: the approval names what the admin was shown when the dialog opened, not what a refetch shows later.
+  it("approves the digest it was opened with, and says to reload when the server changed", async () => {
+    const u = userEvent.setup();
+    let current = pending;
+    const calls = mockApi(
+      routes("platform_admin", pending, {
+        [`GET /v1/admin/mcp-servers/${serverId}`]: () => current,
+        [`POST /v1/admin/mcp-servers/${serverId}/review`]: () => Reply.error(409, "changed_since_review", "Changed.", { currentDigest: "e".repeat(64) }),
+      }),
+    );
+    renderApp(`/admin/servers/${serverId}`);
+    await u.click(await screen.findByRole("button", { name: "Approve…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Approve Service status for the catalog?" });
+    // The server is refreshed behind the open dialog (an editor refreshed it, the page refetched).
+    current = mcpServer({ ...pending, reviewDigest: "e".repeat(64) });
+    await u.click(within(dialog).getByRole("button", { name: "Approve and publish" }));
+    await waitFor(() => expect(calls.find((c) => c.url.endsWith("/review"))?.body).toEqual({ decision: "approve", expectedDigest: "d".repeat(64) }));
+    expect(await within(dialog).findByText("This changed since you opened it. Reload and review it again.")).toBeInTheDocument();
+    expect(screen.queryByText(/is in the catalog/)).toBeNull();
+  });
+
+  it("sends no digest with a reject", async () => {
+    const u = userEvent.setup();
+    const calls = mockApi(routes("platform_admin", pending, { [`POST /v1/admin/mcp-servers/${serverId}/review`]: () => mcpServer({ publishState: "rejected" }) }));
+    renderApp(`/admin/servers/${serverId}`);
+    await u.click(await screen.findByRole("button", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Reject Service status?" });
+    await u.type(within(dialog).getByRole("textbox", { name: /Note for the team/ }), "No.");
+    await u.click(within(dialog).getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(calls.find((c) => c.url.endsWith("/review"))?.body).toEqual({ decision: "reject", note: "No." }));
   });
 
   it("needs a note to reject, and removes a published server with a reject", async () => {
@@ -90,6 +122,26 @@ describe("Admin → MCP servers", () => {
     await u.click(await screen.findByRole("button", { name: "Approve the change to get_status" }));
     await u.click(within(await screen.findByRole("alertdialog", { name: "Approve the change to get_status?" })).getByRole("button", { name: "Approve change" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url === `/v1/admin/mcp-servers/${serverId}/capabilities/${changed.id}/approval`)).toBe(true));
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ expectedFingerprint: changed.fingerprint });
+  });
+
+  it("refuses to approve a capability that changed since it was read, and says to reload", async () => {
+    const u = userEvent.setup();
+    const changed = capability({ changed: true });
+    const calls = mockApi(
+      routes("platform_admin", mcpServer({ publishState: "published", pendingChanges: 1 }), {
+        [`GET /v1/admin/mcp-servers/${serverId}/capabilities`]: () => [changed],
+        [`PUT /v1/admin/mcp-servers/${serverId}/capabilities/${changed.id}/approval`]: () =>
+          Reply.error(409, "changed_since_review", "Changed.", { currentFingerprint: "f".repeat(64) }),
+      }),
+    );
+    renderApp(`/admin/servers/${serverId}?tab=capabilities`);
+    await u.click(await screen.findByRole("button", { name: "Approve the change to get_status" }));
+    const ask = await screen.findByRole("alertdialog", { name: "Approve the change to get_status?" });
+    await u.click(within(ask).getByRole("button", { name: "Approve change" }));
+    expect(await within(ask).findByText("This changed since you opened it. Reload and review it again.")).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ expectedFingerprint: changed.fingerprint });
+    expect(screen.queryByText("The change to get_status was approved")).toBeNull();
   });
 
   it("is read-only for auditors: no reviews, settings shown but not editable, health through the admin API", async () => {

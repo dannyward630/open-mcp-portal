@@ -152,6 +152,7 @@ export const mcpServer = (extra: Partial<Schemas["McpServer"]> = {}): Schemas["M
   health: { status: "healthy", checkedAt: "2026-10-16T07:55:00Z", statusSince: "2026-10-15T08:00:00Z", latencyMs: 42 },
   refreshedAt: "2026-10-16T07:00:00Z",
   lastRefreshError: null,
+  reviewDigest: "d".repeat(64),
   revision: 4,
   createdAt: "2026-10-01T10:00:00Z",
   updatedAt: "2026-10-16T07:00:00Z",
