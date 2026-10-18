@@ -52,3 +52,13 @@ export function describeV02(err: unknown): Wording | undefined {
   }
   return byCode[err.code];
 }
+
+/**
+ * The same wording for places that show only an error's message (a confirmation dialog): an ApiError whose message is
+ * the person's wording, or the error itself when the code isn't one of v0.2's.
+ */
+export function friendly(err: unknown): unknown {
+  if (!(err instanceof ApiError)) return err;
+  const wording = describeV02(err);
+  return wording ? new ApiError(err.status, err.code, wording.message, err.details, err.retryAfter) : err;
+}
