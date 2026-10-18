@@ -286,7 +286,7 @@ Revocation timing: every `/mcp` request goes back to PostgreSQL for the credenti
 | --- | --- |
 | Request bodies | 1 MiB (`httpx.Decode`, `mcpgw`); OAuth token/revoke/register 16 KiB |
 | `/mcp` | Per person, credential, service account and gateway per minute in PostgreSQL; calls ≤ server timeout (≤120 s) |
-| Sign-in and `/oauth/*` | Per hashed address per minute (login `LOGIN_ATTEMPTS_PER_MINUTE`, OAuth 60, register 10) |
+| Sign-in and `/oauth/*` | Per hashed address per minute (login `LOGIN_ATTEMPTS_PER_MINUTE`, OAuth 60, register 10); registered OAuth clients in total: `OAUTH_MAX_REGISTERED_CLIENTS` (1000), H-4 |
 | `/v1` | Per person per minute |
 | Outbound | 1 MiB per response, 500 entries per kind, 8 discovery requests, 10 detect requests per minute per person |
 | Recording | 16 KiB per payload part |
@@ -350,9 +350,9 @@ The review read `internal/auth`, `authz`, `httpapi`, `mcpgw`, `oauth`, `provider
 ## 9. Hardening ideas (not findings)
 
 - **H-1** Trusted OAuth clients skip consent and may redirect to `http://localhost:<any port>`; a local process can start the flow with its own PKCE pair and receive a code for the signed-in person. Require consent (or a one-time notice) for loopback redirects of trusted clients.
-- **H-2** `sendIdentity` defaults to on; default it off for hosts outside the internal allowlist, or show the claim set at review.
+- **H-2** `sendIdentity` defaults to on; default it off for hosts outside the internal allowlist, or show the claim set at review. **Partly addressed (v0.2.1, decision 61):** the UI help now says what is sent and that some public servers refuse any `Authorization` header, and a manual Test sends the editor's token, so a server that refuses it at the HTTP level shows up at Test instead of on the first call. Still open: the default, and a server that accepts the request and refuses only at tool execution (DeepWiki) still passes Test.
 - **H-3** `GET /oauth/authorize` fetches an anonymous caller's CIMD URL and reports distinct failures; return one generic page for fetch failures, fetch only after sign-in, and cap distinct fetches per address.
-- **H-4** DCR is open and unauthenticated; each client is a row for 30 days and its error redirects act as an open redirector. Cap total registrations and require a `Sec-Fetch`-checked browser POST or admin-set toggle.
+- **H-4** DCR is open and unauthenticated; each client is a row for 30 days and its error redirects act as an open redirector. Cap total registrations and require a `Sec-Fetch`-checked browser POST or admin-set toggle. **The cap is done (v0.2.1):** `OAUTH_MAX_REGISTERED_CLIENTS` (default 1000, `0` = no cap) bounds the registered clients used within the last 30 days; over it, `POST /oauth/register` answers `503 temporarily_unavailable` and stores nothing (the count and the insert run under a lock, so replicas can't overshoot; tests `TestRegistrationCap*`, `TestOAuthRegistrationCapAnswers503`). Metadata-document clients are not rows and don't count. **What remains:** the only per-address limit is the existing 10 registrations a minute per address (shared in PostgreSQL), and behind an ingress without `TRUSTED_PROXIES` every caller shares one address, so one caller can fill the cap and block new registrations until others expire (a registration frees its slot after 30 unused days; expired rows are deleted when the next registration comes in, and an expired one is refused at once either way); there is no per-address cap on live clients; no browser-only or admin-toggle requirement; a refusal is logged, not audited, and has no metric; the open-redirector point is unchanged.
 - **H-5** (a) Per-provider allow-list of teams or servers, and per-call scope minimisation or narrowing on refresh (the parts of F-3 that are **not done**; the per-server grants are); (b) `http.Server` `ReadTimeout`, or per-handler read deadlines on unauthenticated POSTs. **Partly done (`ea920a4`):** `ReadHeaderTimeout` 10 s and `IdleTimeout` 120 s are set and pinned by `TestHTTPServerTimeouts`; a `ReadTimeout` or `WriteTimeout` is deliberately not set (SSE and long calls need long writes), so (b) remains as per-handler body deadlines.
 - **H-6** Do not relay the first message of an upstream error body to MCP clients; show it only to editors on the Test and Health pages.
 - **H-7** **Done (`ea920a4`):** `serve` refuses an `ENCRYPTION_KEY` equal to the `API_KEY_PEPPER` (text or decoded bytes; `TestValidate`). Still open: warn when `TRUSTED_PROXIES` is empty and `X-Forwarded-For` is present; give the OIDC state cookie a `__Host-` name.
@@ -421,7 +421,7 @@ These are designs, not code. They are reviewed here so tests exist before the fi
 | ~~No `govulncheck` or `npm audit`~~ (done, `ea920a4`); base images by tag | 7.11 | H-9 (images) |
 | No content scanning of tool descriptions, arguments or results | 7.5 | Decision 50 (design first) |
 | Trusted clients skip consent; loopback redirects | OA-3 | H-1 |
-| Anonymous CIMD fetch and open DCR | OA-7, OA-2 | H-3, H-4 |
+| Anonymous CIMD fetch; open DCR (the number of live clients is capped since v0.2.1) | OA-7, OA-2 | H-3, H-4 |
 | No off-host audit export; single database role | BR-10, 7.8 | H-10, H-11 |
 | Shared-ingress rate-limit address without `TRUSTED_PROXIES`; no body read timeout (header and idle timeouts set, `ea920a4`) | BR-9, 7.10 | H-5b, H-7 (warning part) |
 | v0.2 designs: notifications, automation tokens, MRTR state | Section 10 | Tests listed there before merge |
