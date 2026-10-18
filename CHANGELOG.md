@@ -10,6 +10,8 @@ breaking changes; the entry says how to adapt.
 
 Changes on `main` since v0.2.0. None changes behaviour.
 
+- Kubernetes smoke test: `make k8s-smoke` ([`scripts/k8s-smoke.sh`](scripts/k8s-smoke.sh), [docs/deploy.md](docs/deploy.md#smoke-test)) applies the Kustomize base, through the new test overlay `deploy/kubernetes/overlays/smoke`, to a three-node kind cluster with a throwaway PostgreSQL and the fake MCP server, and checks the migrate init container, `doctor`, spreading over nodes, the PodDisruptionBudget, the API and `/mcp/{slug}` in both protocol eras, a rolling update and a pod deletion with no failed request, and the SIGTERM drain; `SMOKE_CNI=calico` enforces and tests the NetworkPolicies. `.github/workflows/k8s-smoke.yml` runs it on demand, weekly and on pushes to `main` that touch `deploy/**`, the `Dockerfile` or the script (not yet run on GitHub). It does not cover ingress, TLS, OIDC, kindnet's missing NetworkPolicy enforcement, zones or upgrades.
+
 - Dependencies: Go `kin-openapi` 0.149.0 to 0.151.0, `go-jose` 4.1.5 to 4.1.6, `goose` 3.28.0 to 3.29.0; the web group (React 19.3.1, TanStack Query and Router, lucide-react, Vitest). `govulncheck` and `npm audit` report nothing.
 - Documentation: a public server that refuses any `Authorization` header (found with DeepWiki's `https://mcp.deepwiki.com/mcp`) fails on its first call while **Send identity token** is on, because the token travels as `Authorization: Bearer`; documented in [registry.md](docs/registry.md) and the docs site's troubleshooting page. Claude Code 2.1.280 was run against the 2026-07-28 revision, over an API key and over OAuth on a real deployment ([status.md](docs/status.md)).
 - The example Kubernetes overlay pins v0.2.0's digest.

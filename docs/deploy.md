@@ -10,6 +10,7 @@ queue or object storage.
 | [`compose.demo.yaml`](../compose.demo.yaml) | Local demo: gateway, Postgres and the fake MCP server, with development sign-in. |
 | [`deploy/kubernetes/base`](../deploy/kubernetes/base) | Kustomize base: Deployment (+ migrate init container), Service, PodDisruptionBudget, NetworkPolicies, ServiceAccount and a generated ConfigMap. |
 | [`deploy/kubernetes/overlays/example`](../deploy/kubernetes/overlays/example) | Example overlay: namespace, pinned image, settings, NGINX Ingress (or Gateway API `httproute.yaml`), narrowed NetworkPolicies. |
+| [`deploy/kubernetes/overlays/smoke`](../deploy/kubernetes/overlays/smoke) | Test overlay for `make k8s-smoke` ([Smoke test](#smoke-test)): a throwaway PostgreSQL, the fake MCP server, development sign-in. Not for real installs. |
 
 ## Image
 
@@ -254,6 +255,77 @@ probe allows 4 minutes.
 balancers stop sending traffic. It then gives in-flight requests `SHUTDOWN_TIMEOUT` (125s) to finish. The pod's
 `terminationGracePeriodSeconds` (150s) must exceed the two together. Raise all three together.
 
+## Smoke test
+
+`make k8s-validate` (CI's `k8s` job) only renders the manifests and checks their schemas. `make k8s-smoke`
+([`scripts/k8s-smoke.sh`](../scripts/k8s-smoke.sh)) applies them to a real cluster and uses what it deployed:
+
+```sh
+make k8s-smoke                    # about 2 minutes warm; needs docker, kind, kubectl, curl and jq
+SMOKE_CNI=calico make k8s-smoke   # about 3 minutes; Calico enforces the NetworkPolicies, which are then tested
+```
+
+It builds the portal and the fake MCP server images from the working tree, creates a kind cluster of one control plane
+and two workers (node image pinned by tag and digest, its own kubeconfig in a temporary directory; it never touches
+`~/.kube`), loads the images and applies the base through [`overlays/smoke`](../deploy/kubernetes/overlays/smoke) (a
+throwaway PostgreSQL 17 StatefulSet on a PVC, the fake MCP server, and run-time random secrets, config merged into
+`open-mcp-portal-config` and the local image tags). It stops at the first failed assertion with a message, then (always)
+collects `kubectl get pods,events`, `describe` and every pod's logs into `bin/k8s-smoke-artifacts` (`SMOKE_ARTIFACTS`),
+deletes the cluster, the images and the temporary directory. `SMOKE_KEEP=1` keeps them. Every wait has its own timeout,
+and `SMOKE_TIMEOUT` (900s) bounds the run.
+
+**What it proves**
+
+- The `migrate` init container completed in every pod, and `doctor` passes in the running pod.
+- Both replicas are Ready on **different nodes** (the control plane, which they do not tolerate, is not used), the
+  Service has two endpoints, and the PodDisruptionBudget exists and counts two healthy pods.
+- `/healthz` and `/readyz` answer, and development sign-in (`POST /auth/dev`) works through `kubectl port-forward`.
+- Through the real API: a team, the in-cluster fake MCP server registered at `http://fakemcp.omp-smoke.svc.cluster.local:8091/mcp`,
+  a gateway selecting its `echo` and `check_outage` tools, and an API key. With that key, `initialize`, `tools/list` and
+  `tools/call` work at `/mcp/{slug}` in both protocol eras: legacy (`MCP-Protocol-Version: 2025-11-25`) and modern
+  (`2026-07-28` with `Mcp-Method`, `Mcp-Name` and the `_meta` fields; the answers carry `resultType`). A modern request
+  without `Mcp-Method` is a 400 and a request without a key a 401.
+- **A rolling update** (a config literal changes, so the hashed ConfigMap name changes and the pods roll) under a loop
+  that calls the Service from inside the cluster (`/healthz` and a real `tools/list`): no request fails
+  (`maxUnavailable: 0`). The same loop runs while a pod is **deleted**: no failures; the terminating pod answers
+  `/readyz` with 503 while it still answers `/healthz`, logs `shutting down` and, 10 seconds later (`SHUTDOWN_DELAY`),
+  `shutdown complete`; the replacement lands on a different node from the survivor. The API key and the browser session,
+  both in PostgreSQL, work on the new pods.
+- The PodDisruptionBudget: one eviction is allowed and a second one right after it is refused.
+- With `SMOKE_CNI=calico`: a pod in the namespace the ingress policy allows reaches the portal; a pod in another
+  namespace and a pod beside the portal in its own namespace do not (a timeout, by Service and by pod IP). From a pod
+  that wears the portal's labels (so the same policies select it), PostgreSQL on 5432 and the in-cluster MCP server on
+  8091 are reachable and DNS works, while another namespace's pod and PostgreSQL's pod on other ports are not. The portal
+  keeps passing `doctor` and serving calls under those policies.
+
+**What it does not prove**
+
+- **NetworkPolicy under the default run.** kind's default CNI (kindnet) does not enforce NetworkPolicy: the base's
+  policies are applied and the manifests are valid, nothing more. Only `SMOKE_CNI=calico` tests the ingress policy
+  (with the example overlay's patch: the ingress namespace), the DNS and PostgreSQL rules (the Postgres rule narrowed
+  to PostgreSQL's pods, as an overlay would) and an overlay's rule for an in-cluster MCP server. The `open-mcp-portal-egress-https` rule
+  (TCP 443 to anywhere) is not exercised: nothing in the test dials a public https address.
+- **The internal-network allowlist.** With `DEV_AUTH` on a loopback `APP_URL`, which the test needs, the portal allows private and plain-http MCP
+  server addresses whatever `UPSTREAM_ALLOWED_NETWORKS` says. The test sets `http:*.svc.cluster.local` as the docs say
+  (the portal parses it and `doctor` validates it), but registering the fake server would work without it.
+- **Ingress and TLS.** No ingress controller, Gateway API implementation, certificate or `TRUSTED_PROXIES`; the
+  "ingress controller" is a pod in a namespace named in the policy. The example overlay's Ingress, HTTPRoute,
+  ServiceMonitor and metrics port are only validated, never applied.
+- **OIDC.** Sign-in is the development sign-in; `OIDC_ISSUER` and `OIDC_CLIENT_SECRET` are placeholders.
+- **Production sizing, storage and Postgres.** One throwaway PostgreSQL with no backup, TLS or failover; a three-node
+  cluster in one Docker VM; no zones (kind's nodes carry no `topology.kubernetes.io/zone`, so the second spread
+  constraint has nothing to spread over); no node drain, upgrade between releases or restore.
+- **Client-visible `/readyz`.** A pod that has had SIGTERM answers `/readyz` with 503 on purpose, for 10 seconds, and
+  for a second or so after the signal kube-proxy can still route a request to it. A loop of `/readyz` requests through
+  the Service therefore sees a few 503s during a rollout (the test notes them); real traffic (`/healthz`, `/mcp`) does not.
+  Use `/readyz` for health checks that remove a pod from a pool, not as a probe of what clients experience.
+- **GitHub runners.** [`k8s-smoke.yml`](../.github/workflows/k8s-smoke.yml) runs the script on demand, weekly and on pushes to `main` that
+  change `deploy/**`, the `Dockerfile`, the script or the workflow (both CNIs). It has not run on GitHub yet; the script was
+  run on macOS (Docker Desktop, arm64).
+
+The node image (Kubernetes 1.37), Calico, the PostgreSQL image and the kind and kubectl binaries are pinned (the workflow
+also checks their checksums). Other settings: `SMOKE_CLUSTER` (name, must start with `omp-smoke`), `SMOKE_NODE_IMAGE`.
+
 ## Migrations
 
 - In Kubernetes, the `migrate` init container runs `open-mcp-portal migrate` in every new pod. A PostgreSQL advisory
@@ -384,6 +456,6 @@ recomputed without the key, so rotation happens on use:
 
 - No dashboards, alert rules or tracing (metrics: [Metrics](#metrics)). Logs are JSON on stdout.
 - No in-cluster PostgreSQL component, backup CronJob or restore procedure. Bring your own Postgres and backups.
-- No `k8s-smoke` (kind) test. `make k8s-validate` only renders the manifests and checks their schemas.
+- The kind smoke test ([Smoke test](#smoke-test)) does not cover ingress, TLS, OIDC, the default CNI's (kindnet) NetworkPolicy enforcement, zones, upgrades between releases or restores.
 - Images are published only for releases (`v*` tags), not for every commit on `main`. The example overlay pins v0.2.0's digest: use the digest from the release you install.
 - No Helm chart and no HorizontalPodAutoscaler.
